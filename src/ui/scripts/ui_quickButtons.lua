@@ -38,10 +38,10 @@ function ui_build_quick_buttons()
     UI.button_status:setClickCallback("ui_status")
     UI.button_status:setToolTip("status")
 
-    -- Travel button
-    UI.button_travel = Geyser.Label:new(
+    -- Galaxy button
+    UI.button_galaxy = Geyser.Label:new(
         {
-            name   = "UI.button_travel",
+            name   = "UI.button_galaxy",
             x       = margin_pct .. "%",
             y       = (margin_pct + button_height_pct + button_gap_pct) .. "%",
             width   = (button_width_pct * 2) - margin_pct .. "%",
@@ -50,9 +50,9 @@ function ui_build_quick_buttons()
         UI.top_right_frame
     )
 
-    UI.button_travel:setStyleSheet(UI.style.button_css)
-    UI.button_travel:echo("<center>Travel</center>")
-    UI.button_travel:setClickCallback("ui_toggle_travel")
+    UI.button_galaxy:setStyleSheet(UI.style.button_css)
+    UI.button_galaxy:echo("<center>Galaxy</center>")
+    UI.button_galaxy:setClickCallback("ui_toggle_galaxy")
 end
 
 function ui_score()

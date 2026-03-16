@@ -1,7 +1,6 @@
 -- @patterns:
 --   - pattern: SPYNET REPORT: (\w+) (\w+) has (entered|left) Federation DataSpace
 --     type: regex
-f2t_ui_register_trigger("spynetReport")
 
 --does some basic formatting and redirects the login/logout notice to the overflow window.
 --does not catch players with [ ] titles

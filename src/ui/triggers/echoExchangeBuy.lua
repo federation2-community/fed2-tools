@@ -1,7 +1,6 @@
 -- @patterns:
 --   - pattern: ^\+{3} Exchange will buy (\d+) tons at (\d+)(.+) \+{3}
 --     type: regex
-f2t_ui_register_trigger("echoExchangeBuy")
 
 --puts the buying price (matches[3]) into exchange window
 --matches[4] contains the 'ig/ton' that usually follows a buying price

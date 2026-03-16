@@ -5,7 +5,6 @@
 --     type: regex
 --   - pattern: .*is not currently trading in this commodity$
 --     type: regex
-f2t_ui_register_trigger("findBestProfitHide")
 
 -- If we're in profit search mode, hide command spam
 if UI.trading.profit_search and UI.trading.profit_search.active then

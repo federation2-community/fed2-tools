@@ -21,9 +21,11 @@ function ui_fuel_status()
 
         if fuel_full or is_space then
             UI.button_buy_fuel:setStyleSheet(UI.style.disabled_button_css)
+            UI.button_buy_fuel:cecho("<center><gray>Buy Fuel<reset></center>")
             UI.button_buy_fuel:setClickCallback(function() end)
         else
             UI.button_buy_fuel:setStyleSheet(UI.style.button_css)
+            UI.button_buy_fuel:cecho("<center><white>Buy Fuel<reset></center>")
             UI.button_buy_fuel:setClickCallback("ui_buy_fuel")
         end
     end
@@ -128,7 +130,14 @@ function ui_build()
     ui_trading()
     ui_commodities()
     ui_update_for_rank()
-    tempTimer(10, function() ui_update_header() end)
+    ui_update_header()
+
+    -- Try loading galaxy data from disk
+    tempTimer(1, function()
+        if F2T_UI_STATE.enabled then
+            ui_galaxy_load()
+        end
+    end)
 
     ui_built = true
     f2t_debug_log("[ui] ui_build finished")
@@ -145,6 +154,19 @@ function ui_register_trigger()
     f2t_ui_register_trigger("haulingJob")
     f2t_ui_register_trigger("haulingStart")
     f2t_ui_register_trigger("spynetReport")
+    f2t_ui_register_trigger("promotions")
+    f2t_ui_register_trigger("galaxyCartelLine")
+    f2t_ui_register_trigger("galaxyCartelEnd")
+    f2t_ui_register_trigger("galaxyMemberStart")
+    f2t_ui_register_trigger("galaxyMemberLine")
+    f2t_ui_register_trigger("galaxyMemberEnd")
+    f2t_ui_register_trigger("galaxyPlanetLine")
+    f2t_ui_register_trigger("galaxyPlanetEnd")
+    f2t_ui_register_trigger("hideGalaxyWhileLoading")
+    f2t_ui_register_trigger("hideGalaxyCartelCapture")
+    f2t_ui_register_trigger("hideGalaxyMemberCapture")
+    f2t_ui_register_trigger("hideGalaxyPLanetCapture")
+    f2t_ui_register_trigger("hideGalaxyBlanks")
 
     ui_triggered = true
     f2t_debug_log("[ui] registered triggers")

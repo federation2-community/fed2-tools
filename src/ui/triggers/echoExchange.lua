@@ -3,7 +3,6 @@
 --     type: regex
 --   - pattern: ^\+{3} The display shows the prices for (.+) \+{3}$
 --     type: regex
-f2t_ui_register_trigger("echoExchange")
 
 --puts the Commodity name into the exchange window
 local commodities = ui_commodities_load()
