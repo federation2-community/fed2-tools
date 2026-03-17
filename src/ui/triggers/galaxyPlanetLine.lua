@@ -1,5 +1,5 @@
 -- @patterns:
---   - pattern: ^(.+),·(.+)·system,·(.+)·cartel$
+--   - pattern: ^(.+), (.+) system, (.+) cartel$
 --     type: regex
 
 if UI.galaxy and UI.galaxy.planet_capture_active then

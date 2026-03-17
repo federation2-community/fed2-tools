@@ -1,5 +1,5 @@
 -- @patterns:
---   - pattern: ^···(.+)$
+--   - pattern: ^   (.+)$
 --     type: regex
 
 if UI.galaxy and UI.galaxy.cartel_capture_active then

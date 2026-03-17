@@ -214,16 +214,23 @@ function ui_galaxy_process_queue()
 
     if item.type == "cartel" then
         UI.galaxy.current_cartel_loading = item.name
-        UI.galaxy.member_capture_active  = true
-        UI.galaxy.member_list            = {}
-        UI.galaxy.member_capturing       = false
-        tempTimer(0.3, function() sendAll("di cartel " .. item.name, false) end)
+        tempTimer(0.3, function()
+            -- Flags set immediately before the command so no stray blank line
+            -- arriving in the delay window can fire finish_member_capture early.
+            UI.galaxy.member_capture_active = true
+            UI.galaxy.member_list           = {}
+            UI.galaxy.member_capturing      = false
+            sendAll("di cartel " .. item.name, false)
+        end)
 
     elseif item.type == "system" then
         UI.galaxy.current_system_loading = {cartel = item.cartel, system = item.name}
-        UI.galaxy.planet_capture_active  = true
-        UI.galaxy.planet_list            = {}
-        tempTimer(0.3, function() sendAll("di system " .. item.name, false) end)
+        tempTimer(0.3, function()
+            -- Same reason — set flags right before the send.
+            UI.galaxy.planet_capture_active = true
+            UI.galaxy.planet_list           = {}
+            sendAll("di system " .. item.name, false)
+        end)
     end
 end
 
@@ -344,17 +351,48 @@ end
 function ui_galaxy_capture_planet_line(planet_name, system_name, cartel_name)
     if not UI.galaxy.planet_capture_active then return end
     if not UI.galaxy.loading_automated then return end
+    -- Only accept planets that the game says belong to the system we asked for.
+    -- This prevents timing overlaps from writing planets into the wrong system.
+    local si = UI.galaxy.current_system_loading
+    if not si or system_name ~= si.system then return end
     table.insert(UI.galaxy.planet_list, {name = planet_name, system = system_name, cartel = cartel_name})
 end
 
 function ui_galaxy_finish_planet_capture()
     if not UI.galaxy.planet_capture_active then return end
     UI.galaxy.planet_capture_active = false
-    local si = UI.galaxy.current_system_loading
-    if si and #UI.galaxy.planet_list > 0 then
-        ui_galaxy_parse_system_info(si.system, si.cartel, UI.galaxy.planet_list)
-    elseif si then
-        tempTimer(0.3, function() ui_galaxy_process_queue() end)
+
+    -- Group captured planets by the system/cartel the game reported on each
+    -- line.  This is ground truth — it avoids relying on current_system_loading
+    -- which can be stale when the 0.3s timers cause a new "di system" to be
+    -- sent before the blank-line end trigger arrives from the previous system.
+    local by_system = {}
+    local order = {}
+    for _, pd in ipairs(UI.galaxy.planet_list) do
+        local key = (pd.cartel or "") .. "\0" .. (pd.system or "")
+        if not by_system[key] then
+            by_system[key] = {system = pd.system, cartel = pd.cartel, planets = {}}
+            table.insert(order, key)
+        end
+        table.insert(by_system[key].planets, pd)
+    end
+
+    if #order > 0 then
+        -- Store each group under the correct system as the game reported it.
+        -- Use a short stagger so parse calls don't trample each other's timers.
+        for i, key in ipairs(order) do
+            local group = by_system[key]
+            tempTimer((i - 1) * 0.05, function()
+                ui_galaxy_parse_system_info(group.system, group.cartel, group.planets)
+            end)
+        end
+    else
+        -- No planets at all — still need to store the system with empty list
+        -- so it appears in the tree.
+        local snap = UI.galaxy.planet_capture_for or UI.galaxy.current_system_loading
+        if snap then
+            ui_galaxy_parse_system_info(snap.system, snap.cartel, {})
+        end
     end
 end
 
@@ -363,43 +401,99 @@ end
 -- ============================================================================
 
 function ui_show_refresh_confirmation()
-    if UI.galaxy_confirm_popup then UI.galaxy_confirm_popup:hide() end
+    -- Tear down any previous popup widgets
+    if UI.galaxy_confirm_popup then
+        UI.galaxy_confirm_popup:hide()
+        if UI.galaxy_confirm_title  then UI.galaxy_confirm_title:hide()  end
+        if UI.galaxy_confirm_msg    then UI.galaxy_confirm_msg:hide()    end
+        if UI.galaxy_confirm_ok     then UI.galaxy_confirm_ok:hide()     end
+        if UI.galaxy_confirm_cancel then UI.galaxy_confirm_cancel:hide() end
+    end
 
+    -- Compact popup — all widgets top-level (no nesting) to ensure visibility.
+    -- Centred at ~38% x, ~42% y,  22% wide, 14% tall.
+    local BX, BY, BW, BH = "39%", "42%", "22%", "14%"
+
+    local function _hide_all()
+        UI.galaxy_confirm_popup:hide()
+        UI.galaxy_confirm_title:hide()
+        UI.galaxy_confirm_msg:hide()
+        UI.galaxy_confirm_ok:hide()
+        UI.galaxy_confirm_cancel:hide()
+    end
+
+    -- Background panel
     UI.galaxy_confirm_popup = Geyser.Label:new({
         name = "galaxy_confirm_popup",
-        x = "35%", y = "40%", width = "30%", height = "20%"
+        x = BX, y = BY, width = BW, height = BH
     })
     UI.galaxy_confirm_popup:setStyleSheet([[
-        background-color: rgb(25, 25, 35);
-        border: 2px solid rgba(255, 255, 255, 0.46);
+        background-color: rgb(28, 28, 40);
+        border: 1px solid rgba(180, 180, 220, 0.45);
         border-radius: 5px;
     ]])
 
-    local title = Geyser.Label:new({x=0, y="5%", width="100%", height="25%"}, UI.galaxy_confirm_popup)
-    title:setStyleSheet("background-color:transparent; color:rgba(200,200,210,255); font-size:14px; font-weight:bold;")
-    title:echo("<center>Refresh All Galaxy Data?</center>")
+    -- Title
+    UI.galaxy_confirm_title = Geyser.Label:new({
+        name = "galaxy_confirm_title",
+        x = "39%", y = "43.5%", width = "22%", height = "3%"
+    })
+    UI.galaxy_confirm_title:setStyleSheet(
+        "background-color:transparent; color:#c8c8d2; font-size:12px; font-weight:bold;")
+    UI.galaxy_confirm_title:echo("<center>Refresh All Galaxy Data?</center>")
 
-    local msg = Geyser.Label:new({x="5%", y="30%", width="90%", height="30%"}, UI.galaxy_confirm_popup)
-    msg:setStyleSheet("background-color:transparent; color:rgba(200,200,210,200); font-size:11px;")
-    msg:echo("<center>This will take 1-2 minutes</center>")
+    -- Message
+    UI.galaxy_confirm_msg = Geyser.Label:new({
+        name = "galaxy_confirm_msg",
+        x = "39%", y = "47.5%", width = "22%", height = "4%"
+    })
+    UI.galaxy_confirm_msg:setStyleSheet(
+        "background-color:transparent; color:rgba(170,170,182,210); font-size:10px;")
+    UI.galaxy_confirm_msg:echo("<center>This will take 1–2 minutes.<br/>All cached data will be replaced.</center>")
 
-    local ok = Geyser.Label:new({x="15%", y="65%", width="30%", height="25%"}, UI.galaxy_confirm_popup)
-    ok:setStyleSheet(UI.style.button_css)
-    ok:echo("<center>OK</center>")
-    ok:setClickCallback(function()
-        UI.galaxy_confirm_popup:hide()
-        UI.galaxy.loaded  = false
-        UI.galaxy.cartels = {}
+    -- OK button
+    UI.galaxy_confirm_ok = Geyser.Label:new({
+        name = "galaxy_confirm_ok",
+        x = "40%", y = "52.5%", width = "8%", height = "2.8%"
+    })
+    UI.galaxy_confirm_ok:setStyleSheet(UI.style.button_css)
+    UI.galaxy_confirm_ok:echo("<center>OK</center>")
+    UI.galaxy_confirm_ok:setClickCallback(function()
+        _hide_all()
+        -- Clear memory AND disk so ui_galaxy_init won't find cached data
+        UI.galaxy.loaded   = false
+        UI.galaxy.cartels  = {}
+        UI.galaxy.cartel_timestamps = {}
+        UI.galaxy.system_timestamps = {}
+        UI.galaxy.last_updated      = 0
+        ui_galaxy_save()   -- write empty state to disk before init reads it
         ui_galaxy_init("all")
+        -- Immediately repaint so the "Loading…" message appears in the panel
+        if UI.galaxy.visible then
+            ui_populate_galaxy_dropdown()
+        end
     end)
 
-    local cancel = Geyser.Label:new({x="55%", y="65%", width="30%", height="25%"}, UI.galaxy_confirm_popup)
-    cancel:setStyleSheet(UI.style.button_css)
-    cancel:echo("<center>Cancel</center>")
-    cancel:setClickCallback(function() UI.galaxy_confirm_popup:hide() end)
+    -- Cancel button
+    UI.galaxy_confirm_cancel = Geyser.Label:new({
+        name = "galaxy_confirm_cancel",
+        x = "51%", y = "52.5%", width = "8%", height = "2.8%"
+    })
+    UI.galaxy_confirm_cancel:setStyleSheet(UI.style.button_css)
+    UI.galaxy_confirm_cancel:echo("<center>Cancel</center>")
+    UI.galaxy_confirm_cancel:setClickCallback(_hide_all)
 
-    UI.galaxy_confirm_popup:show()
-    UI.galaxy_confirm_popup:raise()
+    -- Show and raise everything
+    for _, w in ipairs({
+        UI.galaxy_confirm_popup,
+        UI.galaxy_confirm_title,
+        UI.galaxy_confirm_msg,
+        UI.galaxy_confirm_ok,
+        UI.galaxy_confirm_cancel
+    }) do
+        w:show()
+        w:raise()
+    end
 end
 
 -- ============================================================================
@@ -577,13 +671,25 @@ function ui_build_galaxy_dropdown()
     UI.galaxy_dropdown:hide()
 end
 
+-- Draw epoch — incremented on every redraw so all widget names are unique
+-- across redraws, preventing Geyser registry collisions from stale widgets.
+UI.galaxy_draw_epoch = UI.galaxy_draw_epoch or 0
+
 -- ── Row builder ───────────────────────────────────────────────────────────────
 -- y_px      : pixel y within the content label (necessary; see header comment)
 -- row_type  : "cartel" | "system" | "planet"
 -- data      : corresponding data table
 function ui_create_galaxy_row(parent, name, row_type, indent_level, y_px, data)
+    -- Build a unique widget name from type + parent cartel + name so that a
+    -- system sharing its name with its cartel never collides with the cartel row.
+    local cartel_ctx = (data and data.cartel) or ""
+    local uid = string.format("gxrow_%d_%s_%s_%s",
+        UI.galaxy_draw_epoch, row_type, cartel_ctx, name)
+        :gsub("[^%w_]", "_")
+
     -- Row always at x=0 so it never overflows the content label width.
     local row = Geyser.Label:new({
+        name = uid,
         x = 0, y = y_px, width = "100%", height = ROW_H
     }, parent)
     row:setStyleSheet(_ROW)
@@ -703,7 +809,7 @@ local function _count_visible_rows(sorted_cartels)
             local cd = UI.galaxy.cartels[cn]
             for sn in pairs(cd.systems or {}) do
                 -- Skip exact-name match and "[CartelName] Space" entry.
-                if sn ~= cn and sn ~= (cn .. " Space") then
+                if sn ~= (cn .. " Space") then
                     n = n + 1
                     local sys_key = cn .. ":" .. sn
                     if UI.galaxy.expanded[sys_key] then
@@ -732,6 +838,10 @@ function ui_populate_galaxy_dropdown()
         UI.galaxy_scroll_content = nil
     end
 
+    -- Increment epoch so all child widget names are unique this draw pass
+    UI.galaxy_draw_epoch = UI.galaxy_draw_epoch + 1
+    local content_name = "galaxy_scroll_content_" .. UI.galaxy_draw_epoch
+
     -- Keep the refresh-all tooltip current with the overall DB age
     if UI.galaxy_refresh_icon then
         local overall_age = _age_str(UI.galaxy.last_updated)
@@ -741,24 +851,49 @@ function ui_populate_galaxy_dropdown()
     -- ── Loading / empty states ───────────────────────────────────────────────
     if UI.galaxy.loading then
         UI.galaxy_scroll_content = Geyser.Label:new({
-            name = "galaxy_scroll_content",
+            name = content_name,
             x=0, y=0, width="96%", height=2000
         }, UI.galaxy_scroll)
         UI.galaxy_scroll_content:setStyleSheet(_BG)
-        local lbl = Geyser.Label:new({x=0, y="40%", width="100%", height=40}, UI.galaxy_scroll_content)
+        local lbl = Geyser.Label:new({
+            name = content_name .. "_lbl",
+            x=0, y="40%", width="100%", height=40
+        }, UI.galaxy_scroll_content)
         lbl:setStyleSheet("background-color:transparent; color:rgba(200,200,100,220); font-size:11px;")
         lbl:echo("<center>Loading galaxy data…</center>")
         return
 
     elseif not UI.galaxy.loaded then
         UI.galaxy_scroll_content = Geyser.Label:new({
-            name = "galaxy_scroll_content",
+            name = content_name,
             x=0, y=0, width="96%", height=2000
         }, UI.galaxy_scroll)
         UI.galaxy_scroll_content:setStyleSheet(_BG)
-        local lbl = Geyser.Label:new({x=0, y="40%", width="100%", height=50}, UI.galaxy_scroll_content)
-        lbl:setStyleSheet("background-color:transparent; color:rgba(200,100,100,220); font-size:11px;")
-        lbl:echo("<center>No galaxy data<br/>Click ⟳ to load</center>")
+
+        local msg = Geyser.Label:new({
+            name = content_name .. "_msg",
+            x="5%", y="38%", width="90%", height=50
+        }, UI.galaxy_scroll_content)
+        msg:setStyleSheet("background-color:transparent; color:rgba(180,180,190,210); font-size:11px;")
+        msg:echo("<center>Galaxy data is not populated.<br/>Click the button below to load it.</center>")
+
+        local btn = Geyser.Label:new({
+            name = content_name .. "_btn",
+            x="25%", y="52%", width="50%", height=28
+        }, UI.galaxy_scroll_content)
+        btn:setStyleSheet([[
+            QLabel {
+                background-color: rgba(60, 90, 140, 220);
+                border: 1px solid rgba(100, 140, 200, 180);
+                border-radius: 4px;
+                color: rgba(210, 220, 235, 255);
+                font-size: 11px;
+                font-weight: bold;
+            }
+            QLabel::hover { background-color: rgba(75, 110, 165, 240); }
+        ]])
+        btn:echo("<center>⟳  Load Galaxy Data</center>")
+        btn:setClickCallback(function() ui_show_refresh_confirmation() end)
         return
     end
 
@@ -777,7 +912,7 @@ function ui_populate_galaxy_dropdown()
     local content_h    = math.max(visible_rows * ROW_H + 4, 2000)
 
     UI.galaxy_scroll_content = Geyser.Label:new({
-        name   = "galaxy_scroll_content",
+        name   = content_name,
         x=0, y=0, width="96%", height=content_h
     }, UI.galaxy_scroll)
     UI.galaxy_scroll_content:setStyleSheet(_BG)
@@ -800,7 +935,7 @@ function ui_populate_galaxy_dropdown()
 
             for _, system_name in ipairs(sorted_sys) do
                 -- Skip exact-name match and "[CartelName] Space" entry.
-                if system_name ~= cartel_name and system_name ~= (cartel_name .. " Space") then
+                if system_name ~= (cartel_name .. " Space") then
                     local system_data = cartel_data.systems[system_name]
 
                     ui_create_galaxy_row(UI.galaxy_scroll_content, system_name, "system", 1, y_px, system_data)
@@ -825,9 +960,13 @@ end
 -- ── Toggle visibility ─────────────────────────────────────────────────────────
 function ui_toggle_galaxy()
     if not UI.galaxy_dropdown then
+        -- Force visible=false BEFORE build so that even if build errors
+        -- partway through, the toggle state is known-good.
+        UI.galaxy.visible       = false
+        UI.galaxy_button_active = false
         ui_build_galaxy_dropdown()
-        -- build ends with hide(); UI.galaxy.visible is false by initialisation.
-        -- Fall straight through to the show branch below.
+        -- build ends with an explicit hide(); fall through to show branch.
+        if not UI.galaxy_dropdown then return end  -- build failed entirely
     end
 
     if UI.galaxy.visible then
@@ -835,10 +974,11 @@ function ui_toggle_galaxy()
         UI.galaxy.visible       = false
         UI.galaxy_button_active = false
     else
+        -- Silently try the disk cache; if it fails, loaded stays false and
+        -- ui_populate_galaxy_dropdown will show the "no data" prompt.
+        -- NEVER send server commands automatically from the toggle.
         if not UI.galaxy.loaded and not UI.galaxy.loading then
-            if not ui_galaxy_load() then
-                ui_galaxy_init("all")
-            end
+            ui_galaxy_load()
         end
         ui_populate_galaxy_dropdown()
         UI.galaxy_dropdown:show()
