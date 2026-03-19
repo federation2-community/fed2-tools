@@ -132,13 +132,6 @@ function ui_build()
     ui_update_for_rank()
     ui_update_header()
 
-    -- Try loading galaxy data from disk
-    tempTimer(1, function()
-        if F2T_UI_STATE.enabled then
-            ui_galaxy_load()
-        end
-    end)
-
     ui_built = true
     f2t_debug_log("[ui] ui_build finished")
 end
@@ -155,18 +148,8 @@ function ui_register_trigger()
     f2t_ui_register_trigger("haulingStart")
     f2t_ui_register_trigger("spynetReport")
     f2t_ui_register_trigger("promotions")
-    f2t_ui_register_trigger("galaxyCartelLine")
-    f2t_ui_register_trigger("galaxyCartelEnd")
-    f2t_ui_register_trigger("galaxyMemberStart")
-    f2t_ui_register_trigger("galaxyMemberLine")
-    f2t_ui_register_trigger("galaxyMemberEnd")
-    f2t_ui_register_trigger("galaxyPlanetLine")
-    f2t_ui_register_trigger("galaxyPlanetEnd")
-    f2t_ui_register_trigger("hideGalaxyWhileLoading")
-    f2t_ui_register_trigger("hideGalaxyCartelCapture")
-    f2t_ui_register_trigger("hideGalaxyMemberCapture")
-    f2t_ui_register_trigger("hideGalaxyPLanetCapture")
-    f2t_ui_register_trigger("hideGalaxyBlanks")
+    f2t_ui_register_trigger("galaxySystemLine")
+    f2t_ui_register_trigger("galaxySystemEnd")
 
     ui_triggered = true
     f2t_debug_log("[ui] registered triggers")

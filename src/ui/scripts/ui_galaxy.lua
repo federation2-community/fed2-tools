@@ -1,103 +1,44 @@
 -- ============================================================================
--- GALAXY DATA MANAGEMENT WITH PERSISTENCE (v3)
+-- GALAXY DATA MANAGEMENT  —  powered by "di systems"
+-- ============================================================================
+--
+-- TRIGGERS REQUIRED (replace all previous galaxy triggers):
+--
+--   galaxySystemsLine   (fires while capture is active)
+--     type    : regex
+--     pattern : ^(.+)$          ← any non-blank line
+--     script  : if UI.galaxy and UI.galaxy.capture_active then
+--                   ui_galaxy_capture_line(matches[2])
+--               end
+--
+--   galaxySystemsEnd    (blank line signals end of "di systems" output)
+--     type    : regex
+--     pattern : ^$
+--     script  : if UI.galaxy and UI.galaxy.capture_active then
+--                   ui_galaxy_finish_capture()
+--               end
+--
 -- ============================================================================
 
 UI.galaxy = UI.galaxy or {
-    cartels             = {},
-    loaded              = false,
-    loading             = false,
-    loading_automated   = false,
-    is_full_refresh     = false,   -- true only during a full "di cartels" reload
-    current_cartel_loading = nil,
-    current_system_loading = nil,
-    load_queue          = {},
-    expanded            = {},
-    last_updated        = nil,     -- timestamp of last FULL refresh (not displayed)
-    cartel_timestamps   = {},      -- per-cartel refresh timestamp
-    system_timestamps   = {},      -- per-system refresh timestamp (key = "cartel:system")
-    visible             = false,
+    cartels        = {},    -- [cartel_name] = { name, systems = { [sys_name] = {...} } }
+    loaded         = false,
+    loading        = false,
+    last_updated   = nil,   -- unix timestamp of last successful load
+    visible        = false,
+    expanded       = {},    -- [key] = true/false; persists in-session only
 
-    cartel_capture_active = false,
-    cartel_list           = {},
-    member_capture_active = false,
-    member_list           = {},
-    member_capturing      = false,
-    planet_capture_active = false,
-    planet_list           = {}
+    capture_active = false,
+    capture_lines  = {},    -- raw lines buffered during capture
 }
 
--- ── Settings registration ────────────────────────────────────────────────────
+UI.galaxy_button_active = false
 
-f2t_settings_register("galaxy", "data", {
-    description = "Cached galaxy navigation data",
-    default     = {},
-    validator   = function(v) return type(v) == "table", "Must be a table" end
-})
-f2t_settings_register("galaxy", "last_updated", {
-    description = "Timestamp of last full galaxy data refresh",
-    default     = 0,
-    validator   = function(v) return type(v) == "number", "Must be a number" end
-})
-f2t_settings_register("galaxy", "expanded", {
-    description = "Expanded nodes in galaxy tree",
-    default     = {},
-    validator   = function(v) return type(v) == "table", "Must be a table" end
-})
-f2t_settings_register("galaxy", "cartel_timestamps", {
-    description = "Per-cartel refresh timestamps",
-    default     = {},
-    validator   = function(v) return type(v) == "table", "Must be a table" end
-})
-f2t_settings_register("galaxy", "system_timestamps", {
-    description = "Per-system refresh timestamps",
-    default     = {},
-    validator   = function(v) return type(v) == "table", "Must be a table" end
-})
+-- ── Age helper ───────────────────────────────────────────────────────────────
 
--- ── Persistence ──────────────────────────────────────────────────────────────
-
-function ui_galaxy_save()
-    f2t_settings_set("galaxy", "data",               UI.galaxy.cartels)
-    f2t_settings_set("galaxy", "last_updated",       UI.galaxy.last_updated or 0)
-    f2t_settings_set("galaxy", "expanded",           UI.galaxy.expanded)
-    f2t_settings_set("galaxy", "cartel_timestamps",  UI.galaxy.cartel_timestamps)
-    f2t_settings_set("galaxy", "system_timestamps",  UI.galaxy.system_timestamps)
-    f2t_debug_log("[galaxy] Data saved to disk")
-end
-
-function ui_galaxy_load()
-    local saved_data      = f2t_settings_get("galaxy", "data")
-    local saved_time      = f2t_settings_get("galaxy", "last_updated")
-    local saved_expanded  = f2t_settings_get("galaxy", "expanded")
-    local saved_c_stamps  = f2t_settings_get("galaxy", "cartel_timestamps")
-    local saved_s_stamps  = f2t_settings_get("galaxy", "system_timestamps")
-
-    if saved_data and type(saved_data) == "table" then
-        UI.galaxy.cartels           = saved_data
-        UI.galaxy.last_updated      = saved_time or 0
-        UI.galaxy.expanded          = saved_expanded or {}
-        UI.galaxy.cartel_timestamps = saved_c_stamps or {}
-        UI.galaxy.system_timestamps = saved_s_stamps or {}
-
-        local n = 0
-        for _ in pairs(UI.galaxy.cartels) do n = n + 1 end
-
-        if n > 0 then
-            UI.galaxy.loaded = true
-            f2t_debug_log("[galaxy] Loaded %d cartels from disk", n)
-            cecho(string.format("\n<green>[Galaxy]<reset> Loaded %d cartels from cache\n", n))
-            return true
-        end
-    end
-    return false
-end
-
--- ── Age helpers ───────────────────────────────────────────────────────────────
--- Returns a concise age string from a unix timestamp, or "Never" if nil.
-
-local function _age_str(timestamp)
-    if not timestamp or timestamp == 0 then return "Never" end
-    local age = os.time() - timestamp
+local function _age_str(ts)
+    if not ts or ts == 0 then return "Never" end
+    local age = os.time() - ts
     if age < 60       then return "Just now"
     elseif age < 3600 then return string.format("%dm ago", math.floor(age / 60))
     elseif age < 86400 then return string.format("%dh ago", math.floor(age / 3600))
@@ -105,168 +46,111 @@ local function _age_str(timestamp)
     end
 end
 
--- Per-item age with explicit fallback chain:
---   Cartel  : own timestamp  →  overall last_updated  →  "Never"
---   System  : own timestamp  →  parent cartel timestamp  →  overall last_updated  →  "Never"
--- This means that after a full refresh every item immediately shows a real age,
--- and after a cartel refresh all of that cartel's systems show the cartel age
--- (until individually refreshed).
--- row_type : "cartel" | "system"
-function ui_galaxy_get_item_age(row_type, cartel_name, system_name)
-    if row_type == "cartel" then
-        local ts = UI.galaxy.cartel_timestamps[cartel_name]
-        if not ts or ts == 0 then ts = UI.galaxy.last_updated end
-        return _age_str(ts)
-    elseif row_type == "system" and cartel_name and system_name then
-        local ts = UI.galaxy.system_timestamps[cartel_name .. ":" .. system_name]
-        if not ts or ts == 0 then ts = UI.galaxy.cartel_timestamps[cartel_name] end
-        if not ts or ts == 0 then ts = UI.galaxy.last_updated end
-        return _age_str(ts)
-    end
-    return "Never"
-end
+-- ── Data loading ──────────────────────────────────────────────────────────────
 
--- ── Init / queue ─────────────────────────────────────────────────────────────
-
-function ui_galaxy_init(refresh_type, target_name)
+-- Send "di systems" and begin capturing output.
+function ui_galaxy_init()
     if UI.galaxy.loading then
-        cecho("\n<yellow>[Galaxy]<reset> Already loading data...\n")
+        cecho("\n<yellow>[Galaxy]<reset> Already loading...\n")
+        return
+    end
+    UI.galaxy.loading        = true
+    UI.galaxy.loaded         = false
+    UI.galaxy.capture_active = true
+    UI.galaxy.capture_lines  = {}
+    UI.galaxy.cartels        = {}
+
+    -- Show loading state immediately if the panel is open
+    if UI.galaxy.visible then ui_populate_galaxy_dropdown() end
+
+    sendAll("di systems", false)
+end
+
+-- Called by the galaxySystemsLine trigger for every non-blank line.
+-- Handles both full system lines and wrapped continuation lines.
+function ui_galaxy_capture_line(line)
+    if not UI.galaxy.capture_active then return end
+    line = line:match("^%s*(.-)%s*$")   -- trim
+    if line == "" then return end
+
+    -- A system line contains " - <name> cartel - "
+    if line:match(" %- .+ cartel %- ") then
+        table.insert(UI.galaxy.capture_lines, line)
+    elseif #UI.galaxy.capture_lines > 0 then
+        -- Continuation: wrap-around planet list from the previous system.
+        -- Append with a space so the parser sees an unbroken planet string.
+        local n = #UI.galaxy.capture_lines
+        UI.galaxy.capture_lines[n] = UI.galaxy.capture_lines[n] .. " " .. line
+    end
+    -- Lines that match neither (e.g. command echo, stray text) are ignored.
+end
+
+-- Parse one combined system line into its components.
+-- Format: "SystemName - CartelName cartel - Rank Owner[tag]: Planet(T) ..."
+local function _parse_system_line(line)
+    local system_name, cartel_name, planet_str =
+        line:match("^(.+) %- (.+) cartel %- [^:]+: (.*)$")
+    if not system_name then return nil end
+
+    system_name = system_name:match("^%s*(.-)%s*$")
+    cartel_name = cartel_name:match("^%s*(.-)%s*$")
+
+    local planets = {}
+    -- Matches "Planet Name(T)" where T is one or more uppercase letters/digits
+    for planet_name in (planet_str or ""):gmatch("(.-)%([^%)]+%)%s*") do
+        planet_name = planet_name:match("^%s*(.-)%s*$")
+        if planet_name ~= "" then
+            table.insert(planets, {
+                name   = planet_name,
+                system = system_name,
+                cartel = cartel_name,
+            })
+        end
+    end
+
+    return system_name, cartel_name, planets
+end
+
+-- Called by the galaxySystemsEnd trigger on a blank line.
+function ui_galaxy_finish_capture()
+    if not UI.galaxy.capture_active then return end
+    UI.galaxy.capture_active = false
+
+    if #UI.galaxy.capture_lines == 0 then
+        cecho("\n<red>[Galaxy]<reset> No data captured from 'di systems'.\n")
+        UI.galaxy.loading = false
+        if UI.galaxy.visible then ui_populate_galaxy_dropdown() end
         return
     end
 
-    -- Attempt cache load for a cold "all" request before hitting the server.
-    if refresh_type == "all" and not target_name then
-        if ui_galaxy_load() then
-            if UI.galaxy_dropdown and UI.galaxy.visible then
-                ui_populate_galaxy_dropdown()
+    -- Build the cartels/systems structure from captured lines
+    local cartels = {}
+    for _, line in ipairs(UI.galaxy.capture_lines) do
+        local system_name, cartel_name, planets = _parse_system_line(line)
+        if system_name and cartel_name then
+            if not cartels[cartel_name] then
+                cartels[cartel_name] = { name = cartel_name, systems = {} }
             end
-            return
+            cartels[cartel_name].systems[system_name] = {
+                name    = system_name,
+                cartel  = cartel_name,
+                planets = planets,
+            }
         end
     end
 
-    UI.galaxy.loading           = true
-    UI.galaxy.loading_automated = true
-    UI.galaxy.load_queue        = {}
-    UI.galaxy.is_full_refresh   = (refresh_type == "all")
+    UI.galaxy.cartels      = cartels
+    UI.galaxy.loading      = false
+    UI.galaxy.loaded       = true
+    UI.galaxy.last_updated = os.time()
 
-    if refresh_type == "all" then
-        cecho("\n<cyan>[Galaxy]<reset> Loading galaxy data (1-2 minutes)...\n")
-        UI.galaxy.cartel_capture_active = true
-        UI.galaxy.cartel_list           = {}
-        sendAll("di cartels", false)
+    local nc = 0; for _ in pairs(cartels) do nc = nc + 1 end
+    f2t_debug_log("[galaxy] Loaded %d cartels from di systems", nc)
 
-    elseif refresh_type == "cartel" and target_name then
-        UI.galaxy.current_cartel_loading = target_name
-        UI.galaxy.member_capture_active  = true
-        UI.galaxy.member_list            = {}
-        UI.galaxy.member_capturing       = false
-        sendAll("di cartel " .. target_name, false)
-
-    elseif refresh_type == "system" and target_name then
-        for cartel_name, cartel_data in pairs(UI.galaxy.cartels) do
-            if cartel_data.systems and cartel_data.systems[target_name] then
-                UI.galaxy.current_system_loading = {cartel = cartel_name, system = target_name}
-                UI.galaxy.planet_capture_active  = true
-                UI.galaxy.planet_list            = {}
-                sendAll("di system " .. target_name, false)
-                return
-            end
-        end
-        UI.galaxy.loading           = false
-        UI.galaxy.loading_automated = false
-    end
+    if UI.galaxy.visible then ui_populate_galaxy_dropdown() end
 end
 
-function ui_galaxy_parse_cartels(cartel_list)
-    if not UI.galaxy.loading_automated then return end
-    for _, cn in ipairs(cartel_list) do
-        UI.galaxy.cartels[cn]         = UI.galaxy.cartels[cn] or {}
-        UI.galaxy.cartels[cn].name    = cn
-        UI.galaxy.cartels[cn].systems = UI.galaxy.cartels[cn].systems or {}
-        table.insert(UI.galaxy.load_queue, {type = "cartel", name = cn})
-    end
-    f2t_debug_log("[galaxy] Found %d cartels", #cartel_list)
-    ui_galaxy_process_queue()
-end
-
-function ui_galaxy_process_queue()
-    if #UI.galaxy.load_queue == 0 then
-        UI.galaxy.loading           = false
-        UI.galaxy.loading_automated = false
-
-        -- Only stamp the overall DB timestamp on a full refresh.
-        if UI.galaxy.is_full_refresh then
-            UI.galaxy.last_updated  = os.time()
-            UI.galaxy.is_full_refresh = false
-        end
-
-        ui_galaxy_save()
-        cecho("\n<green>[Galaxy]<reset> Galaxy data loaded successfully!\n")
-        UI.galaxy.loaded = true
-
-        if UI.galaxy_dropdown and UI.galaxy.visible then
-            ui_populate_galaxy_dropdown()
-        end
-        return
-    end
-
-    local item = table.remove(UI.galaxy.load_queue, 1)
-
-    if item.type == "cartel" then
-        UI.galaxy.current_cartel_loading = item.name
-        tempTimer(0.3, function()
-            -- Flags set immediately before the command so no stray blank line
-            -- arriving in the delay window can fire finish_member_capture early.
-            UI.galaxy.member_capture_active = true
-            UI.galaxy.member_list           = {}
-            UI.galaxy.member_capturing      = false
-            sendAll("di cartel " .. item.name, false)
-        end)
-
-    elseif item.type == "system" then
-        UI.galaxy.current_system_loading = {cartel = item.cartel, system = item.name}
-        tempTimer(0.3, function()
-            -- Same reason — set flags right before the send.
-            UI.galaxy.planet_capture_active = true
-            UI.galaxy.planet_list           = {}
-            sendAll("di system " .. item.name, false)
-        end)
-    end
-end
-
-function ui_galaxy_parse_cartel_info(cartel_name, members)
-    if not UI.galaxy.loading_automated then return end
-    if not UI.galaxy.cartels[cartel_name] then return end
-
-    UI.galaxy.cartels[cartel_name].members   = members
-    -- Stamp ONLY this cartel; do not touch other cartels' timestamps.
-    UI.galaxy.cartel_timestamps[cartel_name] = os.time()
-
-    for _, sn in ipairs(members) do
-        table.insert(UI.galaxy.load_queue, {type = "system", name = sn, cartel = cartel_name})
-    end
-
-    f2t_debug_log("[galaxy] Cartel %s has %d systems", cartel_name, #members)
-    tempTimer(0.3, function() ui_galaxy_process_queue() end)
-end
-
-function ui_galaxy_parse_system_info(system_name, cartel_name, planets)
-    if not UI.galaxy.loading_automated then return end
-    if not UI.galaxy.cartels[cartel_name] then return end
-
-    UI.galaxy.cartels[cartel_name].systems[system_name] = {
-        name    = system_name,
-        cartel  = cartel_name,
-        planets = planets
-    }
-    -- Stamp ONLY this system.
-    UI.galaxy.system_timestamps[cartel_name .. ":" .. system_name] = os.time()
-
-    f2t_debug_log("[galaxy] System %s has %d planets", system_name, #planets)
-    tempTimer(0.3, function() ui_galaxy_process_queue() end)
-end
-
--- ── Navigation / info ────────────────────────────────────────────────────────
+-- ── Navigation ────────────────────────────────────────────────────────────────
 
 function ui_galaxy_nav_to(location_type, location_name)
     if location_type == "planet" then
@@ -282,8 +166,6 @@ function ui_galaxy_nav_to(location_type, location_name)
 end
 
 function ui_galaxy_get_info(location_type, location_name)
-    local was = UI.galaxy.loading_automated
-    UI.galaxy.loading_automated = false
     if location_type == "cartel" then
         send("di cartel " .. location_name)
     elseif location_type == "system" then
@@ -291,252 +173,35 @@ function ui_galaxy_get_info(location_type, location_name)
     elseif location_type == "planet" then
         send("di planet " .. location_name)
     end
-    tempTimer(0.5, function() UI.galaxy.loading_automated = was end)
-end
-
--- ============================================================================
--- LINE CAPTURE HANDLERS
--- ============================================================================
-
-function ui_galaxy_capture_cartel_line(line)
-    if not UI.galaxy.cartel_capture_active then return end
-    if not UI.galaxy.loading_automated then return end
-    local cartel = line:match("^%s*(.-)%s*$")
-    if cartel and cartel ~= "" then
-        table.insert(UI.galaxy.cartel_list, cartel)
-    end
-end
-
-function ui_galaxy_finish_cartel_capture()
-    if not UI.galaxy.cartel_capture_active then return end
-    UI.galaxy.cartel_capture_active = false
-    if #UI.galaxy.cartel_list > 0 then
-        ui_galaxy_parse_cartels(UI.galaxy.cartel_list)
-    else
-        cecho("\n<red>[Galaxy]<reset> No cartels captured!\n")
-        UI.galaxy.loading           = false
-        UI.galaxy.loading_automated = false
-    end
-end
-
-function ui_galaxy_start_member_capturing()
-    if not UI.galaxy.member_capture_active then return end
-    if not UI.galaxy.loading_automated then return end
-    UI.galaxy.member_capturing = true
-end
-
-function ui_galaxy_capture_member_line(line)
-    if not UI.galaxy.member_capture_active then return end
-    if not UI.galaxy.loading_automated then return end
-    if not UI.galaxy.member_capturing then return end
-    if line and line ~= "" then
-        table.insert(UI.galaxy.member_list, line)
-    end
-end
-
-function ui_galaxy_finish_member_capture()
-    if not UI.galaxy.member_capture_active then return end
-    UI.galaxy.member_capture_active = false
-    UI.galaxy.member_capturing      = false
-    local cn = UI.galaxy.current_cartel_loading
-    if cn then
-        if #UI.galaxy.member_list > 0 then
-            ui_galaxy_parse_cartel_info(cn, UI.galaxy.member_list)
-        else
-            tempTimer(0.3, function() ui_galaxy_process_queue() end)
-        end
-    end
-end
-
-function ui_galaxy_capture_planet_line(planet_name, system_name, cartel_name)
-    if not UI.galaxy.planet_capture_active then return end
-    if not UI.galaxy.loading_automated then return end
-    -- Only accept planets that the game says belong to the system we asked for.
-    -- This prevents timing overlaps from writing planets into the wrong system.
-    local si = UI.galaxy.current_system_loading
-    if not si or system_name ~= si.system then return end
-    table.insert(UI.galaxy.planet_list, {name = planet_name, system = system_name, cartel = cartel_name})
-end
-
-function ui_galaxy_finish_planet_capture()
-    if not UI.galaxy.planet_capture_active then return end
-    UI.galaxy.planet_capture_active = false
-
-    -- Group captured planets by the system/cartel the game reported on each
-    -- line.  This is ground truth — it avoids relying on current_system_loading
-    -- which can be stale when the 0.3s timers cause a new "di system" to be
-    -- sent before the blank-line end trigger arrives from the previous system.
-    local by_system = {}
-    local order = {}
-    for _, pd in ipairs(UI.galaxy.planet_list) do
-        local key = (pd.cartel or "") .. "\0" .. (pd.system or "")
-        if not by_system[key] then
-            by_system[key] = {system = pd.system, cartel = pd.cartel, planets = {}}
-            table.insert(order, key)
-        end
-        table.insert(by_system[key].planets, pd)
-    end
-
-    if #order > 0 then
-        -- Store each group under the correct system as the game reported it.
-        -- Use a short stagger so parse calls don't trample each other's timers.
-        for i, key in ipairs(order) do
-            local group = by_system[key]
-            tempTimer((i - 1) * 0.05, function()
-                ui_galaxy_parse_system_info(group.system, group.cartel, group.planets)
-            end)
-        end
-    else
-        -- No planets at all — still need to store the system with empty list
-        -- so it appears in the tree.
-        local snap = UI.galaxy.planet_capture_for or UI.galaxy.current_system_loading
-        if snap then
-            ui_galaxy_parse_system_info(snap.system, snap.cartel, {})
-        end
-    end
-end
-
--- ============================================================================
--- CONFIRMATION POPUP
--- ============================================================================
-
-function ui_show_refresh_confirmation()
-    -- Tear down any previous popup widgets
-    if UI.galaxy_confirm_popup then
-        UI.galaxy_confirm_popup:hide()
-        if UI.galaxy_confirm_title  then UI.galaxy_confirm_title:hide()  end
-        if UI.galaxy_confirm_msg    then UI.galaxy_confirm_msg:hide()    end
-        if UI.galaxy_confirm_ok     then UI.galaxy_confirm_ok:hide()     end
-        if UI.galaxy_confirm_cancel then UI.galaxy_confirm_cancel:hide() end
-    end
-
-    -- Compact popup — all widgets top-level (no nesting) to ensure visibility.
-    -- Centred at ~38% x, ~42% y,  22% wide, 14% tall.
-    local BX, BY, BW, BH = "39%", "42%", "22%", "14%"
-
-    local function _hide_all()
-        UI.galaxy_confirm_popup:hide()
-        UI.galaxy_confirm_title:hide()
-        UI.galaxy_confirm_msg:hide()
-        UI.galaxy_confirm_ok:hide()
-        UI.galaxy_confirm_cancel:hide()
-    end
-
-    -- Background panel
-    UI.galaxy_confirm_popup = Geyser.Label:new({
-        name = "galaxy_confirm_popup",
-        x = BX, y = BY, width = BW, height = BH
-    })
-    UI.galaxy_confirm_popup:setStyleSheet([[
-        background-color: rgb(28, 28, 40);
-        border: 1px solid rgba(180, 180, 220, 0.45);
-        border-radius: 5px;
-    ]])
-
-    -- Title
-    UI.galaxy_confirm_title = Geyser.Label:new({
-        name = "galaxy_confirm_title",
-        x = "39%", y = "43.5%", width = "22%", height = "3%"
-    })
-    UI.galaxy_confirm_title:setStyleSheet(
-        "background-color:transparent; color:#c8c8d2; font-size:12px; font-weight:bold;")
-    UI.galaxy_confirm_title:echo("<center>Refresh All Galaxy Data?</center>")
-
-    -- Message
-    UI.galaxy_confirm_msg = Geyser.Label:new({
-        name = "galaxy_confirm_msg",
-        x = "39%", y = "47.5%", width = "22%", height = "4%"
-    })
-    UI.galaxy_confirm_msg:setStyleSheet(
-        "background-color:transparent; color:rgba(170,170,182,210); font-size:10px;")
-    UI.galaxy_confirm_msg:echo("<center>This will take 1–2 minutes.<br/>All cached data will be replaced.</center>")
-
-    -- OK button
-    UI.galaxy_confirm_ok = Geyser.Label:new({
-        name = "galaxy_confirm_ok",
-        x = "40%", y = "52.5%", width = "8%", height = "2.8%"
-    })
-    UI.galaxy_confirm_ok:setStyleSheet(UI.style.button_css)
-    UI.galaxy_confirm_ok:echo("<center>OK</center>")
-    UI.galaxy_confirm_ok:setClickCallback(function()
-        _hide_all()
-        -- Clear memory AND disk so ui_galaxy_init won't find cached data
-        UI.galaxy.loaded   = false
-        UI.galaxy.cartels  = {}
-        UI.galaxy.cartel_timestamps = {}
-        UI.galaxy.system_timestamps = {}
-        UI.galaxy.last_updated      = 0
-        ui_galaxy_save()   -- write empty state to disk before init reads it
-        ui_galaxy_init("all")
-        -- Immediately repaint so the "Loading…" message appears in the panel
-        if UI.galaxy.visible then
-            ui_populate_galaxy_dropdown()
-        end
-    end)
-
-    -- Cancel button
-    UI.galaxy_confirm_cancel = Geyser.Label:new({
-        name = "galaxy_confirm_cancel",
-        x = "51%", y = "52.5%", width = "8%", height = "2.8%"
-    })
-    UI.galaxy_confirm_cancel:setStyleSheet(UI.style.button_css)
-    UI.galaxy_confirm_cancel:echo("<center>Cancel</center>")
-    UI.galaxy_confirm_cancel:setClickCallback(_hide_all)
-
-    -- Show and raise everything
-    for _, w in ipairs({
-        UI.galaxy_confirm_popup,
-        UI.galaxy_confirm_title,
-        UI.galaxy_confirm_msg,
-        UI.galaxy_confirm_ok,
-        UI.galaxy_confirm_cancel
-    }) do
-        w:show()
-        w:raise()
-    end
 end
 
 -- ============================================================================
 -- GALAXY UI
 -- ============================================================================
 
-UI.galaxy_button_active = false
-
 -- Shared style constants
 local _BG  = "background-color: rgb(18, 18, 26); border: none;"
 local _ROW = "background-color: rgb(22, 22, 30); border: none; border-bottom: 1px solid rgba(255,255,255,10);"
 
--- ── Column/layout constants (all in % of row width) ──────────────────────────
+-- Layout constants (% of row width)
+-- Rows are always x=0; indentation is via child widget x-position only.
 --
--- EVERY row is positioned at x=0 to prevent horizontal overflow.
--- Indentation is achieved purely via the x-position of internal children,
--- never by offsetting the row itself.
+--   Cartel (indent 0): expand@0%, icon@5%, name@10%→96%   (no nav button)
+--   System (indent 1): expand@4%, icon@9%, name@14%→91%,  nav@93%
+--   Planet (indent 2): (no expand), icon@13%, name@18%→91%, nav@93%
 --
--- Fixed right-edge columns ensure buttons align vertically across all tiers:
---   Refresh col : 93–98%   (cartel and system only)
---   Nav col     : 87–92%   (system and planet only)
---   Name ends at 86%       (shrinks with indent so it never pushes buttons right)
---
--- Per-level indent = 4%. Expand slot = 5%. Icon slot = 5%.
--- name_x = indent*4 + 10,  name_w = 86 - name_x
---
---   Cartel (0): expand@0, icon@5,  name@10 w=76, refresh@93
---   System (1): expand@4, icon@9,  name@14 w=72, nav@87, refresh@93
---   Planet (2): (expand reserved), icon@13, name@18 w=68, nav@87
---
-local INDENT_PCT   = 4    -- percent per indent level
-local EXPAND_PCT   = 5    -- expand button slot width %
-local ICON_PCT     = 5    -- icon slot width %
-local NAME_END_PCT = 86   -- name label right edge %
-local NAV_X        = "87%"
-local REFRESH_X    = "93%"
-local BTN_W        = "5%"
--- Row height in pixels — this is the one necessary pixel value because it is
--- coupled to font size, not window size.  Content label height is also pixels
--- for the same reason (Geyser.ScrollBox needs a pixel-taller child to scroll).
-local ROW_H = 23
+local INDENT_PCT = 4    -- % per indent level
+local EXPAND_PCT = 5    -- expand button slot width %
+local ICON_PCT   = 5    -- icon slot width %
+local NAV_X      = "93%"
+local NAV_W      = "5%"
+local ROW_H      = 23   -- pixels (tied to font size, not window size)
 
--- ── Build the panel ──────────────────────────────────────────────────────────
+-- Draw epoch: incremented each redraw so widget names are always unique,
+-- preventing Geyser registry collisions from stale hidden widgets.
+UI.galaxy_draw_epoch = UI.galaxy_draw_epoch or 0
+
+-- ── Build the panel (called once) ────────────────────────────────────────────
 
 function ui_build_galaxy_dropdown()
     if UI.galaxy_dropdown then
@@ -544,23 +209,16 @@ function ui_build_galaxy_dropdown()
         return
     end
 
-    -- ── Compute position from neighbouring UI objects ─────────────────────
-    -- Right edge abuts UI.right_frame left edge.
-    -- Top edge sits immediately below UI.top_right_frame bottom edge.
+    -- Position: right edge abuts UI.right_frame; top edge below UI.top_right_frame
     local main_w, main_h = getMainWindowSize()
-
     local rf_x_px    = UI.right_frame:get_x()
     local trf_bot_px = UI.top_right_frame:get_y() + UI.top_right_frame:get_height()
 
-    -- Panel is 18% of main window width.
     local panel_w_pct = 18
     local panel_w_px  = math.floor(main_w * panel_w_pct / 100)
     local panel_x_px  = rf_x_px - panel_w_px
     local panel_y_px  = trf_bot_px
-
-    -- Height: from below top_right_frame to 97% of the main window.
-    local panel_bot_px = math.floor(main_h * 0.97)
-    local panel_h_px   = math.max(100, panel_bot_px - panel_y_px)
+    local panel_h_px  = math.max(100, math.floor(main_h * 0.97) - panel_y_px)
 
     local panel_x_str = string.format("%.2f%%", panel_x_px / main_w * 100)
     local panel_y_str = string.format("%.2f%%", panel_y_px / main_h * 100)
@@ -574,12 +232,12 @@ function ui_build_galaxy_dropdown()
         height        = panel_h_str,
         adjLabelstyle = UI.style.frame_css,
         autoSave      = false,
-        autoLoad      = false
+        autoLoad      = false,
     })
     UI.galaxy_dropdown:lockContainer("border")
     f2t_ui_register_container("galaxy_dropdown", UI.galaxy_dropdown)
 
-    -- Fully opaque background — eliminates any transparency in frame_css.
+    -- Opaque background (overrides any alpha in frame_css)
     local bg = Geyser.Label:new({
         name = "galaxy_panel_bg", x=0, y=0, width="100%", height="100%"
     }, UI.galaxy_dropdown)
@@ -591,41 +249,39 @@ function ui_build_galaxy_dropdown()
     }, UI.galaxy_dropdown)
     UI.galaxy_topbar:setStyleSheet(UI.style.header_label_css)
 
-    -- Title
     UI.galaxy_title = Geyser.Label:new({
-        x="2%", y=0, width="64%", height="100%"
+        name = "galaxy_title", x="2%", y=0, width="64%", height="100%"
     }, UI.galaxy_topbar)
     UI.galaxy_title:setStyleSheet(
         "background-color:transparent; color:#c8c8d0; font-size:11px; font-weight:bold;")
     UI.galaxy_title:echo("Galaxy Navigator")
 
-    -- Collapse all (−)  – clears UI.galaxy.expanded and redraws
+    -- Collapse all (−)
     UI.galaxy_collapse_btn = Geyser.Label:new({
-        x="67%", y="5%", width="9%", height="90%"
+        name = "galaxy_collapse_btn", x="67%", y="5%", width="9%", height="90%"
     }, UI.galaxy_topbar)
     UI.galaxy_collapse_btn:setStyleSheet(UI.style.button_css)
     UI.galaxy_collapse_btn:echo("<center>−</center>")
     UI.galaxy_collapse_btn:setClickCallback(function()
         UI.galaxy.expanded = {}
-        ui_galaxy_save()
         ui_populate_galaxy_dropdown()
     end)
     UI.galaxy_collapse_btn:setToolTip("Collapse all")
 
-    -- Refresh all (⟳)
+    -- Refresh (⟳) — runs "di systems" again; tooltip shows data age
     UI.galaxy_refresh_icon = Geyser.Label:new({
-        x="77%", y="5%", width="9%", height="90%"
+        name = "galaxy_refresh_icon", x="77%", y="5%", width="9%", height="90%"
     }, UI.galaxy_topbar)
     UI.galaxy_refresh_icon:setStyleSheet(UI.style.button_css)
     UI.galaxy_refresh_icon:echo("<center>⟳</center>")
     UI.galaxy_refresh_icon:setClickCallback(function()
-        ui_show_refresh_confirmation()
+        ui_galaxy_init()
     end)
-    UI.galaxy_refresh_icon:setToolTip("Refresh all galaxy data")
+    UI.galaxy_refresh_icon:setToolTip("Refresh: " .. _age_str(UI.galaxy.last_updated))
 
     -- Close (✕)
     UI.galaxy_close = Geyser.Label:new({
-        x="88%", y="5%", width="10%", height="90%"
+        name = "galaxy_close", x="88%", y="5%", width="10%", height="90%"
     }, UI.galaxy_topbar)
     UI.galaxy_close:setStyleSheet([[
         QLabel {
@@ -644,108 +300,94 @@ function ui_build_galaxy_dropdown()
         UI.galaxy_button_active = false
     end)
 
-    -- ── Scroll area (3%–94%) ──────────────────────────────────────────────
-    -- Do NOT call setStyleSheet on ScrollBox — it is unsupported and raises
-    -- a runtime error.  Dark background comes from the content Label child.
+    -- ── Scroll area (3%–97%) ──────────────────────────────────────────────
+    -- Do NOT call setStyleSheet on ScrollBox — unsupported, causes errors.
     UI.galaxy_scroll = Geyser.ScrollBox:new({
         name = "galaxy_scroll",
         x="0%", y="3%", width="100%", height="94%"
     }, UI.galaxy_dropdown)
 
-    -- ── Footer / legend (94%–100%, 6% total → 3% visible text row) ────────
-    -- Shows the icon legend instead of a DB age (per-item ages are on each ⟳ tooltip).
+    -- ── Footer legend (97%–100%) ──────────────────────────────────────────
     UI.galaxy_footer = Geyser.Label:new({
-        name = "galaxy_footer",
-        x=0, y="97%", width="100%", height="3%"
+        name = "galaxy_footer", x=0, y="97%", width="100%", height="3%"
     }, UI.galaxy_dropdown)
     UI.galaxy_footer:setStyleSheet(UI.style.header_label_css)
 
     UI.galaxy_legend = Geyser.Label:new({
-        x="1%", y=0, width="98%", height="100%"
+        name = "galaxy_legend", x="1%", y=0, width="98%", height="100%"
     }, UI.galaxy_footer)
     UI.galaxy_legend:setStyleSheet(
         "background-color:transparent; color:rgba(160,160,170,190); font-size:9px;")
     UI.galaxy_legend:echo("<center>🌌 Cartel  ⭐ System  🌍 Planet</center>")
 
-    -- Hide last, after all children exist, so nothing re-shows it mid-build.
+    -- Hide LAST so nothing re-shows it during child creation.
     UI.galaxy_dropdown:hide()
 end
 
--- Draw epoch — incremented on every redraw so all widget names are unique
--- across redraws, preventing Geyser registry collisions from stale widgets.
-UI.galaxy_draw_epoch = UI.galaxy_draw_epoch or 0
+-- ── Row builder ──────────────────────────────────────────────────────────────
 
--- ── Row builder ───────────────────────────────────────────────────────────────
--- y_px      : pixel y within the content label (necessary; see header comment)
--- row_type  : "cartel" | "system" | "planet"
--- data      : corresponding data table
 function ui_create_galaxy_row(parent, name, row_type, indent_level, y_px, data)
-    -- Build a unique widget name from type + parent cartel + name so that a
-    -- system sharing its name with its cartel never collides with the cartel row.
     local cartel_ctx = (data and data.cartel) or ""
     local uid = string.format("gxrow_%d_%s_%s_%s",
         UI.galaxy_draw_epoch, row_type, cartel_ctx, name)
         :gsub("[^%w_]", "_")
 
-    -- Row always at x=0 so it never overflows the content label width.
     local row = Geyser.Label:new({
-        name = uid,
-        x = 0, y = y_px, width = "100%", height = ROW_H
+        name = uid, x=0, y=y_px, width="100%", height=ROW_H
     }, parent)
     row:setStyleSheet(_ROW)
 
-    local indent_pct = indent_level * INDENT_PCT  -- e.g. 0, 4, 8
+    local indent_pct = indent_level * INDENT_PCT
 
-    -- ── Expand / collapse slot ───────────────────────────────────────────────
-    -- Reserved for all row types (even planet) to keep icon column aligned.
+    -- Expand / collapse (cartel and system only)
     local exp_key
     if row_type == "cartel" then
         exp_key = name
     elseif row_type == "system" then
-        exp_key = ((data and data.cartel) or "") .. ":" .. name
+        exp_key = (cartel_ctx ~= "" and cartel_ctx or "") .. ":" .. name
     end
 
     if exp_key then
         local is_exp = UI.galaxy.expanded[exp_key] or false
         local ebtn = Geyser.Label:new({
-            x = indent_pct .. "%", y = 1,
+            name  = uid .. "_exp",
+            x     = indent_pct .. "%", y = 1,
             width = EXPAND_PCT .. "%", height = ROW_H - 2
         }, row)
         ebtn:setStyleSheet(UI.style.button_css)
         ebtn:echo(is_exp and "<center>−</center>" or "<center>+</center>")
         ebtn:setClickCallback(function()
             UI.galaxy.expanded[exp_key] = not UI.galaxy.expanded[exp_key]
-            ui_galaxy_save()
             ui_populate_galaxy_dropdown()
         end)
     end
-    -- (no expand for planet — slot is simply empty, preserving column alignment)
 
-    -- ── Icon ─────────────────────────────────────────────────────────────────
-    local icon_x_pct = indent_pct + EXPAND_PCT   -- just right of the expand slot
-
+    -- Icon
+    local icon_x_pct = indent_pct + EXPAND_PCT
     local icon_map = {
         cartel = { "🌌", "#ff6b9d" },
         system = { "⭐",  "#ffd700" },
-        planet = { "🌍", "#4ecdc4" }
+        planet = { "🌍", "#4ecdc4" },
     }
     local id = icon_map[row_type]
     local icon = Geyser.Label:new({
-        x = icon_x_pct .. "%", y = 1,
+        name  = uid .. "_ico",
+        x     = icon_x_pct .. "%", y = 1,
         width = ICON_PCT .. "%", height = ROW_H - 2
     }, row)
     icon:setStyleSheet(string.format(
         "background-color:transparent; color:%s; font-size:11px;", id[2]))
     icon:echo("<center>" .. id[1] .. "</center>")
 
-    -- ── Name label ───────────────────────────────────────────────────────────
-    -- Width calculated so the RIGHT edge always lands at NAME_END_PCT,
-    -- regardless of indent level — buttons therefore stay in fixed columns.
+    -- Name label — width fills right up to the nav button (or edge for cartels)
     local name_x_pct = icon_x_pct + ICON_PCT
-    local name_w_pct = math.max(5, NAME_END_PCT - name_x_pct)
+    local has_nav    = (row_type == "system" or row_type == "planet")
+    local name_end   = has_nav and 91 or 97
+    local name_w_pct = math.max(5, name_end - name_x_pct)
 
     local nlbl = Geyser.Label:new({
-        x = name_x_pct .. "%", y = 1,
+        name  = uid .. "_name",
+        x     = name_x_pct .. "%", y = 1,
         width = name_w_pct .. "%", height = ROW_H - 2
     }, row)
     nlbl:setStyleSheet(UI.style.button_css)
@@ -753,10 +395,11 @@ function ui_create_galaxy_row(parent, name, row_type, indent_level, y_px, data)
     nlbl:setClickCallback(function() ui_galaxy_get_info(row_type, name) end)
     nlbl:setToolTip("Click for info")
 
-    -- ── Nav button (→)  –  system and planet only, fixed column ─────────────
-    if row_type == "system" or row_type == "planet" then
+    -- Nav button → (system and planet only, fixed column)
+    if has_nav then
         local nbtn = Geyser.Label:new({
-            x = NAV_X, y = 1, width = BTN_W, height = ROW_H - 2
+            name  = uid .. "_nav",
+            x     = NAV_X, y = 1, width = NAV_W, height = ROW_H - 2
         }, row)
         nbtn:setStyleSheet([[
             QLabel {
@@ -774,48 +417,23 @@ function ui_create_galaxy_row(parent, name, row_type, indent_level, y_px, data)
         nbtn:setToolTip("Navigate here")
     end
 
-    -- ── Refresh button (⟳)  –  cartel and system only, fixed column ─────────
-    -- Tooltip shows ONLY this item's own timestamp; no cascading to parent/DB.
-    if row_type == "cartel" or row_type == "system" then
-        local cartel_for_age = (row_type == "cartel") and name or (data and data.cartel or name)
-        local system_for_age = (row_type == "system") and name or nil
-        local age_tip = ui_galaxy_get_item_age(row_type, cartel_for_age, system_for_age)
-
-        local rbtn = Geyser.Label:new({
-            x = REFRESH_X, y = 1, width = BTN_W, height = ROW_H - 2
-        }, row)
-        rbtn:setStyleSheet(UI.style.button_css)
-        rbtn:echo("<center>⟳</center>")
-        rbtn:setToolTip(age_tip)
-        rbtn:setClickCallback(function()
-            ui_galaxy_init(row_type, name)
-            tempTimer(0.5, function()
-                if UI.galaxy_dropdown and UI.galaxy.visible then
-                    ui_populate_galaxy_dropdown()
-                end
-            end)
-        end)
-    end
-
     return row
 end
 
--- ── Count visible rows (excluding cartel-name systems) ───────────────────────
+-- ── Count visible rows ────────────────────────────────────────────────────────
+
 local function _count_visible_rows(sorted_cartels)
     local n = 0
     for _, cn in ipairs(sorted_cartels) do
-        n = n + 1  -- cartel header row
+        n = n + 1
         if UI.galaxy.expanded[cn] then
             local cd = UI.galaxy.cartels[cn]
             for sn in pairs(cd.systems or {}) do
-                -- Skip exact-name match and "[CartelName] Space" entry.
                 if sn ~= (cn .. " Space") then
                     n = n + 1
                     local sys_key = cn .. ":" .. sn
                     if UI.galaxy.expanded[sys_key] then
-                        local sd = cd.systems[sn]
-                        for _, pd in ipairs((sd or {}).planets or {}) do
-                            -- Skip "SystemName Space" pseudo-planet only
+                        for _, pd in ipairs((cd.systems[sn] or {}).planets or {}) do
                             if pd.name ~= (sn .. " Space") then
                                 n = n + 1
                             end
@@ -829,124 +447,118 @@ local function _count_visible_rows(sorted_cartels)
 end
 
 -- ── Populate the scrollable tree ──────────────────────────────────────────────
+--
+-- SCROLL POSITION STRATEGY
+-- Destroying and recreating the content label creates a new Qt widget, which
+-- always starts at scroll offset 0.  Instead we keep ONE permanent content
+-- label (galaxy_main_content) and only RESIZE it on each redraw.  Qt's
+-- QScrollArea preserves its vertical scroll offset as long as the same child
+-- widget is in place.  Old row labels are hidden (not destroyed) and new ones
+-- are created with epoch-suffixed names so the Geyser registry never collides.
+
 function ui_populate_galaxy_dropdown()
     if not UI.galaxy_scroll then return end
 
-    -- Destroy previous content label
-    if UI.galaxy_scroll_content then
-        UI.galaxy_scroll_content:hide()
-        UI.galaxy_scroll_content = nil
-    end
-
-    -- Increment epoch so all child widget names are unique this draw pass
     UI.galaxy_draw_epoch = UI.galaxy_draw_epoch + 1
-    local content_name = "galaxy_scroll_content_" .. UI.galaxy_draw_epoch
 
-    -- Keep the refresh-all tooltip current with the overall DB age
+    -- Update ⟳ tooltip with current data age
     if UI.galaxy_refresh_icon then
-        local overall_age = _age_str(UI.galaxy.last_updated)
-        UI.galaxy_refresh_icon:setToolTip("Last full refresh: " .. overall_age)
+        UI.galaxy_refresh_icon:setToolTip("Refresh: " .. _age_str(UI.galaxy.last_updated))
     end
 
-    -- ── Loading / empty states ───────────────────────────────────────────────
+    -- Hide all rows from the previous draw pass.
+    -- Row labels are children of galaxy_main_content; hiding each row also
+    -- hides its children (expand btn, icon, name, nav) in Qt.
+    UI.galaxy_rows = UI.galaxy_rows or {}
+    for _, r in ipairs(UI.galaxy_rows) do r:hide() end
+    UI.galaxy_rows = {}
+
+    -- ── Ensure the two permanent sibling labels exist ────────────────────────
+    -- galaxy_scroll_state  : shown for loading / no-data messages
+    -- galaxy_main_content  : shown when data is available; never destroyed
+    if not UI.galaxy_scroll_state then
+        UI.galaxy_scroll_state = Geyser.Label:new({
+            name="galaxy_scroll_state", x=0, y=0, width="96%", height=2000
+        }, UI.galaxy_scroll)
+        UI.galaxy_scroll_state:setStyleSheet(_BG)
+
+        UI.galaxy_state_msg = Geyser.Label:new({
+            name="galaxy_state_msg", x=0, y="40%", width="100%", height=60
+        }, UI.galaxy_scroll_state)
+        UI.galaxy_state_msg:setStyleSheet(
+            "background-color:transparent; font-size:11px;")
+    end
+
+    if not UI.galaxy_scroll_content then
+        UI.galaxy_scroll_content = Geyser.Label:new({
+            name="galaxy_main_content", x=0, y=0, width="96%", height=2000
+        }, UI.galaxy_scroll)
+        UI.galaxy_scroll_content:setStyleSheet(_BG)
+    end
+
+    -- ── Loading state ────────────────────────────────────────────────────────
     if UI.galaxy.loading then
-        UI.galaxy_scroll_content = Geyser.Label:new({
-            name = content_name,
-            x=0, y=0, width="96%", height=2000
-        }, UI.galaxy_scroll)
-        UI.galaxy_scroll_content:setStyleSheet(_BG)
-        local lbl = Geyser.Label:new({
-            name = content_name .. "_lbl",
-            x=0, y="40%", width="100%", height=40
-        }, UI.galaxy_scroll_content)
-        lbl:setStyleSheet("background-color:transparent; color:rgba(200,200,100,220); font-size:11px;")
-        lbl:echo("<center>Loading galaxy data…</center>")
-        return
-
-    elseif not UI.galaxy.loaded then
-        UI.galaxy_scroll_content = Geyser.Label:new({
-            name = content_name,
-            x=0, y=0, width="96%", height=2000
-        }, UI.galaxy_scroll)
-        UI.galaxy_scroll_content:setStyleSheet(_BG)
-
-        local msg = Geyser.Label:new({
-            name = content_name .. "_msg",
-            x="5%", y="38%", width="90%", height=50
-        }, UI.galaxy_scroll_content)
-        msg:setStyleSheet("background-color:transparent; color:rgba(180,180,190,210); font-size:11px;")
-        msg:echo("<center>Galaxy data is not populated.<br/>Click the button below to load it.</center>")
-
-        local btn = Geyser.Label:new({
-            name = content_name .. "_btn",
-            x="25%", y="52%", width="50%", height=28
-        }, UI.galaxy_scroll_content)
-        btn:setStyleSheet([[
-            QLabel {
-                background-color: rgba(60, 90, 140, 220);
-                border: 1px solid rgba(100, 140, 200, 180);
-                border-radius: 4px;
-                color: rgba(210, 220, 235, 255);
-                font-size: 11px;
-                font-weight: bold;
-            }
-            QLabel::hover { background-color: rgba(75, 110, 165, 240); }
-        ]])
-        btn:echo("<center>⟳  Load Galaxy Data</center>")
-        btn:setClickCallback(function() ui_show_refresh_confirmation() end)
+        UI.galaxy_scroll_content:hide()
+        UI.galaxy_state_msg:setStyleSheet(
+            "background-color:transparent; color:rgba(200,200,100,220); font-size:11px;")
+        UI.galaxy_state_msg:echo("<center>Loading galaxy data…</center>")
+        UI.galaxy_scroll_state:show()
         return
     end
 
-    -- ── Sort cartels ─────────────────────────────────────────────────────────
+    -- ── No-data state ────────────────────────────────────────────────────────
+    if not UI.galaxy.loaded then
+        UI.galaxy_scroll_content:hide()
+        UI.galaxy_state_msg:setStyleSheet(
+            "background-color:transparent; color:rgba(180,180,190,210); font-size:11px;")
+        UI.galaxy_state_msg:echo(
+            "<center>Galaxy data is not loaded.<br/>Click ⟳ in the header to load it.</center>")
+        UI.galaxy_scroll_state:show()
+        return
+    end
+
+    -- ── Render tree ──────────────────────────────────────────────────────────
+    UI.galaxy_scroll_state:hide()
+    UI.galaxy_scroll_content:show()
+
     local sorted_cartels = {}
     for cn in pairs(UI.galaxy.cartels) do table.insert(sorted_cartels, cn) end
     table.sort(sorted_cartels)
 
-    -- ── Size the content label to exactly fit all visible rows ───────────────
-    -- Pixel height is required here so the ScrollBox knows the scroll range.
-    -- Width is 96% to leave room for the vertical scrollbar; this prevents
-    -- the horizontal scrollbar that would appear if content fills 100%.
     local visible_rows = _count_visible_rows(sorted_cartels)
-    -- Minimum of 2000px ensures the dark background always fills the full
-    -- visible scroll area even when the list is short, preventing white gaps.
     local content_h    = math.max(visible_rows * ROW_H + 4, 2000)
 
-    UI.galaxy_scroll_content = Geyser.Label:new({
-        name   = content_name,
-        x=0, y=0, width="96%", height=content_h
-    }, UI.galaxy_scroll)
-    UI.galaxy_scroll_content:setStyleSheet(_BG)
+    -- Resize in place — preserves Qt scroll offset
+    UI.galaxy_scroll_content:resize("96%", content_h)
 
-    -- ── Render tree ──────────────────────────────────────────────────────────
     local y_px = 2
 
     for _, cartel_name in ipairs(sorted_cartels) do
         local cartel_data = UI.galaxy.cartels[cartel_name]
 
-        ui_create_galaxy_row(UI.galaxy_scroll_content, cartel_name, "cartel", 0, y_px, cartel_data)
+        local r = ui_create_galaxy_row(UI.galaxy_scroll_content, cartel_name, "cartel", 0, y_px, cartel_data)
+        table.insert(UI.galaxy_rows, r)
         y_px = y_px + ROW_H
 
         if UI.galaxy.expanded[cartel_name] then
             local sorted_sys = {}
-            for sn in pairs(cartel_data.systems or {}) do
-                table.insert(sorted_sys, sn)
-            end
+            for sn in pairs(cartel_data.systems or {}) do table.insert(sorted_sys, sn) end
             table.sort(sorted_sys)
 
             for _, system_name in ipairs(sorted_sys) do
-                -- Skip exact-name match and "[CartelName] Space" entry.
                 if system_name ~= (cartel_name .. " Space") then
                     local system_data = cartel_data.systems[system_name]
 
-                    ui_create_galaxy_row(UI.galaxy_scroll_content, system_name, "system", 1, y_px, system_data)
+                    local sr = ui_create_galaxy_row(UI.galaxy_scroll_content, system_name, "system", 1, y_px, system_data)
+                    table.insert(UI.galaxy_rows, sr)
                     y_px = y_px + ROW_H
 
                     local sys_key = cartel_name .. ":" .. system_name
                     if UI.galaxy.expanded[sys_key] then
                         for _, planet_data in ipairs(system_data.planets or {}) do
-                            -- Skip "SystemName Space" pseudo-planet only
                             if planet_data.name ~= (system_name .. " Space") then
-                                ui_create_galaxy_row(UI.galaxy_scroll_content, planet_data.name, "planet", 2, y_px, planet_data)
+                                local pr = ui_create_galaxy_row(UI.galaxy_scroll_content, planet_data.name, "planet", 2, y_px, planet_data)
+                                table.insert(UI.galaxy_rows, pr)
                                 y_px = y_px + ROW_H
                             end
                         end
@@ -958,15 +570,13 @@ function ui_populate_galaxy_dropdown()
 end
 
 -- ── Toggle visibility ─────────────────────────────────────────────────────────
+
 function ui_toggle_galaxy()
     if not UI.galaxy_dropdown then
-        -- Force visible=false BEFORE build so that even if build errors
-        -- partway through, the toggle state is known-good.
         UI.galaxy.visible       = false
         UI.galaxy_button_active = false
         ui_build_galaxy_dropdown()
-        -- build ends with an explicit hide(); fall through to show branch.
-        if not UI.galaxy_dropdown then return end  -- build failed entirely
+        if not UI.galaxy_dropdown then return end
     end
 
     if UI.galaxy.visible then
@@ -974,11 +584,9 @@ function ui_toggle_galaxy()
         UI.galaxy.visible       = false
         UI.galaxy_button_active = false
     else
-        -- Silently try the disk cache; if it fails, loaded stays false and
-        -- ui_populate_galaxy_dropdown will show the "no data" prompt.
-        -- NEVER send server commands automatically from the toggle.
+        -- Auto-load on first open if not yet loaded and not already loading
         if not UI.galaxy.loaded and not UI.galaxy.loading then
-            ui_galaxy_load()
+            ui_galaxy_init()
         end
         ui_populate_galaxy_dropdown()
         UI.galaxy_dropdown:show()
