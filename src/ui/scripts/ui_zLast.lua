@@ -131,6 +131,8 @@ function ui_build()
     ui_commodities()
     ui_update_for_rank()
     ui_update_header()
+    ui_who_init()
+    ui_chat_init()
 
     ui_built = true
     f2t_debug_log("[ui] ui_build finished")
@@ -150,6 +152,9 @@ function ui_register_trigger()
     f2t_ui_register_trigger("promotions")
     f2t_ui_register_trigger("galaxySystemLine")
     f2t_ui_register_trigger("galaxySystemEnd")
+    f2t_ui_register_trigger("whoListStart")
+    f2t_ui_register_trigger("whoListLine")
+    f2t_ui_register_trigger("whoListEnd")
 
     ui_triggered = true
     f2t_debug_log("[ui] registered triggers")
@@ -172,6 +177,8 @@ function ui_register_event()
     f2t_ui_register_event("gmcp.comm.com"                      , "ui_echo_com")
     f2t_ui_register_event("gmcp.comm.tell"                     , "ui_echo_tell")
     f2t_ui_register_event("gmcp.comm.say"                      , "ui_echo_say")
+    f2t_ui_register_event("sysConnectionEvent"                 , "ui_chat_on_connect")
+    f2t_ui_register_event("sysDisconnectionEvent"              , "ui_chat_on_disconnect")
 
     ui_evented = true
     f2t_debug_log("[ui] registered events")

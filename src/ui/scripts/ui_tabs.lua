@@ -50,7 +50,7 @@ function ui_build_tabs()
             width            = "100%",
             height           = "100%",
             tabBarHeight     = "8%",
-            tabs             = {"Comm"},
+            tabs             = {"Comm","Who"},
             activeTabStyle   = UI.style.active_tab_css,
             inactiveTabStyle = UI.style.inactive_tab_css,
             footerStyle      = UI.style.footer_css,
@@ -164,6 +164,55 @@ function ui_build_tab_content()
         },
         UI.tab_bottom_left.Commcenter
     )
+
+    -- Timestamp toggle button — sits top-right of the Comm center pane.
+    -- Dim by default; brightens when timestamps are active.
+    UI.chat_ts_btn = Geyser.Label:new({
+        name   = "UI.chat_ts_btn",
+        x      = "-22", y = "2",
+        width  = "20",  height = "16",
+    }, UI.tab_bottom_left.Commcenter)
+    UI.chat_ts_btn:echo("<center><font color='#3d3d3d'>⏱</font></center>")
+    UI.chat_ts_btn:setStyleSheet(UI.style.button_css)
+    UI.chat_ts_btn:setToolTip("Timestamps OFF — click to toggle")
+    UI.chat_ts_btn:setClickCallback(function() ui_chat_toggle_timestamps() end)
+ 
+    -- Who tab: header label + refresh button + scrollable table window
+    UI.who_header = Geyser.Label:new({
+        name   = "UI.who_header",
+        x      = "0%", y = "0",
+        width  = "-24", height = "20",
+    }, UI.tab_bottom_left.Whocenter)
+    UI.who_header:setStyleSheet(UI.style.header_label_css)
+    UI.who_header:echo("  👥  Who's Online")
+ 
+    UI.who_refresh_btn = Geyser.Label:new({
+        name   = "UI.who_refresh_btn",
+        x      = "-22", y = "2",
+        width  = "20",  height = "16",
+    }, UI.tab_bottom_left.Whocenter)
+    UI.who_refresh_btn:echo("<center>⟳</center>")
+    UI.who_refresh_btn:setStyleSheet(UI.style.button_css)
+    UI.who_refresh_btn:setToolTip("Refresh who list")
+    UI.who_refresh_btn:setClickCallback(function() ui_who_refresh() end)
+ 
+    UI.who_window = Geyser.MiniConsole:new({
+        name      = "UI.who_window",
+        x         = "0%", y = "22",
+        width     = "100%", height = "-22",
+        autoWrap  = true,
+        scrollBar = true,
+        fontSize  = text_size,
+        color     = "black",
+    }, UI.tab_bottom_left.Whocenter)
+    
+    -- Trigger a who refresh whenever the Who tab is clicked into
+    if UI.tab_bottom_left.Who and UI.tab_bottom_left.Who.adjLabel then
+        UI.tab_bottom_left.Who.adjLabel:setClickCallback(function(event)
+            UI.tab_bottom_left:onClick("Who", event)
+            ui_who_refresh()
+        end)
+    end
 
     --put map into map window
     UI.mapper = Geyser.Mapper:new(
