@@ -1,62 +1,80 @@
 -- =============================================================================
--- ui_chat_who  —  online player list with game colors and sortable header
+-- ui_players  —  online player list (uses ui_table_system)
+-- Mudlet Script location: ui > ui_players
 -- =============================================================================
 
 UI     = UI or {}
 UI.who = UI.who or {
-    players     = {},
-    parsing     = false,
-    count       = 0,
-    staff_count = 0,
-    sort_by     = "rank_order",  -- "rank_order" | "name"
-    sort_asc    = false,         -- false = high rank first (the usual view)
+    players       = {},
+    parsing       = false,
+    ui_requested  = false,  -- true only when a UI button/tab initiated the who command
+    count         = 0,
+    staff_count   = 0,
+    name_colors   = {},   -- name → cecho color string (shared with ui_chat)
+    name_rawlines = {},   -- name → full raw who line  (shared with ui_chat)
+    _line_buffer  = "",   -- accumulates the current (possibly wrapped) player line
 }
 
--- ── Rank tier ─────────────────────────────────────────────────────────────
+-- ── Rank ordering ─────────────────────────────────────────────────────────
 
 local RANK_ORDER = {
-    ["Trader"]       = 1,  ["Engineer"]     = 2,  ["Merchant"]     = 3,
-    ["Manufacturer"] = 4,  ["Industrialist"]= 5,  ["Financier"]    = 6,
-    ["Mogul"]        = 7,  ["Magnate"]      = 8,  ["Technocrat"]   = 9,
-    ["Gengineer"]    = 10, ["Founder"]      = 11, ["Plutocrat"]    = 12,
-    ["Commander"]    = 13,
+    ["Groundhog"]     = 1,
+    ["Commander"]     = 2,
+    ["Captain"]       = 3,
+    ["Adventurer"]    = 4,
+    ["Merchant"]      = 5,
+    ["Trader"]        = 6,
+    ["Industrialist"] = 7,
+    ["Manufacturer"]  = 8,
+    ["Financier"]     = 9,
+    ["Founder"]       = 10,
+    ["Engineer"]      = 11,
+    ["Mogul"]         = 12,
+    ["Technocrat"]    = 13,
+    ["Gengineer"]     = 14,
+    ["Magnate"]       = 15,
+    ["Plutocrat"]     = 16,
 }
 
--- ── Hex → cecho named-color map ───────────────────────────────────────────
--- Maps the game's exact ANSI RGB values to cecho-compatible color names.
--- These are the web standard colors that Mudlet's cecho recognises.
+-- ── Rank → cecho color ────────────────────────────────────────────────────
 
-local HEX_TO_CECHO = {
-    ["#800000"] = "ansiRed",    -- Plutocrat (non-staff)
-    ["#808000"] = "olive_drab",     -- Plutocrat (staff) / Navigator
-    ["#008000"] = "ansiGreen",     -- Manufacturer, Financier, Industrialist
-    ["#008080"] = "ansiCyan",      -- Engineer, Mogul, Magnate, Gengineer, Founder, Technocrat
-    ["#800080"] = "dark_violet",    -- Commander
-    ["#c0c0c0"] = "mint_cream",    -- Trader, Merchant
-    ["#ffffff"] = "white",
+local RANK_COLOR = {
+    ["Trader"]        = "mint_cream",
+    ["Engineer"]      = "ansiCyan",
+    ["Merchant"]      = "mint_cream",
+    ["Manufacturer"]  = "ansiGreen",
+    ["Industrialist"] = "ansiGreen",
+    ["Financier"]     = "ansiGreen",
+    ["Mogul"]         = "ansiCyan",
+    ["Magnate"]       = "ansiCyan",
+    ["Technocrat"]    = "ansiCyan",
+    ["Gengineer"]     = "ansiCyan",
+    ["Founder"]       = "ansiCyan",
+    ["Plutocrat"]     = "ansiRed",
+    ["Commander"]     = "dark_violet",
 }
-local function _cecho_color(hex)
-    return HEX_TO_CECHO[hex:lower()] or "white"
+local RANK_COLOR_DEFAULT = "ansi_white"
+
+local function _color_for(row)
+    if row.rank == "Plutocrat" and row.staff and row.staff ~= "" then
+        return "olive_drab"
+    end
+    return RANK_COLOR[row.rank] or RANK_COLOR_DEFAULT
 end
 
 -- ── Parser ────────────────────────────────────────────────────────────────
--- Extracts rank, name, and staff badge only.
--- raw_line and color are stamped on by ui_who_line() after the call.
 
 function ui_who_parse_line(raw)
     local line = raw:match("^%s*(.-)%s*$")
     if line == "" then return nil end
 
-    -- Strip trailing [Badge]
     local staff = ""
     line = line:gsub("%s+%[(%a+)%]%s*$", function(b) staff = b; return "" end)
     line = line:match("^%s*(.-)%s*$")
 
-    -- Rank (first word)
     local rank = line:match("^(%a+)")
     if not rank then return nil end
 
-    -- Name (second word, after rank)
     local after_rank = line:sub(#rank + 1):match("^%s*(.*)")
     local name = after_rank and after_rank:match("^(%a+)") or ""
     if name == "" then return nil end
@@ -66,59 +84,133 @@ function ui_who_parse_line(raw)
         rank_order = RANK_ORDER[rank] or 0,
         name       = name,
         staff      = staff,
-        color      = "#c0c0c0",  -- overwritten by trigger
-        raw_line   = "",          -- overwritten by trigger
+        raw_line   = "",
     }
 end
 
--- ── Trigger callbacks ─────────────────────────────────────────────────────
+-- ── Line buffer helpers ───────────────────────────────────────────────────
+-- The game may wrap a long player line across two console lines.
+-- We buffer partial lines and flush them when a new player entry begins
+-- or when parsing ends.
 
-function ui_who_start()
-    UI.who.parsing = true
-    UI.who.players = {}
-    f2t_debug_log("[who] parse start")
-end
+local function _flush_buffer()
+    local buf = UI.who._line_buffer
+    if buf == "" then return end
+    UI.who._line_buffer = ""
 
-function ui_who_line()
-    if not UI.who.parsing then return end
-
-    -- Capture the game's assigned color for this line before we do anything else
-    local hex_color = "#c0c0c0"
-    local trimmed   = line:match("^%s+(.+)")
-    if trimmed then
-        selectString(trimmed, 1)
-        local r, g, b = getFgColor()
-        deselect()
-        hex_color = string.format("#%02x%02x%02x", r, g, b)
-    end
-
-    -- Standalone [Badge] line: the game occasionally wraps Navigator/Manager
-    -- onto its own line directly below the player it belongs to.
-    local solo_badge = line:match("^%s*%[(%a+)%]%s*$")
-    if solo_badge and #UI.who.players > 0 then
-        local last = UI.who.players[#UI.who.players]
-        if last.staff == "" then
-            last.staff    = solo_badge
-            last.raw_line = last.raw_line .. " [" .. solo_badge .. "]"
-        end
-        return
-    end
-
-    local parsed = ui_who_parse_line(line)
+    local trimmed = buf:match("^  (.+)") or buf:match("^%s*(.-)%s*$")
+    local parsed  = ui_who_parse_line(buf)
     if parsed then
-        parsed.color    = hex_color
-        parsed.raw_line = trimmed or line:match("^%s*(.-)%s*$")
+        parsed.raw_line    = trimmed or ""
+        parsed.cecho_color = _color_for(parsed)
         table.insert(UI.who.players, parsed)
     end
 end
 
+-- ── Trigger callbacks ─────────────────────────────────────────────────────
+
+-- Pattern: People in Federation II dataspace:  (substring)
+-- Only begins parsing when the who was UI-initiated; leaves manual who output alone.
+function ui_who_start()
+    if not UI.who.ui_requested then
+        f2t_debug_log("[who] ignoring manual who command")
+        return
+    end
+    UI.who.ui_requested = false
+    UI.who.parsing      = true
+    UI.who.players      = {}
+    UI.who._line_buffer = ""
+    f2t_debug_log("[who] parse start (UI-initiated)")
+end
+
+-- Pattern: .*  (matches every line — fast no-op when not parsing)
+--
+-- Called on every incoming line while parsing is active.
+-- Handles four cases:
+--   1. New player line  (starts with "  [Rank]") → flush previous buffer, start new one
+--   2. Wrapped continuation (no leading spaces, not a badge/summary) → append to buffer
+--   3. Standalone [Badge] line → update the most recently completed player
+--   4. Summary / header / blank lines → skip (summary also flushes buffer first)
+function ui_who_line()
+    if not UI.who.parsing then return end
+
+    local full = getCurrentLine()
+
+    -- Skip blank lines
+    if full:match("^%s*$") then return end
+
+    -- Skip the "People in Federation II dataspace:" header line
+    if full:match("People in Federation II dataspace:") then return end
+
+    -- Summary line: flush the last buffered player first, then let whoListEnd handle it
+    if full:match("^%d+ players, %d+ staff") then
+        _flush_buffer()
+        return
+    end
+
+    -- Standalone [Badge] line e.g. "[Navigator]"
+    -- The game sometimes puts this on its own line below the player it belongs to.
+    local solo = full:match("^%s*%[(%a+)%]%s*$")
+    if solo then
+        -- The badge may belong to a buffered-but-not-yet-flushed entry (most common)
+        -- OR the last already-flushed entry.
+        if UI.who._line_buffer ~= "" then
+            -- Still buffering: append inline so parse captures it correctly
+            UI.who._line_buffer = UI.who._line_buffer .. " [" .. solo .. "]"
+        elseif #UI.who.players > 0 then
+            local last = UI.who.players[#UI.who.players]
+            if last.staff == "" then
+                last.staff       = solo
+                last.raw_line    = last.raw_line .. " [" .. solo .. "]"
+                last.cecho_color = _color_for(last)
+            end
+        end
+        return
+    end
+
+    -- New player line: starts with two spaces followed by an uppercase letter.
+    -- The first word must be a known rank (guards against stray indented game text).
+    if full:match("^  %u") then
+        local first_word = full:match("^%s*(%a+)")
+        if RANK_ORDER[first_word] then
+            _flush_buffer()
+            UI.who._line_buffer = full
+            return
+        end
+    end
+
+    -- Continuation line: part of the previous player's line that wrapped.
+    -- Append it (trimmed) to the current buffer.
+    if UI.who._line_buffer ~= "" then
+        local cont = full:match("^%s*(.-)%s*$")
+        if cont ~= "" then
+            -- Join with a space so "on\nLatte" becomes "on Latte"
+            UI.who._line_buffer = UI.who._line_buffer .. cont
+        end
+    end
+end
+
+-- Pattern: ^\d+ players, \d+ staff  (regex)
 function ui_who_end()
     if not UI.who.parsing then return end
+
+    -- Flush any final buffered player (in case _flush wasn't triggered by a new entry)
+    _flush_buffer()
+
     UI.who.parsing = false
 
-    local total, stf    = line:match("(%d+) players, (%d+) staff")
-    UI.who.count        = tonumber(total) or #UI.who.players
-    UI.who.staff_count  = tonumber(stf)   or 0
+    local full             = getCurrentLine()
+    local total, stf       = full:match("(%d+) players, (%d+) staff")
+    UI.who.count           = tonumber(total) or #UI.who.players
+    UI.who.staff_count     = tonumber(stf)   or 0
+
+    -- Populate maps shared with ui_chat for rank-colored speaker names
+    UI.who.name_colors   = {}
+    UI.who.name_rawlines = {}
+    for _, p in ipairs(UI.who.players) do
+        UI.who.name_colors[p.name]   = p.cecho_color
+        UI.who.name_rawlines[p.name] = p.raw_line
+    end
 
     f2t_debug_log("[who] parsed %d players", #UI.who.players)
 
@@ -128,121 +220,78 @@ function ui_who_end()
             UI.who.count, UI.who.staff_count))
     end
 
-    ui_who_render()
-end
+    ui_table_set_data("who_list", UI.who.players)
 
--- ── Sort ──────────────────────────────────────────────────────────────────
-
-function ui_who_sort(field)
-    if UI.who.sort_by == field then
-        UI.who.sort_asc = not UI.who.sort_asc
-    else
-        UI.who.sort_by  = field
-        -- Name sorts A→Z by default; rank sorts high→low by default
-        UI.who.sort_asc = (field == "name")
-    end
-    ui_who_render()
-end
-
--- ── Render ────────────────────────────────────────────────────────────────
-
-function ui_who_render()
-    if not UI.who_window then return end
-    UI.who_window:clear()
-
-    local players = UI.who.players
-    if #players == 0 then
-        UI.who_window:cecho("<dim_grey>No players online.\n")
-        return
-    end
-
-    -- Sort
-    local sorted = {}
-    for _, p in ipairs(players) do table.insert(sorted, p) end
-
-    table.sort(sorted, function(a, b)
-        if UI.who.sort_by == "name" then
-            if UI.who.sort_asc then return a.name < b.name end
-            return a.name > b.name
-        else
-            -- rank_order, with name as tiebreaker (always A→Z within same rank)
-            if a.rank_order ~= b.rank_order then
-                if UI.who.sort_asc then return a.rank_order < b.rank_order end
-                return a.rank_order > b.rank_order
-            end
-            return a.name < b.name
-        end
-    end)
-
-    -- Sort indicator arrows
-    local function _ind(field)
-        if UI.who.sort_by ~= field then return "  " end
-        return UI.who.sort_asc and " ↑" or " ↓"
-    end
-
-    -- Header row with clickable sort links
-    UI.who_window:cechoLink(
-        "<white>" .. string.format("%-13s", "Rank") .. _ind("rank_order") .. "<reset>",
-        function() ui_who_sort("rank_order") end,
-        "Sort by rank",
-        true
-    )
-    UI.who_window:cecho("  ")
-    UI.who_window:cechoLink(
-        "<white>" .. string.format("%-16s", "Name") .. _ind("name") .. "<reset>",
-        function() ui_who_sort("name") end,
-        "Sort by name",
-        true
-    )
-    UI.who_window:cecho("\n<dim_grey>" .. string.rep("─", 33) .. "<reset>\n")
-
-    -- Player rows
-    for _, row in ipairs(sorted) do
-        local cc = _cecho_color(row.color)
-
-        -- Staff chip: small [Nav]/[Mgr] suffix in olive
-        local staff_str = ""
-        if row.staff and row.staff ~= "" then
-            staff_str = " <olive_drab>[" .. row.staff:sub(1, 3) .. "]<reset>"
-        end
-
-        -- Each row is a single cechoLink — clicking appends a tell command
-        UI.who_window:cechoLink(
-            string.format("<%s>%-13s<reset>  <white>%-16s<reset>%s",
-                cc, row.rank, row.name, staff_str),
-            function() appendCmdLine("tell " .. row.name .. " ") end,
-            row.raw_line,
-            true
-        )
-        UI.who_window:cecho("\n")
-    end
+    -- Replay chat so existing speaker names pick up the freshly populated rank colors
+    if ui_chat_replay then ui_chat_replay() end
 end
 
 -- ── Refresh ───────────────────────────────────────────────────────────────
 
 function ui_who_refresh()
-    if UI.who_window then
-        UI.who.parsing = true
-        UI.who_window:clear()
-        UI.who_window:cecho("<dim_grey>Fetching who list...\n")
-    end
+    UI.who.ui_requested = true
+    if UI.who_header then UI.who_header:echo("  👥  Refreshing…") end
     send("who", false)
 end
 
--- ── Init ──────────────────────────────────────────────────────────────────
--- Called from ui_build(). Sets up initial state and wires the tab-switch
--- auto-refresh via the Who tab label's click callback.
+-- ── Table init ────────────────────────────────────────────────────────────
 
 function ui_who_init()
-    UI.who.sort_by  = UI.who.sort_by  or "rank_order"
-    UI.who.sort_asc = (UI.who.sort_asc ~= nil) and UI.who.sort_asc or false
-
-    if UI.who_window then
-        UI.who_window:clear()
-        UI.who_window:cecho("<dim_grey>Click ⟳ or switch to this tab to load the who list.\n")
+    if not UI.who_window then
+        f2t_debug_log("[who] who_window not available — skipping table init")
+        return
     end
 
-    -- Wire auto-refresh on tab switch: preserve TabWindow's own onClick, then refresh
+    local cols = {
+        {
+            key          = "rank",
+            label        = "Rank",
+            width        = 13,
+            align        = "left",
+            sortable     = true,
+            sort_value   = function(row) return row.rank_order or 0 end,
+            format       = function(v, row)
+                local cc = row.cecho_color or RANK_COLOR_DEFAULT
+                return "<" .. cc .. ">" .. v .. "<reset>"
+            end,
+        },
+        {
+            key      = "name",
+            label    = "Name",
+            width    = 16,
+            align    = "left",
+            sortable = true,
+            render   = function(value, row, window, col)
+                local cc    = row.cecho_color or RANK_COLOR_DEFAULT
+                local raw   = row.raw_line or ""
+                local staff = (row.staff and row.staff ~= "")
+
+                local name_str = "<" .. cc .. "><b>" .. (value or "") .. "</b><reset>"
+                if staff then
+                    name_str = name_str .. " <ansiYellow>[" .. row.staff:sub(1,3) .. "]<reset>"
+                end
+
+                local visible_len = #(value or "") + (staff and 6 or 0)
+                local pad = (col.width or 16) - visible_len
+                if pad > 0 then name_str = name_str .. string.rep(" ", pad) end
+
+                window:cechoLink(
+                    name_str,
+                    function() appendCmdLine("tell " .. (value or "") .. " ") end,
+                    raw,
+                    true
+                )
+            end,
+        },
+    }
+
+    ui_table_create("who_list", UI.who_window, cols, {
+        column = "  ",
+        row    = nil,
+        header = " ",
+    })
+
+    -- Tab-click auto-refresh: sets ui_requested then fires who
     local tw  = UI.tab_bottom_left
     local tab = tw and tw.Who
     if tab and tab.adjLabel then
@@ -250,7 +299,7 @@ function ui_who_init()
             tw:onClick("Who", event)
             ui_who_refresh()
         end)
-        f2t_debug_log("[who] tab click auto-refresh wired")
+        f2t_debug_log("[who] tab auto-refresh wired")
     end
 
     f2t_debug_log("[who] init complete")

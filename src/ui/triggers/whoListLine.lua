@@ -1,5 +1,5 @@
 -- @patterns:
---   - pattern: ^(  [A-Z]|\[[A-Z])
+--   - pattern: .*
 --     type: regex
 
 if UI.who.parsing then
