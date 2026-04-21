@@ -21,11 +21,12 @@ local _MAX_MSGS = 2000
 -- text_hex   : hecho #RRGGBB color for the message body
 
 local _STYLE = {
-    com       = { gutter_hex = "#2a7070", name_cecho = "<ansiCyan>",   text_hex = "#00cccc" },
-    say       = { gutter_hex = "#2a7070", name_cecho = "<ansiCyan>",   text_hex = "#00cccc" },
-    tell_in   = { gutter_hex = "#882222", name_cecho = "<ansiRed>",    text_hex = "#ff8888" },
-    self_com  = { gutter_hex = "#226622", name_cecho = "<ansiGreen>",  text_hex = "#88dd88" },
-    self_tell = { gutter_hex = "#885522", name_cecho = "<ansiYellow>", text_hex = "#ffaa60" },
+    com       = { gutter_hex = "#2a7070", name_cecho = "<ansiCyan>",   text_hex = "#008080" },
+    say       = { gutter_hex = "#008000", name_cecho = "<ansiCyan>",   text_hex = "#008000" },
+    tell_in   = { gutter_hex = "#882222", name_cecho = "<ansiRed>",    text_hex = "#882222" },
+    self_com  = { gutter_hex = "#226622", name_cecho = "<ansiGreen>",  text_hex = "#00ffff" },
+    self_say  = { gutter_hex = "#4caf70", name_cecho = "<ansiBlue>",   text_hex = "#4caf70" },
+    self_tell = { gutter_hex = "#ff8888", name_cecho = "<ansiRed>",    text_hex = "#ff8888" },
 }
 
 -- Exported so ui_players can reference gutter colors if needed
@@ -64,7 +65,7 @@ local _FILTER = {
         } QLabel::hover{ background-color:rgba(75,25,25,240); color:white; }]],
     },
     {
-        id = "say", label = "S", matches = { say = true },
+        id = "say", label = "S", matches = { say = true, self_say = true },
         css = [[QLabel{
             background-color:rgba(18,30,52,220); border-style:solid; border-width:1px;
             border-radius:3px; border-color:rgba(50,90,150,200);

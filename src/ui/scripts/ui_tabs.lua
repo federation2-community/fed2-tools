@@ -119,8 +119,8 @@ function ui_build_tab_content()
     -- ── General tab filter button ─────────────────────────────────────────
     UI.general_filter_btn = Geyser.Label:new({
         name   = "UI.general_filter_btn",
-        x      = "93%", y = "1%",
-        width  = "6%",  height = "5%",
+        x      = "-22", y = "2",
+        width  = "20",  height = "16",
     }, UI.tab_top_left.Generalcenter)
     UI.general_filter_btn:setStyleSheet([[
         QLabel{ background-color:rgba(28,28,32,200); border-style:solid; border-width:1px;

@@ -32,10 +32,10 @@ local _GENERAL_FILTER = {
     {
         id = "spynet", label = "S", matches = { spynet = true },
         css = [[QLabel{
-            background-color:rgba(40,15,50,220); border-style:solid; border-width:1px;
-            border-radius:3px; border-color:rgba(120,50,150,200);
-            color:rgba(190,90,220,255); font-size:10px; font-weight:bold;
-        } QLabel::hover{ background-color:rgba(60,25,75,240); color:white; }]],
+            background-color:rgba(255,255,255,80); border-style:solid; border-width:1px;
+            border-radius:3px; border-color:rgba(0,0,0,160);
+            color:black !important; font-size:10px; font-weight:bold;
+        } QLabel::hover{ background-color:rgba(255,255,255,120); color:black !important; }]],
     },
     {
         id = "promotion", label = "P", matches = { promotion = true },

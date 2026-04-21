@@ -236,13 +236,20 @@ function ui_who_refresh()
 end
 
 -- Debounced auto-refresh triggered when an unknown name is encountered during
--- rendering. Batches multiple unknown names from the same burst into one refresh.
+-- rendering. Guards against firing before login and has a 60-second cooldown to
+-- break the who-end → replay → unknown-name → who loop.
 local _auto_refresh_pending = false
+local _last_auto_refresh    = 0
 function ui_who_request_refresh()
     if _auto_refresh_pending or UI.who.parsing then return end
+    -- Only fire when logged in (GMCP vitals present)
+    if not (gmcp and gmcp.char and gmcp.char.vitals) then return end
+    -- Cooldown: at most one auto-refresh per 5 seconds
+    if os.time() - _last_auto_refresh < 5 then return end
     _auto_refresh_pending = true
     tempTimer(1.5, function()
-        _auto_refresh_pending = false
+        _auto_refresh_pending  = false
+        _last_auto_refresh     = os.time()
         ui_who_refresh()
     end)
 end

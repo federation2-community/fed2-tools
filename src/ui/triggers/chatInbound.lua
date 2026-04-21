@@ -14,13 +14,13 @@ local hide = f2t_settings_get("ui", "hide_chat_messages")
 
 -- "Hum" is the tb-send confirmation; no message content to route, just suppress.
 if line:match("^There is a brief hum from your comm unit") then
-    if hide then deleteLine() end
+    if hide then tempLineTrigger(0, 2, [[deleteLine()]]) end
     return
 end
 
 -- Your own say echo: alias already recorded it as self_com, just suppress.
 if line:match("^You say,") then
-    if hide then deleteLine() end
+    if hide then tempLineTrigger(0, 2, [[deleteLine()]]) end
     return
 end
 
@@ -45,4 +45,4 @@ end
 
 ui_chat_add(mtype, name, msg)
 
-if hide then deleteLine() end
+if hide then tempLineTrigger(0, 2, [[deleteLine()]]) end
