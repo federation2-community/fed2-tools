@@ -13,7 +13,7 @@ ui_general_add("spynet", function(win)
         nc = "<" .. UI.who.name_colors[name] .. ">"
     else
         if ui_who_request_refresh then ui_who_request_refresh() end
-        nc = "<light_gray>"
+        nc = "<dim_gray>"
     end
     win:cecho("<white>SPYNET REPORT: " .. nc .. "<b>" .. rank .. " " .. name .. "</b><white>" .. role .. " has <b>" .. action .. "</b> Federation DataSpace.\n<reset>")
 end)

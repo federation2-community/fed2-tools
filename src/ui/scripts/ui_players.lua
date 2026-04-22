@@ -297,7 +297,7 @@ function ui_who_init()
 
                 window:cechoLink(
                     name_str,
-                    function() appendCmdLine("tell " .. (value or "") .. " ") end,
+                    function() printCmdLine("tb " .. (value or "") .. " ") end,
                     raw,
                     true
                 )

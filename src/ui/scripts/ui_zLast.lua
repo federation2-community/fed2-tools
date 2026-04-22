@@ -161,7 +161,6 @@ end
 
 function ui_register_alias()
     f2t_ui_register_alias("chatOutbound")
-    f2t_ui_register_alias("echoCmdNotChat")
 
     ui_aliased = true
     f2t_debug_log("[ui] registered aliases")
@@ -182,9 +181,6 @@ end
 
 -- If UI is enabled, kick everything off
 if F2T_UI_STATE.enabled then
-    -- This disables echoing commands to the console. The package handles this.
-    setConfig("showSentText", false)
-
     if not ui_built     then ui_build()            end
     if not ui_triggered then ui_register_trigger() end
     if not ui_evented   then ui_register_event()   end

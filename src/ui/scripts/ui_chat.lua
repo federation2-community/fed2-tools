@@ -16,17 +16,16 @@ local _MAX_DAYS = 7
 local _MAX_MSGS = 2000
 
 -- ── Style per message type ────────────────────────────────────────────────
--- gutter_hex : hecho #RRGGBB color for the continuation pipe glyph
--- name_cecho : cecho <colorname> fallback for speaker when rank color unknown
+-- gutter_hex : hecho #RRGGBB color for the continuation pipe and direction arrows
 -- text_hex   : hecho #RRGGBB color for the message body
 
 local _STYLE = {
-    com       = { gutter_hex = "#2a7070", name_cecho = "<ansiCyan>",   text_hex = "#008080" },
-    say       = { gutter_hex = "#008000", name_cecho = "<ansiCyan>",   text_hex = "#008000" },
-    tell_in   = { gutter_hex = "#882222", name_cecho = "<ansiRed>",    text_hex = "#882222" },
-    self_com  = { gutter_hex = "#226622", name_cecho = "<ansiGreen>",  text_hex = "#00ffff" },
-    self_say  = { gutter_hex = "#4caf70", name_cecho = "<ansiBlue>",   text_hex = "#4caf70" },
-    self_tell = { gutter_hex = "#ff8888", name_cecho = "<ansiRed>",    text_hex = "#ff8888" },
+    com       = { gutter_hex = "#2a7070", text_hex = "#008080" },
+    say       = { gutter_hex = "#008000", text_hex = "#008000" },
+    tell_in   = { gutter_hex = "#882222", text_hex = "#882222" },
+    self_com  = { gutter_hex = "#226622", text_hex = "#00ffff" },
+    self_say  = { gutter_hex = "#4caf70", text_hex = "#4caf70" },
+    self_tell = { gutter_hex = "#ff8888", text_hex = "#ff8888" },
 }
 
 -- Exported so ui_players can reference gutter colors if needed
@@ -112,12 +111,19 @@ end
 -- ── Internal rendering ────────────────────────────────────────────────────
 
 local function _rank_cecho(name)
-    if UI.who and UI.who.name_colors and UI.who.name_colors[name] then
-        return "<" .. UI.who.name_colors[name] .. ">"
+    if UI.who and UI.who.name_colors then
+        if UI.who.name_colors[name] then
+            return "<" .. UI.who.name_colors[name] .. ">"
+        end
+        -- Case-insensitive fallback (e.g. user typed "thomas", list has "Thomas")
+        local lower = name:lower()
+        for k, v in pairs(UI.who.name_colors) do
+            if k:lower() == lower then return "<" .. v .. ">" end
+        end
     end
-    -- Unknown player — request a background who refresh, render as light gray for now
+    -- Unknown player — request a background who refresh, render as dim_gray for now
     if ui_who_request_refresh then ui_who_request_refresh() end
-    return "<light_gray>"
+    return "<dim_gray>"
 end
 
 local function _raw_line(name)
@@ -171,28 +177,28 @@ local function _render_record(r, is_cont, show_ts)
     local hint = _raw_line(r.from) or ("tell " .. r.from)
 
     if r.type == "self_tell" then
-        -- "You → Recipient » message"
-        -- "You" uses the type's name color (cecho); arrow is dim_gray (cecho)
-        UI.chat_window:cecho(st.name_cecho .. "You <dim_gray>→ <reset>")
+        -- "❯❯ Recipient » message"
+        UI.chat_window:hecho(st.gutter_hex .. "❯❯ ")
         UI.chat_window:cechoLink(
             nc .. "<b>" .. r.from .. "</b><reset>",
-            function() appendCmdLine("tb " .. r.from .. " ") end,
+            function() printCmdLine("tb " .. r.from .. " ") end,
             hint, true)
         UI.chat_window:cecho(" <dim_gray>»<reset> ")
 
     elseif r.type == "tell_in" then
-        -- "Sender → you » message"
+        -- "❮❮ Sender » message"
+        UI.chat_window:hecho(st.gutter_hex .. "❮❮ ")
         UI.chat_window:cechoLink(
             nc .. "<b>" .. r.from .. "</b><reset>",
-            function() appendCmdLine("tb " .. r.from .. " ") end,
+            function() printCmdLine("tb " .. r.from .. " ") end,
             hint, true)
-        UI.chat_window:cecho(" <dim_gray>→ you »<reset> ")
+        UI.chat_window:cecho(" <dim_gray>»<reset> ")
 
     else
         -- com / say / self_com: "Name » message"
         UI.chat_window:cechoLink(
             nc .. "<b>" .. r.from .. "</b><reset>",
-            function() appendCmdLine("tb " .. r.from .. " ") end,
+            function() printCmdLine("tb " .. r.from .. " ") end,
             hint, true)
         UI.chat_window:cecho(" <dim_gray>»<reset> ")
     end

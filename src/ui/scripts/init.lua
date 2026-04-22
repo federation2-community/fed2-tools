@@ -100,9 +100,6 @@ function f2t_ui_enable()
 
     F2T_UI_STATE.enabled = true
 
-    -- This disables echoing commands to the console. The package handles this.
-    setConfig("showSentText", false)
-
     -- If we never ran the usual initial startup, then do that
     if not ui_built     then ui_build()            end
     if not ui_triggered then ui_register_trigger() end
@@ -154,9 +151,6 @@ function f2t_ui_disable()
     openMapWidget()
 
     F2T_UI_STATE.enabled = false
-
-    -- This enables echoing commands to the console. The package is disabled, so this mudlet default should be restored
-    setConfig("showSentText", true)
 
     -- Hide all UI elements (don't destroy them!)
     for name, container in pairs(F2T_UI_STATE.containers) do
