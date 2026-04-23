@@ -1,18 +1,14 @@
 -- @patterns:
---   - pattern: ^Your comm unit signals a tight beam message from (\w+), "(.+)"$
+--   - pattern: ^Your comm unit signals a tight beam message from (\w+), "(.+)$
 --     type: regex
---   - pattern: ^Your comm unit crackles with a message from (\w+), "(.+)"$
+--   - pattern: ^Your comm unit crackles with a message from (\w+), "(.+)$
 --     type: regex
---   - pattern: ^(\w+) (says|asks), "(.+)"$
---     type: regex
---   - pattern: ^You (?:say|ask), "(.+)"$
+--   - pattern: ^(\w+) (says|asks), "(.+)$
 --     type: regex
 --   - pattern: ^There is a brief hum from your comm unit\.$
 --     type: regex
 --   - pattern: ^\w+ doesn't seem to be around at the moment\.$
 --     type: regex
-
-local hide = f2t_settings_get("ui", "hide_chat_messages")
 
 -- "Hum" is the tb-send confirmation; commit the staged outgoing tell to chat history.
 if line:match("^There is a brief hum from your comm unit") then
@@ -21,13 +17,6 @@ if line:match("^There is a brief hum from your comm unit") then
         UI.chat.pending_tell = nil
         ui_chat_add("self_tell", pt.from, pt.msg)
     end
-    if hide then tempLineTrigger(0, 2, [[deleteLine()]]) end
-    return
-end
-
--- Your own say echo: alias already recorded it as self_com, just suppress.
-if line:match("^You say,") or line:match("^You ask,") then
-    if hide then tempLineTrigger(0, 2, [[deleteLine()]]) end
     return
 end
 
@@ -56,6 +45,26 @@ else
     msg   = matches[4]
 end
 
-ui_chat_add(mtype, name, msg)
+-- Fed2 server wraps long lines before the closing quote — capture continuations
+-- so the chat tab always receives the complete message.
+if not msg:match('"$') then
+    local pending = { mtype = mtype, name = name, msg = msg }
+    local capture_continuation
+    capture_continuation = function()
+        tempLineTrigger(1, 1, function()
+            local cont = getCurrentLine()
+            if cont:match('"$') then
+                ui_chat_add(pending.mtype, pending.name, pending.msg .. " " .. cont:gsub('"$', ''))
+            else
+                pending.msg = pending.msg .. " " .. cont
+                capture_continuation()
+            end
+        end)
+    end
+    capture_continuation()
+    return
+end
 
-if hide then tempLineTrigger(0, 2, [[deleteLine()]]) end
+-- Single-line message: strip the trailing quote captured by (.+)$
+msg = msg:gsub('"$', '')
+ui_chat_add(mtype, name, msg)

@@ -3,13 +3,7 @@
 
 local speaker = gmcp.char.vitals.name
 
-selectCurrentLine()
-replace("")
-
--- Send command to the game
 send(matches[1], false)
-
-deleteLine()
 
 if matches[2] and matches[2] ~= "" then
     -- Tell/TB: matches[2]=recipient, matches[3]=message

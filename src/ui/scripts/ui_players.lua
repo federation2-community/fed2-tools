@@ -212,6 +212,11 @@ function ui_who_end()
         UI.who.name_rawlines[p.name] = p.raw_line
     end
 
+    -- Delete trailing blank line that the game outputs after the summary
+    tempLineTrigger(1, 1, function()
+        if getCurrentLine():match("^%s*$") then deleteLine() end
+    end)
+
     f2t_debug_log("[who] parsed %d players", #UI.who.players)
 
     if UI.who_header then
