@@ -23,7 +23,7 @@ function ui_build_tabs()
         UI.right_frame
     )
 
-    -- Place General/Exchange/Commodities tabs In Top Left Navigation Frame (default location)
+    -- Place Who/General/Exchange tabs In Top Left Navigation Frame (Who is default active)
     UI.tab_top_left = Adjustable.TabWindow:new(
         {
             name             = "UI.tab_left",
@@ -32,7 +32,7 @@ function ui_build_tabs()
             width            = "100%",
             height           = "100%",
             tabBarHeight     = "8%",
-            tabs             = {"General","Exchange", "Commodities"},
+            tabs             = {"Who","General","Exchange"},
             activeTabStyle   = UI.style.active_tab_css,
             inactiveTabStyle = UI.style.inactive_tab_css,
             footerStyle      = UI.style.footer_css,
@@ -41,7 +41,7 @@ function ui_build_tabs()
         UI.vbox_left
     )
 
-    -- Place Spynet/Comms tab on the top of the Bottom Left Navigation Frame (default location)
+    -- Place Comm tab on the top of the Bottom Left Navigation Frame (default location)
     UI.tab_bottom_left = Adjustable.TabWindow:new(
         {
             name             = "UI.tab_bottom_left",
@@ -50,7 +50,7 @@ function ui_build_tabs()
             width            = "100%",
             height           = "100%",
             tabBarHeight     = "8%",
-            tabs             = {"Comm","Who"},
+            tabs             = {"Comm"},
             activeTabStyle   = UI.style.active_tab_css,
             inactiveTabStyle = UI.style.inactive_tab_css,
             footerStyle      = UI.style.footer_css,
@@ -149,22 +149,6 @@ function ui_build_tab_content()
     )
     UI.tab_top_left:removeTab("Exchange")
 
-    --put commodities console in commodities tab
-    UI.commodities_window = Geyser.MiniConsole:new(
-        {
-            name      = "UI.commodities_window",
-            x         = "0%",
-            y         = "0%",
-            width     = "100%",
-            height    = "100%",
-            autoWrap  = true,
-            scrollBar = true,
-            fontSize  = text_size,
-            color     = "black",
-        },
-        UI.tab_top_left.Commoditiescenter
-    )
-
     --put chat console in chat tab
     UI.chat_window = Geyser.MiniConsole:new(
         {
@@ -215,7 +199,7 @@ function ui_build_tab_content()
         name = "UI.who_header",
         x = "0%", y = "0",
         width = "-24", height = "20",
-    }, UI.tab_bottom_left.Whocenter)
+    }, UI.tab_top_left.Whocenter)
     UI.who_header:setStyleSheet(UI.style.header_label_css)
     UI.who_header:echo("  👥  Who's Online")
 
@@ -224,7 +208,7 @@ function ui_build_tab_content()
         name = "UI.who_refresh_btn",
         x = "-22", y = "2",
         width = "20", height = "16",
-    }, UI.tab_bottom_left.Whocenter)
+    }, UI.tab_top_left.Whocenter)
     UI.who_refresh_btn:echo("<center>⟳</center>")
     UI.who_refresh_btn:setStyleSheet(UI.style.button_css)
     UI.who_refresh_btn:setToolTip("Refresh who list")
@@ -233,13 +217,13 @@ function ui_build_tab_content()
     -- MiniConsole for the table renderer — sits below the 21px header.
     UI.who_window = Geyser.MiniConsole:new({
         name      = "UI.who_window",
-        x         = "0%", y = "21",
-        width     = "100%", height = "-21",
+        x         = "0%", y = "21px",
+        width     = "100%", height = "100%-21px",
         autoWrap  = true,
         scrollBar = true,
         fontSize  = 12,
         color     = "black",
-    }, UI.tab_bottom_left.Whocenter)
+    }, UI.tab_top_left.Whocenter)
 
     --put map into map window
     UI.mapper = Geyser.Mapper:new(

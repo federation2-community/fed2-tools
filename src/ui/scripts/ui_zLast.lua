@@ -64,6 +64,7 @@ function ui_on_gmcp_room_info()
     end
 
     ui_fuel_status()
+    ui_update_local_players()
 end
 
 function ui_update_for_rank()
@@ -128,7 +129,6 @@ function ui_build()
     ui_build_movement()
     ui_hauling()
     ui_trading()
-    ui_commodities()
     ui_update_for_rank()
     ui_update_header()
     ui_who_init()
@@ -174,6 +174,7 @@ function ui_register_event()
     f2t_ui_register_event("gmcp.char.vitals.tools"             , "ui_remote_access_status")
     f2t_ui_register_event("sysConnectionEvent"                 , "ui_chat_on_connect")
     f2t_ui_register_event("sysDisconnectionEvent"              , "ui_chat_on_disconnect")
+    f2t_ui_register_event("gmcp.char.vitals"                   , "ui_who_on_login_vitals")
 
     ui_evented = true
     f2t_debug_log("[ui] registered events")

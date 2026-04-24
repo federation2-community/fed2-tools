@@ -174,7 +174,7 @@ local function _render_record(r, is_cont, show_ts)
 
     -- New speaker: resolve rank color (cecho tag) then emit name + separator + body
     local nc   = _rank_cecho(r.from)
-    local hint = _raw_line(r.from) or ("tell " .. r.from)
+    local hint = _raw_line(r.from) or ("tb " .. r.from)
 
     if r.type == "self_tell" then
         -- "❯❯ Recipient » message"
@@ -317,6 +317,7 @@ function ui_chat_on_connect()
     UI.chat.last_key = nil
     if UI.chat_window then UI.chat_window:hecho(r.line) end
     ui_chat_save()
+    UI.who._needs_login_refresh = true
 end
 
 function ui_chat_on_disconnect()

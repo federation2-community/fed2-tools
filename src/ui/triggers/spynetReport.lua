@@ -15,7 +15,10 @@ ui_general_add("spynet", function(win)
         if ui_who_request_refresh then ui_who_request_refresh() end
         nc = "<dim_gray>"
     end
-    win:cecho("<white>SPYNET REPORT: " .. nc .. "<b>" .. rank .. " " .. name .. "</b><white>" .. role .. " has <b>" .. action .. "</b> Federation DataSpace.\n<reset>")
+    local hint = (UI.who and UI.who.name_rawlines and UI.who.name_rawlines[name]) or ("tb " .. name)
+    win:cecho("<white>SPYNET REPORT: ")
+    win:cechoLink(nc .. "<b>" .. rank .. " " .. name .. "</b><reset>", function() printCmdLine("tb " .. name .. " ") end, hint, true)
+    win:cecho("<white>" .. role .. " has <b>" .. action .. "</b> Federation DataSpace.\n<reset>")
 end)
 
 tempLineTrigger(0, 2, [[deleteLine()]])

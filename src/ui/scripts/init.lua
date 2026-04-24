@@ -14,7 +14,7 @@ f2t_settings_register("ui", "enabled", {
 
 f2t_settings_register("ui", "hide_movement_messages", {
     description = "Hide player/ship movement messages from main console (route to General tab only)",
-    default = true,
+    default = false,
     validator = function(value)
         if value ~= true and value ~= false and value ~= "true" and value ~= "false" then
             return false, "Must be true or false"

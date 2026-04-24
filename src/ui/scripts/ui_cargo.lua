@@ -10,6 +10,7 @@ function ui_toggle_cargo_display()
         UI.cargo_manually_hidden = false
         ui_show_cargo_display()
     end
+
 end
 
 function ui_show_cargo_display()
@@ -28,6 +29,7 @@ function ui_show_cargo_display()
     if UI.top_right_frame then UI.top_right_frame:raise() end
 
     ui_update_cargo_display()
+    if ui_update_local_players then ui_update_local_players() end
 end
 
 function ui_hide_cargo_display()
@@ -38,6 +40,8 @@ function ui_hide_cargo_display()
     UI.cargo_dropdown:hide()
 
     if UI.cargo_gap_filler then UI.cargo_gap_filler:hide() end
+
+    if ui_update_local_players then ui_update_local_players() end
 
     if UI.cargo_buttons then
         for _, button_set in ipairs(UI.cargo_buttons) do
@@ -183,7 +187,17 @@ function ui_update_cargo_display()
                 entry_text:cecho("<white>0ig<reset>")
             end
 
-            entry_text:cecho("\n<yellow>" .. (value.origin or "Unknown") .. "<reset>")
+            local origin = value.origin
+            if origin then
+                entry_text:cechoLink(
+                    "\n<yellow>" .. origin .. "<reset>",
+                    function() send("nav " .. origin .. " exchange", false) end,
+                    "Nav to " .. origin .. " exchange",
+                    true
+                )
+            else
+                entry_text:cecho("\n<yellow>Unknown<reset>")
+            end
         end
 
         -- Buttons (right side, starting at 60%)

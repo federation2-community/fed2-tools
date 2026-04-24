@@ -52,6 +52,7 @@ local RANK_COLOR = {
     ["Founder"]       = "ansiCyan",
     ["Plutocrat"]     = "ansiRed",
     ["Commander"]     = "dark_violet",
+    ["Groundhog"]     = "dark_violet",
 }
 local RANK_COLOR_DEFAULT = "ansi_white"
 
@@ -79,12 +80,34 @@ function ui_who_parse_line(raw)
     local name = after_rank and after_rank:match("^(%a+)") or ""
     if name == "" then return nil end
 
+    local after_name = after_rank:sub(#name + 1):match("^%s*(.*)")
+    local location, location_is_space = "", false
+
+    if rank == "Groundhog" then
+        location = "Earth"
+    elseif after_name then
+        -- "in SystemName Space" at end of line (player is in system space, not on a planet)
+        local sys = after_name:match(".*%sin%s+(.-)%s+[Ss]pace%s*$")
+        if sys and sys ~= "" then
+            location         = sys
+            location_is_space = true
+        else
+            -- "on PlanetName" at end of line — greedy .* finds the LAST "on"
+            local planet = after_name:match(".*%son%s+(.-)%s*$")
+            if planet and planet ~= "" then
+                location = planet
+            end
+        end
+    end
+
     return {
-        rank       = rank,
-        rank_order = RANK_ORDER[rank] or 0,
-        name       = name,
-        staff      = staff,
-        raw_line   = "",
+        rank             = rank,
+        rank_order       = RANK_ORDER[rank] or 0,
+        name             = name,
+        location         = location,
+        location_is_space = location_is_space,
+        staff            = staff,
+        raw_line         = "",
     }
 end
 
@@ -184,8 +207,7 @@ function ui_who_line()
     if UI.who._line_buffer ~= "" then
         local cont = full:match("^%s*(.-)%s*$")
         if cont ~= "" then
-            -- Join with a space so "on\nLatte" becomes "on Latte"
-            UI.who._line_buffer = UI.who._line_buffer .. cont
+            UI.who._line_buffer = UI.who._line_buffer .. " " .. cont
         end
     end
 end
@@ -259,6 +281,16 @@ function ui_who_request_refresh()
     end)
 end
 
+-- Fires on first gmcp.char.vitals after a new connection; sends who once the
+-- login sequence has settled so rank colors populate immediately.
+function ui_who_on_login_vitals()
+    if not UI.who._needs_login_refresh then return end
+    UI.who._needs_login_refresh = false
+    tempTimer(3, function()
+        ui_who_refresh()
+    end)
+end
+
 -- ── Table init ────────────────────────────────────────────────────────────
 
 function ui_who_init()
@@ -281,12 +313,13 @@ function ui_who_init()
             end,
         },
         {
-            key      = "name",
-            label    = "Name",
-            width    = 16,
-            align    = "left",
-            sortable = true,
-            render   = function(value, row, window, col)
+            key          = "name",
+            label        = "Name",
+            width        = 16,
+            align        = "left",
+            sortable     = true,
+            default_sort = "asc",
+            render       = function(value, row, window, col)
                 local cc    = row.cecho_color or RANK_COLOR_DEFAULT
                 local raw   = row.raw_line or ""
                 local staff = (row.staff and row.staff ~= "")
@@ -308,6 +341,26 @@ function ui_who_init()
                 )
             end,
         },
+        {
+            key      = "location",
+            label    = "Location",
+            width    = 12,
+            align    = "left",
+            sortable = true,
+            format   = function(v, row)
+                if not v or v == "" then return "" end
+                return "<ansiCyan>" .. v .. "<reset>"
+            end,
+            link = function(value, row)
+                if not value or value == "" then return end
+                if row.location_is_space then
+                    expandAlias("nav " .. value .. " space link")
+                else
+                    expandAlias("nav " .. value)
+                end
+            end,
+            linkHint = "Go to %s",
+        },
     }
 
     ui_table_create("who_list", UI.who_window, cols, {
@@ -317,7 +370,7 @@ function ui_who_init()
     })
 
     -- Tab-click auto-refresh: sets ui_requested then fires who
-    local tw  = UI.tab_bottom_left
+    local tw  = UI.tab_top_left
     local tab = tw and tw.Who
     if tab and tab.adjLabel then
         tab.adjLabel:setClickCallback(function(event)

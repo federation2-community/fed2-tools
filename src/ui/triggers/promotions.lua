@@ -17,9 +17,22 @@
 --     type: substring
 
 local captured_line = line
+local pname, prest  = captured_line:match("^%s*(%u%a+)(.*)")
 
 ui_general_add("promotion", function(win)
-    win:cecho(captured_line .. "\n")
+    if pname then
+        local nc
+        if UI.who and UI.who.name_colors and UI.who.name_colors[pname] then
+            nc = "<" .. UI.who.name_colors[pname] .. ">"
+        else
+            nc = "<dim_gray>"
+        end
+        local hint = (UI.who and UI.who.name_rawlines and UI.who.name_rawlines[pname]) or ("tb " .. pname)
+        win:cechoLink(nc .. "<b>" .. pname .. "</b><reset>", function() printCmdLine("tb " .. pname .. " ") end, hint, true)
+        win:cecho(prest .. "\n")
+    else
+        win:cecho(captured_line .. "\n")
+    end
 end)
 
 tempLineTrigger(0, 2, [[deleteLine()]])

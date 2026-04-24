@@ -160,11 +160,13 @@ UI.style.button_css = [[
         color: rgba(200, 200, 210, 255);
         font-size: 11px;
         font-weight: bold;
+        qproperty-alignment: AlignCenter;
     }
     QLabel::hover{
         background-color: rgba(60, 60, 70, 220);
         border-color: rgba(120, 180, 255, 200);
         color: white;
+        qproperty-alignment: AlignCenter;
     }
 ]]
 
@@ -199,8 +201,65 @@ UI.style.toggle_button_css = [[
     }
 ]]
 
+-- Gap filler (standalone mode only) — left border only, same as cargo gap filler
+UI.style.local_players_gap_filler_css = [[
+    background-color: rgba(0,0,0,255);
+    border-left: 2px solid rgba(255,255,255,0.46);
+    border-right: none;
+    border-top: none;
+    border-bottom: none;
+    padding: 1px;
+    margin: 0px;
+    box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.10),
+    0 10px 30px rgba(0,0,0,0.6),
+    0 0 18px rgba(255,255,255,0.02);
+    transition: transform 120ms ease, box-shadow 160ms ease, border-color 120ms ease, background 120ms ease;
+    color: rgba(255,255,255,0.95);
+    -webkit-backdrop-filter: blur(4px) saturate(110%);
+    backdrop-filter: blur(4px) saturate(110%);
+]]
+
+-- Standalone (no cargo visible): gap filler sits above, so no top border; needs right border
+UI.style.local_players_dropdown_standalone_css = [[
+    background-color: rgba(0,0,0,255);
+    border-left: 2px solid rgba(255,255,255,0.46);
+    border-right: 2px solid rgba(255,255,255,0.46);
+    border-bottom: 2px solid rgba(255,255,255,0.46);
+    border-top: none;
+    padding: 1px;
+    margin: 0px;
+    box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.10),
+    0 10px 30px rgba(0,0,0,0.6),
+    0 0 18px rgba(255,255,255,0.02);
+    transition: transform 120ms ease, box-shadow 160ms ease, border-color 120ms ease, background 120ms ease;
+    color: rgba(255,255,255,0.95);
+    -webkit-backdrop-filter: blur(4px) saturate(110%);
+    backdrop-filter: blur(4px) saturate(110%);
+]]
+
+-- With-cargo (cargo visible): starts at top_left_height so needs top border; no right border (cargo is adjacent)
+UI.style.local_players_dropdown_with_cargo_css = [[
+    background-color: rgba(0,0,0,255);
+    border-left: 2px solid rgba(255,255,255,0.46);
+    border-right: none;
+    border-bottom: 2px solid rgba(255,255,255,0.46);
+    border-top: 2px solid rgba(255,255,255,0.46);
+    padding: 1px;
+    margin: 0px;
+    box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.10),
+    0 10px 30px rgba(0,0,0,0.6),
+    0 0 18px rgba(255,255,255,0.02);
+    transition: transform 120ms ease, box-shadow 160ms ease, border-color 120ms ease, background 120ms ease;
+    color: rgba(255,255,255,0.95);
+    -webkit-backdrop-filter: blur(4px) saturate(110%);
+    backdrop-filter: blur(4px) saturate(110%);
+]]
+
 UI.style.cargo_gap_filler_css = [[
-    background-color: rgba(255,255,255,0.035);
+    background-color: rgba(0,0,0,255);
     border-left: 2px solid rgba(255,255,255,0.46);
     border-right: none;
     border-top: none;
@@ -218,7 +277,7 @@ UI.style.cargo_gap_filler_css = [[
 ]]
 
 UI.style.cargo_dropdown_css = [[
-    background-color: rgba(255,255,255,0.035);
+    background-color: rgba(0,0,0,255);
     border-left: 2px solid rgba(255,255,255,0.46);
     border-right: 2px solid rgba(255,255,255,0.46);
     border-bottom: 2px solid rgba(255,255,255,0.46);

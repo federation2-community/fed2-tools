@@ -15,9 +15,10 @@ ui_general_add("movement", function(win)
         nc = "<" .. UI.who.name_colors[name] .. ">"
     else
         if ui_who_request_refresh then ui_who_request_refresh() end
-        nc = "<light_gray>"
+        nc = "<dim_gray>"
     end
-    win:cecho(nc .. "<b>" .. name .. "</b><reset>")
+    local hint = (UI.who and UI.who.name_rawlines and UI.who.name_rawlines[name]) or ("tb " .. name)
+    win:cechoLink(nc .. "<b>" .. name .. "</b><reset>", function() printCmdLine("tb " .. name .. " ") end, hint, true)
     win:hecho("#2d6e2d" .. rest .. "\n")
 end)
 
