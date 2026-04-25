@@ -30,6 +30,8 @@ UI.galaxy = UI.galaxy or {
 
     capture_active = false,
     capture_lines  = {},    -- raw lines buffered during capture
+
+    _last_search   = nil,   -- last polled search text, for change detection
 }
 
 UI.galaxy_button_active = false
@@ -44,6 +46,32 @@ local function _age_str(ts)
     elseif age < 86400 then return string.format("%dh ago", math.floor(age / 3600))
     else                   return string.format("%dd ago", math.floor(age / 86400))
     end
+end
+
+-- ── Search filter helpers ─────────────────────────────────────────────────────
+
+local function _q_matches(name, q)
+    return name:lower():find(q:lower(), 1, true) ~= nil
+end
+
+local function _planet_matches(pd, q)
+    return _q_matches(pd.name, q)
+end
+
+local function _system_has_match(sd, q)
+    if _q_matches(sd.name, q) then return true end
+    for _, pd in ipairs(sd.planets or {}) do
+        if _planet_matches(pd, q) then return true end
+    end
+    return false
+end
+
+local function _cartel_has_match(cd, q)
+    if _q_matches(cd.name, q) then return true end
+    for _, sd in pairs(cd.systems or {}) do
+        if _system_has_match(sd, q) then return true end
+    end
+    return false
 end
 
 -- ── Data loading ──────────────────────────────────────────────────────────────
@@ -230,7 +258,7 @@ function ui_build_galaxy_dropdown()
         y             = panel_y_str,
         width         = panel_w_pct .. "%",
         height        = panel_h_str,
-        adjLabelstyle = UI.style.frame_css,
+        adjLabelstyle = "background-color: rgb(18, 18, 26); border: 1px solid rgba(255,255,255,0.46);",
         autoSave      = false,
         autoLoad      = false,
     })
@@ -243,9 +271,17 @@ function ui_build_galaxy_dropdown()
     }, UI.galaxy_dropdown)
     bg:setStyleSheet("background-color: rgb(20, 20, 28); border: none;")
 
-    -- ── Header (3%) ───────────────────────────────────────────────────────
+    -- Layout: compute pixel dimensions to accommodate fixed-height searchbar
+    local topbar_h = math.floor(panel_h_px * 0.03)
+    local footer_h = math.floor(panel_h_px * 0.03)
+    local search_h = 30
+    local scroll_y = topbar_h + search_h
+    local footer_y = panel_h_px - footer_h
+    local scroll_h = footer_y - scroll_y
+
+    -- ── Header ────────────────────────────────────────────────────────────
     UI.galaxy_topbar = Geyser.Label:new({
-        name = "galaxy_topbar", x=0, y=0, width="100%", height="3%"
+        name = "galaxy_topbar", x=0, y=0, width="100%", height=topbar_h
     }, UI.galaxy_dropdown)
     UI.galaxy_topbar:setStyleSheet(UI.style.header_label_css)
 
@@ -300,16 +336,48 @@ function ui_build_galaxy_dropdown()
         UI.galaxy_button_active = false
     end)
 
-    -- ── Scroll area (3%–97%) ──────────────────────────────────────────────
+    -- ── Search bar ────────────────────────────────────────────────────────
+    UI.galaxy_search_cmd = Geyser.CommandLine:new({
+        name   = "galaxy_search_cmd",
+        x      = 0, y = topbar_h,
+        width  = "100%", height = search_h,
+    }, UI.galaxy_dropdown)
+    UI.galaxy_search_cmd:setStyleSheet([[
+        QLineEdit {
+            background-color: rgb(25, 25, 35);
+            border: none;
+            border-bottom: 1px solid rgba(255,255,255,25);
+            color: #c8c8d0;
+            font-size: 11px;
+            padding: 0px 6px;
+        }
+        QLineEdit:focus {
+            background-color: rgb(30, 30, 45);
+            border-bottom: 1px solid rgba(100,160,255,150);
+        }
+    ]])
+
+    -- ── Scroll area ───────────────────────────────────────────────────────
     -- Do NOT call setStyleSheet on ScrollBox — unsupported, causes errors.
     UI.galaxy_scroll = Geyser.ScrollBox:new({
         name = "galaxy_scroll",
-        x="0%", y="3%", width="100%", height="94%"
+        x=0, y=scroll_y, width="100%", height=scroll_h
     }, UI.galaxy_dropdown)
 
-    -- ── Footer legend (97%–100%) ──────────────────────────────────────────
+    -- Mask the native scrollbar track — QScrollArea renders it white and the
+    -- profile stylesheet doesn't cascade into the ScrollBox widget.  Created
+    -- AFTER galaxy_scroll so it sits on top (higher z-order).  Mouse-wheel
+    -- scrolling is unaffected; only click-on-track is unavailable.
+    local scrollbar_mask = Geyser.Label:new({
+        name  = "galaxy_scrollbar_mask",
+        x     = "96%", y = scroll_y,
+        width = "4%",  height = scroll_h,
+    }, UI.galaxy_dropdown)
+    scrollbar_mask:setStyleSheet("background-color: rgb(18, 18, 26); border: none;")
+
+    -- ── Footer legend ─────────────────────────────────────────────────────
     UI.galaxy_footer = Geyser.Label:new({
-        name = "galaxy_footer", x=0, y="97%", width="100%", height="3%"
+        name = "galaxy_footer", x=0, y=footer_y, width="100%", height=footer_h
     }, UI.galaxy_dropdown)
     UI.galaxy_footer:setStyleSheet(UI.style.header_label_css)
 
@@ -422,20 +490,28 @@ end
 
 -- ── Count visible rows ────────────────────────────────────────────────────────
 
-local function _count_visible_rows(sorted_cartels)
+local function _count_visible_rows(sorted_cartels, q)
+    local searching = q and q ~= ""
     local n = 0
     for _, cn in ipairs(sorted_cartels) do
-        n = n + 1
-        if UI.galaxy.expanded[cn] then
-            local cd = UI.galaxy.cartels[cn]
-            for sn in pairs(cd.systems or {}) do
-                if sn ~= (cn .. " Space") then
-                    n = n + 1
-                    local sys_key = cn .. ":" .. sn
-                    if UI.galaxy.expanded[sys_key] then
-                        for _, pd in ipairs((cd.systems[sn] or {}).planets or {}) do
-                            if pd.name ~= (sn .. " Space") then
-                                n = n + 1
+        local cd = UI.galaxy.cartels[cn]
+        if not searching or _cartel_has_match(cd, q) then
+            n = n + 1
+            if searching or UI.galaxy.expanded[cn] then
+                for sn in pairs(cd.systems or {}) do
+                    if sn ~= (cn .. " Space") then
+                        local sd = cd.systems[sn]
+                        if not searching or _system_has_match(sd, q) then
+                            n = n + 1
+                            local sys_key = cn .. ":" .. sn
+                            if searching or UI.galaxy.expanded[sys_key] then
+                                for _, pd in ipairs((sd or {}).planets or {}) do
+                                    if pd.name ~= (sn .. " Space") then
+                                        if not searching or _planet_matches(pd, q) then
+                                            n = n + 1
+                                        end
+                                    end
+                                end
                             end
                         end
                     end
@@ -521,11 +597,18 @@ function ui_populate_galaxy_dropdown()
     UI.galaxy_scroll_state:hide()
     UI.galaxy_scroll_content:show()
 
+    -- Read current search query
+    local q = ""
+    if UI.galaxy_search_cmd then
+        q = (UI.galaxy_search_cmd:getCommand() or ""):match("^%s*(.-)%s*$")
+    end
+    local searching = q ~= ""
+
     local sorted_cartels = {}
     for cn in pairs(UI.galaxy.cartels) do table.insert(sorted_cartels, cn) end
     table.sort(sorted_cartels)
 
-    local visible_rows = _count_visible_rows(sorted_cartels)
+    local visible_rows = _count_visible_rows(sorted_cartels, q)
     local content_h    = math.max(visible_rows * ROW_H + 4, 2000)
 
     -- Resize in place — preserves Qt scroll offset
@@ -536,30 +619,36 @@ function ui_populate_galaxy_dropdown()
     for _, cartel_name in ipairs(sorted_cartels) do
         local cartel_data = UI.galaxy.cartels[cartel_name]
 
-        local r = ui_create_galaxy_row(UI.galaxy_scroll_content, cartel_name, "cartel", 0, y_px, cartel_data)
-        table.insert(UI.galaxy_rows, r)
-        y_px = y_px + ROW_H
+        if not searching or _cartel_has_match(cartel_data, q) then
+            local r = ui_create_galaxy_row(UI.galaxy_scroll_content, cartel_name, "cartel", 0, y_px, cartel_data)
+            table.insert(UI.galaxy_rows, r)
+            y_px = y_px + ROW_H
 
-        if UI.galaxy.expanded[cartel_name] then
-            local sorted_sys = {}
-            for sn in pairs(cartel_data.systems or {}) do table.insert(sorted_sys, sn) end
-            table.sort(sorted_sys)
+            if searching or UI.galaxy.expanded[cartel_name] then
+                local sorted_sys = {}
+                for sn in pairs(cartel_data.systems or {}) do table.insert(sorted_sys, sn) end
+                table.sort(sorted_sys)
 
-            for _, system_name in ipairs(sorted_sys) do
-                if system_name ~= (cartel_name .. " Space") then
-                    local system_data = cartel_data.systems[system_name]
+                for _, system_name in ipairs(sorted_sys) do
+                    if system_name ~= (cartel_name .. " Space") then
+                        local system_data = cartel_data.systems[system_name]
 
-                    local sr = ui_create_galaxy_row(UI.galaxy_scroll_content, system_name, "system", 1, y_px, system_data)
-                    table.insert(UI.galaxy_rows, sr)
-                    y_px = y_px + ROW_H
+                        if not searching or _system_has_match(system_data, q) then
+                            local sr = ui_create_galaxy_row(UI.galaxy_scroll_content, system_name, "system", 1, y_px, system_data)
+                            table.insert(UI.galaxy_rows, sr)
+                            y_px = y_px + ROW_H
 
-                    local sys_key = cartel_name .. ":" .. system_name
-                    if UI.galaxy.expanded[sys_key] then
-                        for _, planet_data in ipairs(system_data.planets or {}) do
-                            if planet_data.name ~= (system_name .. " Space") then
-                                local pr = ui_create_galaxy_row(UI.galaxy_scroll_content, planet_data.name, "planet", 2, y_px, planet_data)
-                                table.insert(UI.galaxy_rows, pr)
-                                y_px = y_px + ROW_H
+                            local sys_key = cartel_name .. ":" .. system_name
+                            if searching or UI.galaxy.expanded[sys_key] then
+                                for _, planet_data in ipairs(system_data.planets or {}) do
+                                    if planet_data.name ~= (system_name .. " Space") then
+                                        if not searching or _planet_matches(planet_data, q) then
+                                            local pr = ui_create_galaxy_row(UI.galaxy_scroll_content, planet_data.name, "planet", 2, y_px, planet_data)
+                                            table.insert(UI.galaxy_rows, pr)
+                                            y_px = y_px + ROW_H
+                                        end
+                                    end
+                                end
                             end
                         end
                     end
@@ -593,5 +682,21 @@ function ui_toggle_galaxy()
         UI.galaxy_dropdown:raise()
         UI.galaxy.visible       = true
         UI.galaxy_button_active = true
+        -- Start search polling (self-rescheduling; stops when galaxy is hidden)
+        UI.galaxy._last_search = nil
+        local _spoll
+        _spoll = function()
+            if not UI.galaxy.visible then return end
+            local q = ""
+            if UI.galaxy_search_cmd then
+                q = (UI.galaxy_search_cmd:getCommand() or ""):match("^%s*(.-)%s*$")
+            end
+            if q ~= UI.galaxy._last_search then
+                UI.galaxy._last_search = q
+                ui_populate_galaxy_dropdown()
+            end
+            tempTimer(0.15, _spoll)
+        end
+        tempTimer(0.15, _spoll)
     end
 end

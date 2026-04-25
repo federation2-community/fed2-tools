@@ -103,6 +103,7 @@ F2T_HAULING_STATE = {
 f2t_settings_register("hauling", "margin_threshold", {
     description = "Minimum profit margin % to continue trading a commodity",
     default = 40,
+    min = 0, max = 100,
     validator = function(value)
         local num = tonumber(value)
         if not num or num < 0 or num > 100 then
@@ -115,6 +116,7 @@ f2t_settings_register("hauling", "margin_threshold", {
 f2t_settings_register("hauling", "cycle_pause", {
     description = "Seconds to pause after completing all 5 commodities (0 = no pause)",
     default = 60,
+    min = 0, max = 300,
     validator = function(value)
         local num = tonumber(value)
         if not num or num < 0 or num > 300 then
@@ -149,6 +151,7 @@ f2t_settings_register("hauling", "excluded_commodities", {
 f2t_settings_register("hauling", "po_mode", {
     description = "PO hauling mode: 'both' (deficit + excess) or 'deficit' (deficit only)",
     default = "both",
+    choices = {"both", "deficit"},
     validator = function(value)
         if value ~= "both" and value ~= "deficit" then
             return false, "Must be 'both' or 'deficit'"
@@ -160,6 +163,7 @@ f2t_settings_register("hauling", "po_mode", {
 f2t_settings_register("hauling", "po_deficit_threshold", {
     description = "Stock level at or below which deficit hauling triggers",
     default = -525,
+    min = -525, max = -75,
     validator = function(value)
         local num = tonumber(value)
         if not num or num < -525 or num > -75 then
@@ -172,6 +176,7 @@ f2t_settings_register("hauling", "po_deficit_threshold", {
 f2t_settings_register("hauling", "po_excess_threshold", {
     description = "Stock level at or above which excess selling triggers",
     default = 20000,
+    min = 750, max = 20000,
     validator = function(value)
         local num = tonumber(value)
         if not num or num < 750 or num > 20000 then
@@ -184,6 +189,7 @@ f2t_settings_register("hauling", "po_excess_threshold", {
 f2t_settings_register("hauling", "po_max_sell_attempts", {
     description = "Maximum sell locations to try before jettisoning cargo",
     default = 3,
+    min = 1, max = 10,
     validator = function(value)
         local num = tonumber(value)
         if not num or num < 1 or num > 10 then

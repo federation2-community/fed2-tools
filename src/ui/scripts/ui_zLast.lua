@@ -133,6 +133,7 @@ function ui_build()
     ui_update_header()
     ui_who_init()
     ui_chat_init()
+    ui_load_tab_layout()
 
     ui_built = true
     f2t_debug_log("[ui] ui_build finished")

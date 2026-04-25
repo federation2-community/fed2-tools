@@ -276,6 +276,36 @@ UI.style.cargo_gap_filler_css = [[
     backdrop-filter: blur(4px) saturate(110%);
 ]]
 
+-- Notification inactive tab - warm red border + tinted background signals unread content
+UI.style.notify_inactive_tab_css = UI.style.notify_inactive_tab_css or [[
+    QLabel::hover{
+        background-color: rgba(60, 35, 35, 210);
+        color: rgba(255, 255, 255, 0.95);
+        border-top-left-radius: 0px;
+        border-top-right-radius: 0px;
+        border-width: 2px;
+        border-style: solid;
+        border-color: rgba(230, 80, 60, 0.95);
+        margin-right: 1px;
+        margin-left: 1px;
+        qproperty-alignment: 'AlignVCenter';
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 2px 6px rgba(0, 0, 0, 0.3);
+        transition: all 120ms ease;
+    }
+    QLabel::!hover{
+        background-color: rgba(50, 25, 25, 190);
+        color: rgba(255, 210, 200, 0.9);
+        border-top-left-radius: 10px;
+        border-top-right-radius: 10px;
+        border-width: 2px;
+        border-style: solid;
+        border-color: rgba(210, 65, 50, 0.8);
+        margin-right: 1px;
+        margin-left: 1px;
+        qproperty-alignment: 'AlignVCenter';
+    }
+]]
+
 UI.style.cargo_dropdown_css = [[
     background-color: rgba(0,0,0,255);
     border-left: 2px solid rgba(255,255,255,0.46);

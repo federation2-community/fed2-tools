@@ -260,8 +260,10 @@ function Adjustable.TabWindow:adjustTabStyle()
                 self[v].adjLabel:setColor(self.activeTabBGColor)
             end
         else
-            self[v].adjLabelstyle = self.inactiveTabStyle
-            self[v].adjLabel:setStyleSheet(self.inactiveTabStyle)
+            local has_notify = self.notifications and self.notifications[v]
+            local style = has_notify and (self.notifyTabStyle or self.inactiveTabStyle) or self.inactiveTabStyle
+            self[v].adjLabelstyle = style
+            self[v].adjLabel:setStyleSheet(style)
             if ibg_rgb then
                 self[v].adjLabel:setColor("<"..ibg_rgb..">")
             else
@@ -544,8 +546,30 @@ function Adjustable.TabWindow:activateTab(tab)
         self[tab].adjLabelstyle = self.activeTabStyle
         self[tab].adjLabel:setStyleSheet(self.activeTabStyle)
         self[self.current.."center"]:show()
+        self:clearNotification(tab)
     end
     self:raiseAll()
+end
+
+-- Mark a tab as having new content; applies the notification style when the tab is inactive
+function Adjustable.TabWindow:notify(tab)
+    if not self[tab] then return end
+    if self.current == tab then return end
+    self.notifications = self.notifications or {}
+    self.notifications[tab] = true
+    local style = self.notifyTabStyle or self.inactiveTabStyle
+    self[tab].adjLabelstyle = style
+    self[tab].adjLabel:setStyleSheet(style)
+end
+
+-- Clear the notification indicator for a tab and restore the normal inactive style
+function Adjustable.TabWindow:clearNotification(tab)
+    if not self.notifications or not self.notifications[tab] then return end
+    self.notifications[tab] = nil
+    if self[tab] then
+        self[tab].adjLabelstyle = self.inactiveTabStyle
+        self[tab].adjLabel:setStyleSheet(self.inactiveTabStyle)
+    end
 end
 
 -- deactivates and hides the current active tab
@@ -665,6 +689,9 @@ function Adjustable.TabWindow:transformTabContainer(tab)
     end
     container.adjLabel:setStyleSheet(container.adjLabelstyle)
     self[tab.."center"]:show()
+    if not Adjustable.TabWindow.loading then
+        Adjustable.TabWindow:save()
+    end
 end
 
 --restores the window to be a tab again
@@ -746,6 +773,9 @@ function Adjustable.TabWindow:changeTabContainer(tab, myWindow, position)
         self.current = nil
     end
     myWindow:activateTab(tab)
+    if not Adjustable.TabWindow.loading then
+        Adjustable.TabWindow:save()
+    end
 end
 
 -- handles the release event
@@ -1038,7 +1068,9 @@ function Adjustable.TabWindow:load(slot, dir)
     else
         return "No saved settings found at: "..loadDir
     end
-    
+
+    Adjustable.TabWindow.loading = true
+
     -- find the tabified container by name
     local function findWindow(cont, name)
         cont = cont or Geyser
@@ -1119,8 +1151,10 @@ function Adjustable.TabWindow:load(slot, dir)
                     myTab:load(slot, dir)
                 end
             end
-        end        
+        end
     end
+
+    Adjustable.TabWindow.loading = false
 end
 
 -- EMCO by demonnic https://github.com/demonnic/EMCO
@@ -1263,6 +1297,10 @@ Adjustable.TabWindow.parent = Geyser.Container
 Adjustable.TabWindow.all = Adjustable.TabWindow.all or {}
 Adjustable.TabWindow.all_windows = Adjustable.TabWindow.all_windows or {}
 Adjustable.TabWindow.allTabs = Adjustable.TabWindow.allTabs or {}
+Adjustable.TabWindow.loading = false
+-- Default save/load directory; set here so save()/load() can be called on the class
+-- without needing a specific instance (they iterate Adjustable.TabWindow.all anyway)
+Adjustable.TabWindow.defaultDir = getMudletHomeDir().."/AdjustableTabWindow/"
 
 -- tabwindow constructor
 function Adjustable.TabWindow:new(cons, container)
@@ -1314,6 +1352,8 @@ function Adjustable.TabWindow:new(cons, container)
     }
     ]]
     
+    me.notifyTabStyle = me.notifyTabStyle or me.inactiveTabStyle
+
     me.activeTabStyle = me.activeTabStyle or [[
     background-color: ]]..me.activeTabBGColor..[[;
     color: ]]..me.tabTxtColor..[[;

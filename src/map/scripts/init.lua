@@ -19,6 +19,7 @@ f2t_debug_log("[map] Mapper script registered with Mudlet")
 f2t_settings_register("map", "planet_nav_default", {
     description = "Default destination when navigating to a planet (shuttlepad or orbit)",
     default = "shuttlepad",
+    choices = {"shuttlepad", "orbit"},
     validator = function(value)
         if value ~= "shuttlepad" and value ~= "orbit" then
             return false, "Must be 'shuttlepad' or 'orbit'"
@@ -41,6 +42,7 @@ f2t_settings_register("map", "enabled", {
 f2t_settings_register("map", "speedwalk_timeout", {
     description = "Timeout in seconds to wait for movement (detects stuck speedwalk)",
     default = 3,
+    min = 1, max = 10,
     validator = function(value)
         if type(value) ~= "number" then
             return false, "Must be a number"
@@ -55,6 +57,7 @@ f2t_settings_register("map", "speedwalk_timeout", {
 f2t_settings_register("map", "speedwalk_max_retries", {
     description = "Maximum retry attempts before stopping speedwalk",
     default = 3,
+    min = 1, max = 10,
     validator = function(value)
         if type(value) ~= "number" then
             return false, "Must be a number"
@@ -80,6 +83,7 @@ f2t_settings_register("map", "map_manual_confirm", {
 f2t_settings_register("map", "area_zoom", {
     description = "Default zoom level for new map areas (3-50)",
     default = 10,
+    min = 3, max = 50,
     validator = function(value)
         local num = tonumber(value)
         if not num then

@@ -35,6 +35,7 @@ function ui_build_tabs()
             tabs             = {"Who","General","Exchange"},
             activeTabStyle   = UI.style.active_tab_css,
             inactiveTabStyle = UI.style.inactive_tab_css,
+            notifyTabStyle   = UI.style.notify_inactive_tab_css,
             footerStyle      = UI.style.footer_css,
             centerStyle      = UI.style.center_css,
         },
@@ -53,6 +54,7 @@ function ui_build_tabs()
             tabs             = {"Comm"},
             activeTabStyle   = UI.style.active_tab_css,
             inactiveTabStyle = UI.style.inactive_tab_css,
+            notifyTabStyle   = UI.style.notify_inactive_tab_css,
             footerStyle      = UI.style.footer_css,
             centerStyle      = UI.style.center_css,
         },
@@ -71,6 +73,7 @@ function ui_build_tabs()
             tabs             = {"fedmap"},
             activeTabStyle   = UI.style.active_tab_css,
             inactiveTabStyle = UI.style.inactive_tab_css,
+            notifyTabStyle   = UI.style.notify_inactive_tab_css,
             footerStyle      = UI.style.footer_css,
             centerStyle      = UI.style.center_css,
         },
@@ -89,11 +92,41 @@ function ui_build_tabs()
             tabs             = {"Hauling","Trading"},
             activeTabStyle   = UI.style.active_tab_css,
             inactiveTabStyle = UI.style.inactive_tab_css,
+            notifyTabStyle   = UI.style.notify_inactive_tab_css,
             footerStyle      = UI.style.footer_css,
             centerStyle      = UI.style.center_css,
         },
         UI.vbox_right
     )
+
+end
+
+-- Restore tab layout from the previous session.
+-- save() and load() are class-level operations: they iterate Adjustable.TabWindow.all
+-- and save/restore every window's tab assignments, active tab, and floating state
+-- (including the position and size of any independently-floated windows).
+-- On first run the save file won't exist and load() silently returns, leaving
+-- tabs in their default positions.
+function ui_load_tab_layout()
+    Adjustable.TabWindow:load()
+end
+
+-- Call ui_tab_notify("TabName") whenever content is added to a tab to show the
+-- red-border indicator on that tab if it is not currently active.
+-- The indicator is automatically cleared when the user switches to the tab.
+-- Uses Adjustable.TabWindow.allTabs (the live tracker) so this works correctly
+-- even after the user drags a tab to a different frame or floats it.
+
+function ui_tab_notify(tab_name)
+    local tab_window = Adjustable.TabWindow.allTabs and Adjustable.TabWindow.allTabs[tab_name]
+    if not tab_window then return end
+    tab_window:notify(tab_name)
+end
+
+function ui_tab_clear_notify(tab_name)
+    local tab_window = Adjustable.TabWindow.allTabs and Adjustable.TabWindow.allTabs[tab_name]
+    if not tab_window then return end
+    tab_window:clearNotification(tab_name)
 end
 
 -- populate our various tabs

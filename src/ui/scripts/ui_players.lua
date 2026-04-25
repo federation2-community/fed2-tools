@@ -380,5 +380,16 @@ function ui_who_init()
         f2t_debug_log("[who] tab auto-refresh wired")
     end
 
+    -- Periodic auto-refresh every 60 seconds; only fires when logged in
+    local function schedule_who_periodic()
+        UI.who._periodic_timer = tempTimer(60, function()
+            if gmcp and gmcp.char and gmcp.char.vitals and not UI.who.parsing then
+                ui_who_refresh()
+            end
+            schedule_who_periodic()
+        end)
+    end
+    schedule_who_periodic()
+
     f2t_debug_log("[who] init complete")
 end

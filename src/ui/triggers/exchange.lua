@@ -33,5 +33,7 @@ elseif line:match("Offer price is") then
     UI.exchange_window:cecho("<ansiYellow>Selling at: " .. price .. "\n")
 end
 
+ui_tab_notify("Exchange")
+
 deleteLine()
 tempLineTrigger(1, 1, [[if getCurrentLine() == "" then deleteLine() end]])

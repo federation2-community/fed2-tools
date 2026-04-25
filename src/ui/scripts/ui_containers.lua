@@ -154,6 +154,21 @@ function ui_create_containers()
     UI.local_players_dropdown:setStyleSheet(UI.style.local_players_dropdown_standalone_css)
     UI.local_players_dropdown:hide()
 
+    -- Right-edge border strip: shown only when LP extends below cargo's bottom.
+    -- Width is 2px matching the other panel borders; height and position are set dynamically.
+    UI.lp_overflow_border = Geyser.Label:new({
+        name   = "UI.lp_overflow_border",
+        x      = "0%",
+        y      = "0%",
+        width  = 2,
+        height = 0,
+    })
+    UI.lp_overflow_border:setStyleSheet([[
+        border-left: 2px solid rgba(255,255,255,0.46);
+        background: transparent;
+    ]])
+    UI.lp_overflow_border:hide()
+
     -- Gap filler for standalone mode: fills the height gap left by top_right_frame
     UI.local_players_gap_filler = Geyser.Label:new({
         name    = "UI.local_players_gap_filler",

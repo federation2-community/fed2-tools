@@ -64,6 +64,13 @@ function ui_build_header()
         UI.top_left_frame
     )
 
+    -- Gear icon (settings) — first child, gets 1/7 of header width via HBox
+    UI.gear_icon = Geyser.Label:new({name = "UI.gear_icon"}, UI.header)
+    UI.gear_icon:setStyleSheet(UI.style.button_css)
+    UI.gear_icon:setFontSize(13)
+    UI.gear_icon:echo("<center>⚙</center>")
+    UI.gear_icon:setClickCallback("ui_toggle_settings")
+
     -- Create the six stat labels inside the stats container
     for i = 1, 6 do
         UI["Label"..i] = Geyser.Label:new(

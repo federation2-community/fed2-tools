@@ -92,6 +92,7 @@ function ui_hide_local_players()
     UI.local_players_visible = false
     UI.local_players_dropdown:hide()
     if UI.local_players_gap_filler then UI.local_players_gap_filler:hide() end
+    if UI.lp_overflow_border then UI.lp_overflow_border:hide() end
 end
 
 -- ── Entry point (called on every gmcp.room.info event and cargo toggle) ───────
@@ -236,6 +237,30 @@ function ui_update_local_players_display()
             sep:setStyleSheet("background-color: rgba(255,255,255,0.46)")
             table.insert(UI.local_players_separators, sep)
             y = y + pct(sep_px)
+        end
+    end
+
+    -- Right-edge border strip: visible only when LP overflows below cargo's bottom.
+    if UI.lp_overflow_border then
+        local cfg = UI.container_config
+        if cargo_visible and UI.cargo_height_px and UI.cargo_height_px > 0 then
+            local _, screen_h        = getMainWindowSize()
+            local top_left_height_px = math.floor(screen_h * cfg.top_left_height_pct  / 100)
+            local top_right_height_px = math.floor(screen_h * cfg.top_right_height_pct / 100)
+            local overflow_px        = total_px - (top_right_height_px - top_left_height_px) - UI.cargo_height_px
+
+            if overflow_px > 0 then
+                local lp_x     = 100 - cfg.right_width_pct - cfg.cargo_width_pct
+                local border_y = top_right_height_px + UI.cargo_height_px
+                UI.lp_overflow_border:move(lp_x .. "%", border_y)
+                UI.lp_overflow_border:resize(2, overflow_px)
+                UI.lp_overflow_border:show()
+                UI.lp_overflow_border:raise()
+            else
+                UI.lp_overflow_border:hide()
+            end
+        else
+            UI.lp_overflow_border:hide()
         end
     end
 end

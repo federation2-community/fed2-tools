@@ -104,6 +104,7 @@ function ui_update_cargo_display()
     
     -- Set dropdown height in PIXELS - this is the only fixed pixel dimension
     UI.cargo_dropdown:resize(nil, total_height_px)
+    UI.cargo_height_px = total_height_px
 
     -- Now calculate percentages WITHIN the dropdown
     local entry_height_pct = (entry_height_px / total_height_px) * 100
