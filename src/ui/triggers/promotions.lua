@@ -19,6 +19,8 @@
 local captured_line = line
 local pname, prest  = captured_line:match("^%s*(%u%a+)(.*)")
 
+ui_tab_notify("General")
+
 ui_general_add("promotion", function(win)
     if pname then
         local nc

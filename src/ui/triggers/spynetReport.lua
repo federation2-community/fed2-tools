@@ -7,6 +7,8 @@ local name   = matches[3]
 local role   = (matches[4] and matches[4] ~= "") and matches[4] or ""
 local action = matches[5]
 
+ui_tab_notify("General")
+
 ui_general_add("spynet", function(win)
     local nc
     if UI.who and UI.who.name_colors and UI.who.name_colors[name] then

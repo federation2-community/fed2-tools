@@ -9,6 +9,8 @@
 local name = matches[2]
 local rest = line:sub(#name + 1)
 
+ui_tab_notify("General")
+
 ui_general_add("movement", function(win)
     local nc
     if UI.who and UI.who.name_colors and UI.who.name_colors[name] then
