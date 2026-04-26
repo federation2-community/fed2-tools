@@ -31,7 +31,7 @@ UI.galaxy = UI.galaxy or {
     capture_active = false,
     capture_lines  = {},    -- raw lines buffered during capture
 
-    _last_search   = nil,   -- last polled search text, for change detection
+    _search_text   = "",    -- current filter string (set by search alias)
 }
 
 UI.galaxy_button_active = false
@@ -209,7 +209,7 @@ end
 
 -- Shared style constants
 local _BG  = "background-color: rgb(18, 18, 26); border: none;"
-local _ROW = "background-color: rgb(22, 22, 30); border: none; border-bottom: 1px solid rgba(255,255,255,10);"
+local _ROW = "background-color: rgb(22, 22, 30); border: none; border-bottom: 1px solid rgba(255,255,255,35);"
 
 -- Layout constants (% of row width)
 -- Rows are always x=0; indentation is via child widget x-position only.
@@ -223,7 +223,7 @@ local EXPAND_PCT = 5    -- expand button slot width %
 local ICON_PCT   = 5    -- icon slot width %
 local NAV_X      = "93%"
 local NAV_W      = "5%"
-local ROW_H      = 23   -- pixels (tied to font size, not window size)
+local ROW_H      = 24   -- pixels (tied to font size, not window size)
 
 -- Draw epoch: incremented each redraw so widget names are always unique,
 -- preventing Geyser registry collisions from stale hidden widgets.
@@ -271,22 +271,28 @@ function ui_build_galaxy_dropdown()
     }, UI.galaxy_dropdown)
     bg:setStyleSheet("background-color: rgb(20, 20, 28); border: none;")
 
-    -- Layout: compute pixel dimensions to accommodate fixed-height searchbar
-    local topbar_h = math.floor(panel_h_px * 0.03)
-    local footer_h = math.floor(panel_h_px * 0.03)
-    local search_h = 30
-    local scroll_y = topbar_h + search_h
-    local footer_y = panel_h_px - footer_h
-    local scroll_h = footer_y - scroll_y
+    -- Layout: two-row header (title+buttons | search label+field), scroll fills middle,
+    -- fixed footer at bottom.  All y-positions except topbar use percentages so
+    -- the layout stays correct when the window is resized after initial build.
+    local topbar_h = 52
+    local footer_h = 20
+    local pad      = 4   -- inner-border safety margin
 
-    -- ── Header ────────────────────────────────────────────────────────────
+    local function ppct(px) return string.format("%.2f%%", px / panel_h_px * 100) end
+
+    local scroll_y_pct  = ppct(topbar_h)
+    local footer_y_pct  = ppct(panel_h_px - footer_h - pad)
+    local scroll_h_pct  = ppct(panel_h_px - footer_h - pad - topbar_h)
+
+    -- ── Header ───────────────────────────────────────────────────────────
     UI.galaxy_topbar = Geyser.Label:new({
         name = "galaxy_topbar", x=0, y=0, width="100%", height=topbar_h
     }, UI.galaxy_dropdown)
     UI.galaxy_topbar:setStyleSheet(UI.style.header_label_css)
 
+    -- Row 1 (y=5, h=22): title left, control buttons right
     UI.galaxy_title = Geyser.Label:new({
-        name = "galaxy_title", x="2%", y=0, width="64%", height="100%"
+        name = "galaxy_title", x="2%", y=5, width="47%", height=22
     }, UI.galaxy_topbar)
     UI.galaxy_title:setStyleSheet(
         "background-color:transparent; color:#c8c8d0; font-size:11px; font-weight:bold;")
@@ -294,7 +300,7 @@ function ui_build_galaxy_dropdown()
 
     -- Collapse all (−)
     UI.galaxy_collapse_btn = Geyser.Label:new({
-        name = "galaxy_collapse_btn", x="67%", y="5%", width="9%", height="90%"
+        name = "galaxy_collapse_btn", x="50%", y=5, width="14%", height=22
     }, UI.galaxy_topbar)
     UI.galaxy_collapse_btn:setStyleSheet(UI.style.button_css)
     UI.galaxy_collapse_btn:echo("<center>−</center>")
@@ -304,9 +310,9 @@ function ui_build_galaxy_dropdown()
     end)
     UI.galaxy_collapse_btn:setToolTip("Collapse all")
 
-    -- Refresh (⟳) — runs "di systems" again; tooltip shows data age
+    -- Refresh (⟳)
     UI.galaxy_refresh_icon = Geyser.Label:new({
-        name = "galaxy_refresh_icon", x="77%", y="5%", width="9%", height="90%"
+        name = "galaxy_refresh_icon", x="65%", y=5, width="14%", height=22
     }, UI.galaxy_topbar)
     UI.galaxy_refresh_icon:setStyleSheet(UI.style.button_css)
     UI.galaxy_refresh_icon:echo("<center>⟳</center>")
@@ -317,7 +323,7 @@ function ui_build_galaxy_dropdown()
 
     -- Close (✕)
     UI.galaxy_close = Geyser.Label:new({
-        name = "galaxy_close", x="88%", y="5%", width="10%", height="90%"
+        name = "galaxy_close", x="80%", y=5, width="18%", height=22
     }, UI.galaxy_topbar)
     UI.galaxy_close:setStyleSheet([[
         QLabel {
@@ -334,50 +340,61 @@ function ui_build_galaxy_dropdown()
         UI.galaxy_dropdown:hide()
         UI.galaxy.visible       = false
         UI.galaxy_button_active = false
+        UI.galaxy._poll_active  = false
+        if UI.galaxy._search_debounce then
+            killTimer(UI.galaxy._search_debounce)
+            UI.galaxy._search_debounce = nil
+        end
     end)
 
-    -- ── Search bar ────────────────────────────────────────────────────────
+    -- Row 2 (y=31, h=18): "Search:" label + CommandLine
+    local search_lbl = Geyser.Label:new({
+        name = "galaxy_search_label", x="2%", y=31, width="16%", height=18
+    }, UI.galaxy_topbar)
+    search_lbl:setStyleSheet(
+        "background-color:transparent; color:rgba(160,160,170,200); font-size:10px;")
+    search_lbl:echo("<right>Search:</right>")
+
     UI.galaxy_search_cmd = Geyser.CommandLine:new({
         name   = "galaxy_search_cmd",
-        x      = 0, y = topbar_h,
-        width  = "100%", height = search_h,
-    }, UI.galaxy_dropdown)
+        x      = "19%", y = 31, width = "79%", height = 18,
+    }, UI.galaxy_topbar)
     UI.galaxy_search_cmd:setStyleSheet([[
         QLineEdit {
-            background-color: rgb(25, 25, 35);
-            border: none;
-            border-bottom: 1px solid rgba(255,255,255,25);
+            background-color: rgba(12, 12, 20, 210);
+            border: 1px solid rgba(100, 100, 110, 180);
+            border-radius: 3px;
             color: #c8c8d0;
             font-size: 11px;
-            padding: 0px 6px;
+            padding: 0px 4px;
         }
         QLineEdit:focus {
-            background-color: rgb(30, 30, 45);
-            border-bottom: 1px solid rgba(100,160,255,150);
+            background-color: rgba(18, 18, 32, 230);
+            border: 1px solid rgba(100, 160, 255, 140);
         }
     ]])
+    -- Prevent the search box from submitting text to the game on Enter
+    UI.galaxy_search_cmd:setAction(function() end)
 
     -- ── Scroll area ───────────────────────────────────────────────────────
     -- Do NOT call setStyleSheet on ScrollBox — unsupported, causes errors.
     UI.galaxy_scroll = Geyser.ScrollBox:new({
         name = "galaxy_scroll",
-        x=0, y=scroll_y, width="100%", height=scroll_h
+        x=0, y=scroll_y_pct, width="100%", height=scroll_h_pct
     }, UI.galaxy_dropdown)
 
-    -- Mask the native scrollbar track — QScrollArea renders it white and the
-    -- profile stylesheet doesn't cascade into the ScrollBox widget.  Created
-    -- AFTER galaxy_scroll so it sits on top (higher z-order).  Mouse-wheel
-    -- scrolling is unaffected; only click-on-track is unavailable.
+    -- Mask the native scrollbar track — QScrollArea renders it white.
+    -- Created AFTER galaxy_scroll so it sits on top (higher z-order).
     local scrollbar_mask = Geyser.Label:new({
         name  = "galaxy_scrollbar_mask",
-        x     = "96%", y = scroll_y,
-        width = "4%",  height = scroll_h,
+        x     = "96%", y = scroll_y_pct,
+        width = "4%",  height = scroll_h_pct,
     }, UI.galaxy_dropdown)
     scrollbar_mask:setStyleSheet("background-color: rgb(18, 18, 26); border: none;")
 
     -- ── Footer legend ─────────────────────────────────────────────────────
     UI.galaxy_footer = Geyser.Label:new({
-        name = "galaxy_footer", x=0, y=footer_y, width="100%", height=footer_h
+        name = "galaxy_footer", x=0, y=footer_y_pct, width="100%", height=footer_h
     }, UI.galaxy_dropdown)
     UI.galaxy_footer:setStyleSheet(UI.style.header_label_css)
 
@@ -600,7 +617,7 @@ function ui_populate_galaxy_dropdown()
     -- Read current search query
     local q = ""
     if UI.galaxy_search_cmd then
-        q = (UI.galaxy_search_cmd:getCommand() or ""):match("^%s*(.-)%s*$")
+        q = (UI.galaxy_search_cmd:getText() or ""):match("^%s*(.-)%s*$")
     end
     local searching = q ~= ""
 
@@ -672,6 +689,11 @@ function ui_toggle_galaxy()
         UI.galaxy_dropdown:hide()
         UI.galaxy.visible       = false
         UI.galaxy_button_active = false
+        UI.galaxy._poll_active  = false
+        if UI.galaxy._search_debounce then
+            killTimer(UI.galaxy._search_debounce)
+            UI.galaxy._search_debounce = nil
+        end
     else
         -- Auto-load on first open if not yet loaded and not already loading
         if not UI.galaxy.loaded and not UI.galaxy.loading then
@@ -682,21 +704,35 @@ function ui_toggle_galaxy()
         UI.galaxy_dropdown:raise()
         UI.galaxy.visible       = true
         UI.galaxy_button_active = true
-        -- Start search polling (self-rescheduling; stops when galaxy is hidden)
-        UI.galaxy._last_search = nil
-        local _spoll
-        _spoll = function()
-            if not UI.galaxy.visible then return end
-            local q = ""
-            if UI.galaxy_search_cmd then
-                q = (UI.galaxy_search_cmd:getCommand() or ""):match("^%s*(.-)%s*$")
-            end
-            if q ~= UI.galaxy._last_search then
-                UI.galaxy._last_search = q
-                ui_populate_galaxy_dropdown()
+        -- Start search polling: single loop with debounce to limit redraws.
+        -- Without debounce, every keystroke triggers a full tree rebuild (hundreds
+        -- of new Geyser objects accumulate), causing lag and visual garbage.
+        if not UI.galaxy._poll_active then
+            UI.galaxy._poll_active = true
+            UI.galaxy._last_search = nil
+            local _spoll
+            _spoll = function()
+                if not UI.galaxy.visible then
+                    UI.galaxy._poll_active = false
+                    return
+                end
+                local q = ""
+                if UI.galaxy_search_cmd then
+                    q = (UI.galaxy_search_cmd:getText() or ""):match("^%s*(.-)%s*$")
+                end
+                if q ~= UI.galaxy._last_search then
+                    UI.galaxy._last_search = q
+                    if UI.galaxy._search_debounce then
+                        killTimer(UI.galaxy._search_debounce)
+                    end
+                    UI.galaxy._search_debounce = tempTimer(0.35, function()
+                        UI.galaxy._search_debounce = nil
+                        if UI.galaxy.visible then ui_populate_galaxy_dropdown() end
+                    end)
+                end
+                tempTimer(0.15, _spoll)
             end
             tempTimer(0.15, _spoll)
         end
-        tempTimer(0.15, _spoll)
     end
 end

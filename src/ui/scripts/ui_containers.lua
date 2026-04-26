@@ -258,7 +258,7 @@ function ui_on_container_reposition(event, container_name)
                 UI.container_config.top_left_center_ratio = tl_w / avail
             end
 
-            if ui_refresh_local_players_layout then ui_refresh_local_players_layout() end
+            if ui_update_local_players then ui_update_local_players() end
         end
     end
 
@@ -389,7 +389,7 @@ function ui_on_window_resize()
             UI.container_config.top_left_center_ratio = tl_w / avail
         end
 
-        if ui_refresh_local_players_layout then ui_refresh_local_players_layout() end
+        if ui_update_local_players then ui_update_local_players() end
     end
 
     -- Keep the gear icon at the correct corner
@@ -400,7 +400,6 @@ function ui_on_window_resize()
 end
 
 -- Called from ui_cargo.lua show/hide and after any window reshape.
--- Delegates all layout logic to ui_local_players.lua.
 function ui_reposition_local_players()
-    if ui_refresh_local_players_layout then ui_refresh_local_players_layout() end
+    if ui_update_local_players then ui_update_local_players() end
 end

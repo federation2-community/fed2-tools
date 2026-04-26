@@ -30,6 +30,16 @@ function ui_show_cargo_display()
 
     ui_update_cargo_display()
     if ui_update_local_players then ui_update_local_players() end
+
+    -- Re-raise galaxy after all widget creation (immediate + deferred for Qt finalization)
+    if UI.galaxy_dropdown and UI.galaxy.visible then
+        UI.galaxy_dropdown:raise()
+        tempTimer(0, function()
+            if UI.galaxy_dropdown and UI.galaxy.visible then
+                UI.galaxy_dropdown:raise()
+            end
+        end)
+    end
 end
 
 function ui_hide_cargo_display()

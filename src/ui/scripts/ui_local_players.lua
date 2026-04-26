@@ -17,108 +17,17 @@ local LOCAL_RANK_COLOR = {
 }
 local LOCAL_RANK_COLOR_DEFAULT = "ansi_white"
 
--- Generation counter: ensures every rebuild uses unique Geyser child names so
--- stale hidden objects from previous rooms never interfere.
+-- Generation counter: ensures every rebuild uses unique Geyser child names.
 local _lp_gen = 0
 
--- ── Layout ────────────────────────────────────────────────────────────────────
--- Repositions the pane and gap_filler based on current cargo visibility.
--- Uses container_config for LP width — get_width() returns 0 on hidden containers.
-function ui_refresh_local_players_layout()
+-- ── Row renderer (internal) ───────────────────────────────────────────────────
+
+function ui_update_local_players_display(players)
     if not UI.local_players_dropdown then return end
-
-    if not UI.local_players_visible then
-        if UI.local_players_gap_filler then UI.local_players_gap_filler:hide() end
-        return
-    end
-
-    -- Use config values (not get_width()) so positioning is correct even during
-    -- early init when Adjustable.Container::get_width() may return 0.
-    local cfg                  = UI.container_config
-    local right_width_pct      = cfg.right_width_pct
-    local lp_width_pct         = cfg.local_players_width_pct
-    local cargo_width_pct      = cfg.cargo_width_pct
-    local top_left_height_pct  = cfg.top_left_height_pct
-    local top_right_height_pct = cfg.top_right_height_pct
-    local top_height_diff_pct  = top_right_height_pct - top_left_height_pct
-    -- top_right_width_pct: derived from config (needed for gap filler width)
-    local left_width_pct       = cfg.left_width_pct
-    local available_center_pct = 100 - left_width_pct - right_width_pct
-    local top_right_width_pct  = available_center_pct * (1 - cfg.top_left_center_ratio)
-
-    -- Hide before moving: Geyser.Label requires this for position to update visually.
-    UI.local_players_dropdown:hide()
-
-    if UI.cargo_display_visible and UI.cargo_dropdown then
-        -- ── With cargo ──────────────────────────────────────────────────────
-        local lp_x = 100 - right_width_pct - cargo_width_pct - lp_width_pct
-
-        UI.local_players_dropdown:move(lp_x .. "%", top_left_height_pct .. "%")
-        UI.local_players_dropdown:setStyleSheet(UI.style.local_players_dropdown_with_cargo_css)
-        if UI.local_players_gap_filler then UI.local_players_gap_filler:hide() end
-    else
-        -- ── Standalone (no cargo) ────────────────────────────────────────────
-        local lp_x         = 100 - right_width_pct - lp_width_pct
-        local gf_width_pct = lp_width_pct - top_right_width_pct
-
-        UI.local_players_dropdown:move(lp_x .. "%", top_right_height_pct .. "%")
-        UI.local_players_dropdown:setStyleSheet(UI.style.local_players_dropdown_standalone_css)
-
-        if UI.local_players_gap_filler then
-            UI.local_players_gap_filler:move(lp_x .. "%", top_left_height_pct .. "%")
-            UI.local_players_gap_filler:resize(gf_width_pct .. "%", top_height_diff_pct .. "%")
-            UI.local_players_gap_filler:show()
-            UI.local_players_gap_filler:raise()
-        end
-    end
-
-    UI.local_players_dropdown:show()
-    UI.local_players_dropdown:raise()
-    if UI.top_right_frame then UI.top_right_frame:raise() end
-
-    ui_update_local_players_display()
-end
-
--- ── Visibility ────────────────────────────────────────────────────────────────
-
-function ui_show_local_players()
-    if not UI.local_players_dropdown then return end
-    UI.local_players_visible = true
-    ui_refresh_local_players_layout()
-end
-
-function ui_hide_local_players()
-    if not UI.local_players_dropdown then return end
-    UI.local_players_visible = false
-    UI.local_players_dropdown:hide()
-    if UI.local_players_gap_filler then UI.local_players_gap_filler:hide() end
-    if UI.lp_overflow_border then UI.lp_overflow_border:hide() end
-end
-
--- ── Entry point (called on every gmcp.room.info event and cargo toggle) ───────
-
-function ui_update_local_players()
-    local players = gmcp.room and gmcp.room.info and gmcp.room.info.players
-
-    if not players or #players == 0 then
-        ui_hide_local_players()
-        return
-    end
-
-    ui_show_local_players()
-end
-
--- ── Row renderer ──────────────────────────────────────────────────────────────
-
-function ui_update_local_players_display()
-    if not UI.local_players_dropdown then return end
-
-    local players = gmcp.room and gmcp.room.info and gmcp.room.info.players
     if not players or #players == 0 then return end
 
-    -- Bump generation so every child has a unique name
     _lp_gen = _lp_gen + 1
-    local g = _lp_gen
+    local g            = _lp_gen
     local cargo_visible = UI.cargo_display_visible and UI.cargo_dropdown ~= nil
 
     -- Hide previous generation
@@ -138,11 +47,10 @@ function ui_update_local_players_display()
     local player_count = #players
 
     -- Heights in pixels
-    -- Header only in cargo mode; standalone mode puts the label in the gap filler.
     local header_px = cargo_visible and 22 or 0
     local entry_px  = 28
     local sep_px    = 2
-    local pad_px    = 6   -- top and bottom padding around the player list
+    local pad_px    = 6
 
     local total_px = math.max(50,
                        header_px
@@ -174,7 +82,6 @@ function ui_update_local_players_display()
         y = pct(header_px)
     end
 
-    -- Top padding
     y = y + pct(pad_px)
 
     for i, player in ipairs(players) do
@@ -191,7 +98,6 @@ function ui_update_local_players_display()
         }, UI.local_players_dropdown)
         table.insert(UI.local_players_entries, entry)
 
-        -- Name console — vertically centred within the row
         local name_con = Geyser.MiniConsole:new({
             name      = "lp_name_" .. g .. "_" .. i,
             x         = "3%",
@@ -210,7 +116,6 @@ function ui_update_local_players_display()
             true
         )
 
-        -- Eye button — same vertical band as the name console
         local eye_btn = Geyser.Label:new({
             name    = "lp_eye_" .. g .. "_" .. i,
             x       = "79%",
@@ -225,7 +130,6 @@ function ui_update_local_players_display()
 
         y = y + pct(entry_px)
 
-        -- Separator between players only (not above first or below last)
         if i < player_count then
             local sep = Geyser.Label:new({
                 name   = "lp_sep_" .. g .. "_" .. i,
@@ -243,11 +147,11 @@ function ui_update_local_players_display()
     -- Right-edge border strip: visible only when LP overflows below cargo's bottom.
     if UI.lp_overflow_border then
         local cfg = UI.container_config
-        if cargo_visible and UI.cargo_height_px and UI.cargo_height_px > 0 then
-            local _, screen_h        = getMainWindowSize()
-            local top_left_height_px = math.floor(screen_h * cfg.top_left_height_pct  / 100)
+        if UI.cargo_display_visible and UI.cargo_dropdown and UI.cargo_height_px and UI.cargo_height_px > 0 then
+            local _, screen_h         = getMainWindowSize()
+            local top_left_height_px  = math.floor(screen_h * cfg.top_left_height_pct  / 100)
             local top_right_height_px = math.floor(screen_h * cfg.top_right_height_pct / 100)
-            local overflow_px        = total_px - (top_right_height_px - top_left_height_px) - UI.cargo_height_px
+            local overflow_px         = total_px - (top_right_height_px - top_left_height_px) - UI.cargo_height_px
 
             if overflow_px > 0 then
                 local lp_x     = 100 - cfg.right_width_pct - cfg.cargo_width_pct
@@ -262,5 +166,78 @@ function ui_update_local_players_display()
         else
             UI.lp_overflow_border:hide()
         end
+    end
+end
+
+-- ── Single entry point ────────────────────────────────────────────────────────
+-- Called on every GMCP room.info update, cargo toggle, and container reposition.
+-- Handles both the show/hide decision AND the layout/render in one pass.
+
+function ui_update_local_players()
+    if not UI.local_players_dropdown then return end
+
+    local players = gmcp.room and gmcp.room.info and gmcp.room.info.players
+
+    if not players or #players == 0 then
+        UI.local_players_visible = false
+        UI.local_players_dropdown:hide()
+        if UI.local_players_gap_filler then UI.local_players_gap_filler:hide() end
+        if UI.lp_overflow_border then UI.lp_overflow_border:hide() end
+        return
+    end
+
+    UI.local_players_visible = true
+
+    -- Position the pane based on cargo visibility and current container config
+    local cfg                  = UI.container_config
+    local right_width_pct      = cfg.right_width_pct
+    local lp_width_pct         = cfg.local_players_width_pct
+    local cargo_width_pct      = cfg.cargo_width_pct
+    local top_left_height_pct  = cfg.top_left_height_pct
+    local top_right_height_pct = cfg.top_right_height_pct
+    local top_height_diff_pct  = top_right_height_pct - top_left_height_pct
+    local left_width_pct       = cfg.left_width_pct
+    local available_center_pct = 100 - left_width_pct - right_width_pct
+    local top_right_width_pct  = available_center_pct * (1 - cfg.top_left_center_ratio)
+
+    -- Hide before moving: Geyser.Label requires this for position to update visually.
+    UI.local_players_dropdown:hide()
+
+    if UI.cargo_display_visible and UI.cargo_dropdown then
+        -- ── With cargo ──────────────────────────────────────────────────────
+        local lp_x = 100 - right_width_pct - cargo_width_pct - lp_width_pct
+        UI.local_players_dropdown:move(lp_x .. "%", top_left_height_pct .. "%")
+        UI.local_players_dropdown:setStyleSheet(UI.style.local_players_dropdown_with_cargo_css)
+        if UI.local_players_gap_filler then UI.local_players_gap_filler:hide() end
+    else
+        -- ── Standalone (no cargo) ────────────────────────────────────────────
+        local lp_x         = 100 - right_width_pct - lp_width_pct
+        local gf_width_pct = lp_width_pct - top_right_width_pct
+        UI.local_players_dropdown:move(lp_x .. "%", top_right_height_pct .. "%")
+        UI.local_players_dropdown:setStyleSheet(UI.style.local_players_dropdown_standalone_css)
+        if UI.local_players_gap_filler then
+            UI.local_players_gap_filler:move(lp_x .. "%", top_left_height_pct .. "%")
+            UI.local_players_gap_filler:resize(gf_width_pct .. "%", top_height_diff_pct .. "%")
+            UI.local_players_gap_filler:show()
+            UI.local_players_gap_filler:raise()
+        end
+    end
+
+    UI.local_players_dropdown:show()
+    UI.local_players_dropdown:raise()
+    if UI.top_right_frame then UI.top_right_frame:raise() end
+
+    ui_update_local_players_display(players)
+
+    -- Keep galaxy above LP. Qt's show() implicitly raises a widget; the deferred
+    -- raise fires after all pending Qt operations complete, which is when it
+    -- reliably takes effect.
+    if UI.galaxy_dropdown and UI.galaxy.visible then
+        UI.galaxy_dropdown:raise()
+        tempTimer(0, function()
+            if UI.galaxy_dropdown and UI.galaxy.visible then
+                UI.galaxy_dropdown:raise()
+            end
+        end)
     end
 end
