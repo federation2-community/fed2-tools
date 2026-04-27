@@ -489,7 +489,8 @@ function Get-ComponentData {
 # Map files to copy to shared resources during build
 $MapFiles = @(
     "starter_map.json",
-    "starter_map_with_exchanges.json"
+    "starter_map_with_exchanges.json",
+    "galaxy_brief.json"
 )
 
 # Copy map files to shared resources
@@ -692,9 +693,18 @@ function Invoke-Build {
     $xmlParts -join "`n" | Set-Content -Path $xmlFile -Encoding UTF8
     Write-Host "Generated XML: $xmlFile" -ForegroundColor Green
 
-    # Write config.lua
+    # Write config.lua (fields required by the Mudlet package repository validator)
     $configLua = Join-Path $BuildDir "config.lua"
-    "mpackage = `"$($config.name)`"" | Set-Content -Path $configLua -Encoding UTF8
+    $configVersion = if ($Version) { $Version } else { "dev" }
+    $configCreated = (Get-Date -Format "yyyy-MM-dd")
+    @"
+mpackage = "$($config.name)"
+title = "$($config.title)"
+version = "$configVersion"
+created = "$configCreated"
+author = "$($config.author)"
+description = "$($config.description)"
+"@ | Set-Content -Path $configLua -Encoding UTF8
     Write-Host "Generated config: $configLua" -ForegroundColor Green
 
     # Copy resource files to build directory
