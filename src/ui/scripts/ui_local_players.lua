@@ -229,14 +229,14 @@ function ui_update_local_players()
 
     ui_update_local_players_display(players)
 
-    -- Keep galaxy above LP. Qt's show() implicitly raises a widget; the deferred
-    -- raise fires after all pending Qt operations complete, which is when it
-    -- reliably takes effect.
+    -- Keep galaxy above LP. AC has no Qt widget of its own — adjLabel and
+    -- galaxy_scroll are independent main-window siblings, so raiseAll() is
+    -- required to bring every child widget above LP.
     if UI.galaxy_dropdown and UI.galaxy.visible then
-        UI.galaxy_dropdown:raise()
-        tempTimer(0, function()
+        UI.galaxy_dropdown:raiseAll()
+        tempTimer(0.1, function()
             if UI.galaxy_dropdown and UI.galaxy.visible then
-                UI.galaxy_dropdown:raise()
+                UI.galaxy_dropdown:raiseAll()
             end
         end)
     end

@@ -33,10 +33,10 @@ function ui_show_cargo_display()
 
     -- Re-raise galaxy after all widget creation (immediate + deferred for Qt finalization)
     if UI.galaxy_dropdown and UI.galaxy.visible then
-        UI.galaxy_dropdown:raise()
-        tempTimer(0, function()
+        UI.galaxy_dropdown:raiseAll()
+        tempTimer(0.1, function()
             if UI.galaxy_dropdown and UI.galaxy.visible then
-                UI.galaxy_dropdown:raise()
+                UI.galaxy_dropdown:raiseAll()
             end
         end)
     end

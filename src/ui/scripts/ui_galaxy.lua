@@ -265,54 +265,39 @@ function ui_build_galaxy_dropdown()
     UI.galaxy_dropdown:lockContainer("border")
     f2t_ui_register_container("galaxy_dropdown", UI.galaxy_dropdown)
 
-    -- Opaque background (overrides any alpha in frame_css)
-    local bg = Geyser.Label:new({
-        name = "galaxy_panel_bg", x=0, y=0, width="100%", height="100%"
-    }, UI.galaxy_dropdown)
-    bg:setStyleSheet("background-color: rgb(20, 20, 28); border: none;")
+    -- Parent all children to Inside so they automatically clear the 1-px border.
+    local _in = UI.galaxy_dropdown.Inside
 
-    -- Layout: two-row header (title+buttons | search label+field), scroll fills middle,
-    -- fixed footer at bottom.  All y-positions except topbar use percentages so
-    -- the layout stays correct when the window is resized after initial build.
-    local topbar_h = 52
+    -- Layout: two-row header, scroll fills middle, fixed footer at bottom.
+    -- ppct() converts pixels to % of the inner height (panel minus 2px borders).
+    local topbar_h = 60
     local footer_h = 20
-    local pad      = 4   -- inner-border safety margin
+    local pad      = 4
 
-    local function ppct(px) return string.format("%.2f%%", px / panel_h_px * 100) end
+    local inner_h  = panel_h_px - 2
+    local function ppct(px) return string.format("%.2f%%", px / inner_h * 100) end
 
-    local scroll_y_pct  = ppct(topbar_h)
-    local footer_y_pct  = ppct(panel_h_px - footer_h - pad)
-    local scroll_h_pct  = ppct(panel_h_px - footer_h - pad - topbar_h)
+    local scroll_y_pct = ppct(topbar_h)
+    local footer_y_pct = ppct(inner_h - footer_h - pad)
+    local scroll_h_pct = ppct(inner_h - footer_h - pad - topbar_h)
 
     -- ── Header ───────────────────────────────────────────────────────────
     UI.galaxy_topbar = Geyser.Label:new({
         name = "galaxy_topbar", x=0, y=0, width="100%", height=topbar_h
-    }, UI.galaxy_dropdown)
+    }, _in)
     UI.galaxy_topbar:setStyleSheet(UI.style.header_label_css)
 
-    -- Row 1 (y=5, h=22): title left, control buttons right
+    -- Row 1 (y=4, h=24): title left, refresh + close right
     UI.galaxy_title = Geyser.Label:new({
-        name = "galaxy_title", x="2%", y=5, width="47%", height=22
+        name = "galaxy_title", x="1%", y=4, width="61%", height=24
     }, UI.galaxy_topbar)
     UI.galaxy_title:setStyleSheet(
         "background-color:transparent; color:#c8c8d0; font-size:11px; font-weight:bold;")
     UI.galaxy_title:echo("Galaxy Navigator")
 
-    -- Collapse all (−)
-    UI.galaxy_collapse_btn = Geyser.Label:new({
-        name = "galaxy_collapse_btn", x="50%", y=5, width="14%", height=22
-    }, UI.galaxy_topbar)
-    UI.galaxy_collapse_btn:setStyleSheet(UI.style.button_css)
-    UI.galaxy_collapse_btn:echo("<center>−</center>")
-    UI.galaxy_collapse_btn:setClickCallback(function()
-        UI.galaxy.expanded = {}
-        ui_populate_galaxy_dropdown()
-    end)
-    UI.galaxy_collapse_btn:setToolTip("Collapse all")
-
     -- Refresh (⟳)
     UI.galaxy_refresh_icon = Geyser.Label:new({
-        name = "galaxy_refresh_icon", x="65%", y=5, width="14%", height=22
+        name = "galaxy_refresh_icon", x="63%", y=4, width="17%", height=24
     }, UI.galaxy_topbar)
     UI.galaxy_refresh_icon:setStyleSheet(UI.style.button_css)
     UI.galaxy_refresh_icon:echo("<center>⟳</center>")
@@ -323,7 +308,7 @@ function ui_build_galaxy_dropdown()
 
     -- Close (✕)
     UI.galaxy_close = Geyser.Label:new({
-        name = "galaxy_close", x="80%", y=5, width="18%", height=22
+        name = "galaxy_close", x="81%", y=4, width="18%", height=24
     }, UI.galaxy_topbar)
     UI.galaxy_close:setStyleSheet([[
         QLabel {
@@ -347,9 +332,21 @@ function ui_build_galaxy_dropdown()
         end
     end)
 
-    -- Row 2 (y=31, h=18): "Search:" label + CommandLine
+    -- Row 2 (y=32, h=24): collapse-all (small square, above the per-row expand buttons),
+    -- "Search:" label, and CommandLine
+    UI.galaxy_collapse_btn = Geyser.Label:new({
+        name = "galaxy_collapse_btn", x="1%", y=32, width="8%", height=24
+    }, UI.galaxy_topbar)
+    UI.galaxy_collapse_btn:setStyleSheet(UI.style.button_css)
+    UI.galaxy_collapse_btn:echo("<center>⊟</center>")
+    UI.galaxy_collapse_btn:setClickCallback(function()
+        UI.galaxy.expanded = {}
+        ui_populate_galaxy_dropdown()
+    end)
+    UI.galaxy_collapse_btn:setToolTip("Collapse all")
+
     local search_lbl = Geyser.Label:new({
-        name = "galaxy_search_label", x="2%", y=31, width="16%", height=18
+        name = "galaxy_search_label", x="10%", y=32, width="13%", height=24
     }, UI.galaxy_topbar)
     search_lbl:setStyleSheet(
         "background-color:transparent; color:rgba(160,160,170,200); font-size:10px;")
@@ -357,45 +354,40 @@ function ui_build_galaxy_dropdown()
 
     UI.galaxy_search_cmd = Geyser.CommandLine:new({
         name   = "galaxy_search_cmd",
-        x      = "19%", y = 31, width = "79%", height = 18,
+        x      = "24%", y = 32, width = "75%", height = 24,
     }, UI.galaxy_topbar)
     UI.galaxy_search_cmd:setStyleSheet([[
-        QLineEdit {
-            background-color: rgba(12, 12, 20, 210);
-            border: 1px solid rgba(100, 100, 110, 180);
-            border-radius: 3px;
-            color: #c8c8d0;
-            font-size: 11px;
-            padding: 0px 4px;
-        }
-        QLineEdit:focus {
-            background-color: rgba(18, 18, 32, 230);
-            border: 1px solid rgba(100, 160, 255, 140);
-        }
+        background-color: rgb(10, 10, 16);
+        color: rgba(200, 200, 210, 255);
+        font-size: 11px;
+        font-weight: bold;
+        border: 1px solid rgba(100, 100, 110, 180);
+        border-radius: 3px;
+        padding-left: 4px;
+        padding-right: 4px;
     ]])
     -- Prevent the search box from submitting text to the game on Enter
     UI.galaxy_search_cmd:setAction(function() end)
 
     -- ── Scroll area ───────────────────────────────────────────────────────
-    -- Do NOT call setStyleSheet on ScrollBox — unsupported, causes errors.
     UI.galaxy_scroll = Geyser.ScrollBox:new({
-        name = "galaxy_scroll",
-        x=0, y=scroll_y_pct, width="100%", height=scroll_h_pct
-    }, UI.galaxy_dropdown)
+        name   = "galaxy_scroll",
+        x      = 0, y = scroll_y_pct,
+        width  = "100%", height = scroll_h_pct,
+    }, _in)
 
-    -- Mask the native scrollbar track — QScrollArea renders it white.
-    -- Created AFTER galaxy_scroll so it sits on top (higher z-order).
-    local scrollbar_mask = Geyser.Label:new({
-        name  = "galaxy_scrollbar_mask",
-        x     = "96%", y = scroll_y_pct,
-        width = "4%",  height = scroll_h_pct,
-    }, UI.galaxy_dropdown)
-    scrollbar_mask:setStyleSheet("background-color: rgb(18, 18, 26); border: none;")
+    -- Content width must be strictly less than the ScrollBox viewport width
+    -- (viewport = scrollbox width minus vertical scrollbar ~17px).
+    -- adjLabel and galaxy_scroll are siblings in the main Qt window, so CSS
+    -- set on adjLabel cannot cascade to the ScrollBox's scrollbars.
+    -- Using actual scrollbox width minus 20px guarantees no horizontal scroll.
+    local sb_w = UI.galaxy_scroll:get_width()
+    UI.galaxy.content_w_px = math.max(50, sb_w - 20)
 
     -- ── Footer legend ─────────────────────────────────────────────────────
     UI.galaxy_footer = Geyser.Label:new({
         name = "galaxy_footer", x=0, y=footer_y_pct, width="100%", height=footer_h
-    }, UI.galaxy_dropdown)
+    }, _in)
     UI.galaxy_footer:setStyleSheet(UI.style.header_label_css)
 
     UI.galaxy_legend = Geyser.Label:new({
@@ -422,7 +414,7 @@ function ui_create_galaxy_row(parent, name, row_type, indent_level, y_px, data)
     }, parent)
     row:setStyleSheet(_ROW)
 
-    local indent_pct = indent_level * INDENT_PCT
+    local indent_pct = 1 + indent_level * INDENT_PCT
 
     -- Expand / collapse (cartel and system only)
     local exp_key
@@ -570,8 +562,9 @@ function ui_populate_galaxy_dropdown()
     -- galaxy_scroll_state  : shown for loading / no-data messages
     -- galaxy_main_content  : shown when data is available; never destroyed
     if not UI.galaxy_scroll_state then
+        local cw = UI.galaxy.content_w_px or 200
         UI.galaxy_scroll_state = Geyser.Label:new({
-            name="galaxy_scroll_state", x=0, y=0, width="96%", height=2000
+            name="galaxy_scroll_state", x=0, y=0, width=cw, height=2000
         }, UI.galaxy_scroll)
         UI.galaxy_scroll_state:setStyleSheet(_BG)
 
@@ -583,8 +576,9 @@ function ui_populate_galaxy_dropdown()
     end
 
     if not UI.galaxy_scroll_content then
+        local cw = UI.galaxy.content_w_px or 200
         UI.galaxy_scroll_content = Geyser.Label:new({
-            name="galaxy_main_content", x=0, y=0, width="96%", height=2000
+            name="galaxy_main_content", x=0, y=0, width=cw, height=2000
         }, UI.galaxy_scroll)
         UI.galaxy_scroll_content:setStyleSheet(_BG)
     end
@@ -628,8 +622,10 @@ function ui_populate_galaxy_dropdown()
     local visible_rows = _count_visible_rows(sorted_cartels, q)
     local content_h    = math.max(visible_rows * ROW_H + 4, 2000)
 
-    -- Resize in place — preserves Qt scroll offset
-    UI.galaxy_scroll_content:resize("96%", content_h)
+    -- Resize in place — preserves Qt scroll offset.
+    -- Use stored pixel width so the content never exceeds the viewport width,
+    -- which would otherwise trigger a horizontal scrollbar.
+    UI.galaxy_scroll_content:resize(UI.galaxy.content_w_px or 200, content_h)
 
     local y_px = 2
 
@@ -701,7 +697,7 @@ function ui_toggle_galaxy()
         end
         ui_populate_galaxy_dropdown()
         UI.galaxy_dropdown:show()
-        UI.galaxy_dropdown:raise()
+        UI.galaxy_dropdown:raiseAll()
         UI.galaxy.visible       = true
         UI.galaxy_button_active = true
         -- Start search polling: single loop with debounce to limit redraws.
