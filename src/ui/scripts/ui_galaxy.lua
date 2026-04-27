@@ -360,7 +360,7 @@ function ui_build_galaxy_dropdown()
     UI.galaxy_collapse_btn:echo("<center>⊟</center>")
     UI.galaxy_collapse_btn:setClickCallback(function()
         UI.galaxy.expanded = {}
-        ui_populate_galaxy_dropdown()
+        tempTimer(0, ui_populate_galaxy_dropdown)
     end)
     UI.galaxy_collapse_btn:setToolTip("Collapse all")
 
@@ -424,9 +424,11 @@ end
 
 function ui_create_galaxy_row(parent, name, row_type, indent_level, y_px, data, is_current)
     local cartel_ctx = (data and data.cartel) or ""
-    local uid = string.format("gxrow_%d_%s_%s_%s",
+    -- Suffix "_r" prevents the uid from ever ending with "Class" (or any Class$ variant),
+    -- which Geyser.Container:new() treats as a class definition and skips container:add().
+    local uid = (string.format("gxrow_%d_%s_%s_%s",
         UI.galaxy_draw_epoch, row_type, cartel_ctx, name)
-        :gsub("[^%w_]", "_")
+        :gsub("[^%w_]", "_")) .. "_r"
 
     local row = Geyser.Label:new({
         name = uid, x=0, y=y_px, width="100%", height=ROW_H
@@ -454,7 +456,10 @@ function ui_create_galaxy_row(parent, name, row_type, indent_level, y_px, data, 
         ebtn:echo(is_exp and "<center>−</center>" or "<center>+</center>")
         ebtn:setClickCallback(function()
             UI.galaxy.expanded[exp_key] = not UI.galaxy.expanded[exp_key]
-            ui_populate_galaxy_dropdown()
+            -- Defer to let Geyser finish click-event propagation before rebuilding the tree.
+            -- Calling populate() synchronously from inside a click callback causes Geyser to
+            -- try to propagate the click through container refs on widgets we just hid/replaced.
+            tempTimer(0, ui_populate_galaxy_dropdown)
         end)
     end
 
@@ -514,40 +519,6 @@ function ui_create_galaxy_row(parent, name, row_type, indent_level, y_px, data, 
     end
 
     return row
-end
-
--- ── Count visible rows ────────────────────────────────────────────────────────
-
-local function _count_visible_rows(sorted_cartels, q)
-    local searching = q and q ~= ""
-    local n = 0
-    for _, cn in ipairs(sorted_cartels) do
-        local cd = UI.galaxy.cartels[cn]
-        if not searching or _cartel_has_match(cd, q) then
-            n = n + 1
-            if searching or UI.galaxy.expanded[cn] then
-                for sn in pairs(cd.systems or {}) do
-                    if sn ~= (cn .. " Space") then
-                        local sd = cd.systems[sn]
-                        if not searching or _system_has_match(sd, q) then
-                            n = n + 1
-                            local sys_key = cn .. ":" .. sn
-                            if searching or UI.galaxy.expanded[sys_key] then
-                                for _, pd in ipairs((sd or {}).planets or {}) do
-                                    if pd.name ~= (sn .. " Space") then
-                                        if not searching or _planet_matches(pd, q) then
-                                            n = n + 1
-                                        end
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-            end
-        end
-    end
-    return n
 end
 
 -- ── Populate the scrollable tree ──────────────────────────────────────────────
@@ -658,14 +629,6 @@ function ui_populate_galaxy_dropdown()
         end
     end
 
-    local visible_rows = _count_visible_rows(sorted_cartels, q)
-    local content_h    = math.max(visible_rows * ROW_H + 4, 2000)
-
-    -- Resize in place — preserves Qt scroll offset.
-    -- Use stored pixel width so the content never exceeds the viewport width,
-    -- which would otherwise trigger a horizontal scrollbar.
-    UI.galaxy_scroll_content:resize(UI.galaxy.content_w_px or 200, content_h)
-
     local y_px = 2
 
     for _, cartel_name in ipairs(sorted_cartels) do
@@ -713,6 +676,10 @@ function ui_populate_galaxy_dropdown()
             end
         end
     end
+    -- Resize after all rows are created. Resizing before creation triggers Qt
+    -- layout events mid-loop on large cartels, corrupting container references
+    -- and cutting the render short (only the first row survives).
+    UI.galaxy_scroll_content:resize(UI.galaxy.content_w_px or 200, math.max(y_px + 4, 2000))
 end
 
 -- ── Toggle visibility ─────────────────────────────────────────────────────────

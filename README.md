@@ -28,16 +28,23 @@ Launch Mudlet, create a new profile for Federation 2, and connect.
 
 ### 3. Install fed2-tools from the Package Manager
 
-1. Open **Toolbox → Package Manager** (or press **Alt+O**)
-2. Click the **Available** tab
-3. Search for **fed2-tools**
-4. Click the **fed2-tools** result, then click **Install**
+> **Note:** There is a GUI for the package manager, but the commands are more reliable
+
+1. `mpkg update`
+2. `mpkg install fed2-tools`
 
 > **Note:** If you have any existing mapper packages installed, uninstall them first — multiple mappers conflict. fed2-tools removes `generic_mapper` automatically, but other mapping packages need to be removed manually via **Package Manager → Uninstall**.
 
-### Alternative: Install from GitHub Releases
+### 3b. Alternative: Install from GitHub Releases
 
 Download the latest `fed2-tools.mpackage` from the [Releases](../../releases) page, then go to **Package Manager → Install from file** and select the downloaded file.
+
+### 4. Updating
+
+Please note that this package is in active development and receiving regular updates. It is probable that you are going to want to update to a newer version with new features and fixes. To do this:
+
+1. `mpkg update`
+2. `mpkg install fed2-tools`
 
 ## Initial Setup
 
