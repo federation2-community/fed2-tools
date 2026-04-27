@@ -489,7 +489,8 @@ function Get-ComponentData {
 # Map files to copy to shared resources during build
 $MapFiles = @(
     "starter_map.json",
-    "starter_map_with_exchanges.json"
+    "starter_map_with_exchanges.json",
+    "galaxy_brief.json"
 )
 
 # Copy map files to shared resources

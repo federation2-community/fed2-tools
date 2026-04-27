@@ -17,8 +17,8 @@ end
 -- Hide output
 deleteLine()
 
--- Extract system name (already trimmed by regex capture)
-local system_name = matches[2]
+-- Extract system name; strip any trailing annotation e.g. " - Dyson Sphere detected"
+local system_name = matches[2]:match("^(.-)%s+%-.+$") or matches[2]
 
 -- Store system name
 table.insert(F2T_MAP_EXPLORE_CARTEL_CAPTURE.lines, system_name)

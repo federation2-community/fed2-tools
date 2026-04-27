@@ -18,25 +18,26 @@ A Mudlet package for [Federation 2 Community Edition](https://federation2.com) t
 
 ## Installation
 
-### Prerequisites
+### 1. Download and install Mudlet
 
-- [Mudlet](https://www.mudlet.org/) 4.0 or higher
-- A Federation 2 account
+Get Mudlet from [mudlet.org](https://www.mudlet.org/) and install it.
 
-### Before Installing
+### 2. Create a profile and connect to Federation 2
 
-**Important:** Uninstall any existing mapper packages before installing fed2-tools. fed2-tools will automatically uninstall `generic_mapper` if it is present, but any other mapping scripts or packages should be removed manually beforehand.
+Launch Mudlet, create a new profile for Federation 2, and connect.
 
-To uninstall in Mudlet: Go to **Package Manager** → select the package → **Uninstall**
+### 3. Install fed2-tools from the Package Manager
 
-Having multiple mappers active will cause conflicts.
+1. Open **Toolbox → Package Manager** (or press **Alt+O**)
+2. Click the **Available** tab
+3. Search for **fed2-tools**
+4. Click the **fed2-tools** result, then click **Install**
 
-### Install fed2-tools
+> **Note:** If you have any existing mapper packages installed, uninstall them first — multiple mappers conflict. fed2-tools removes `generic_mapper` automatically, but other mapping packages need to be removed manually via **Package Manager → Uninstall**.
 
-1. Download the latest `fed2-tools.mpackage` from the [Releases](https://github.com/ping65510/fed2-tools/releases) page
-2. In Mudlet, go to **Package Manager** → **Install**
-3. Select the downloaded `.mpackage` file
-4. Connect to Federation 2
+### Alternative: Install from GitHub Releases
+
+Download the latest `fed2-tools.mpackage` from the [Releases](../../releases) page, then go to **Package Manager → Install from file** and select the downloaded file.
 
 ## Initial Setup
 
@@ -108,20 +109,15 @@ To enable:
 f2t settings set death_monitor_enabled true
 ```
 
-### 5. Enable the UI
+### 5. Enable the UI (Enabled by default)
 
-The UI component replaces the default Mudlet layout with a purpose-built interface for Federation 2. It organizes the screen into resizable frames with tabbed output windows — General, Exchange, Commodities, Chat, and Who on the left; the embedded map, Hauling, and Trading on the right. Chat and movement messages are routed to their own tabs to keep the main console clean. Hauling and Trading tabs are shown or hidden automatically based on your rank.
+The UI component replaces the default Mudlet console with a purpose-built interface for Federation 2. It provides resizable frames, an embedded map, and tabbed windows. Tabs are user-configurable — examples include General, Exchange, Chat, Cargo, Hauling, and Who. There are also overall status readouts, local players listing, a galaxy navigator, and a UI that lists all fed2-tools settings. Some elements are shown or hidden automatically based on your rank, so the UI will become more feature-rich as you progress.
+
+> **Tip:** Many UI elements assume a well-populated map database. Importing `galaxy_brief.json` (see step 1 above) is recommended for the best experience.
 
 ```
 ui on     # Enable the UI
-ui off    # Disable the UI and restore the default Mudlet map widget
-```
-
-You can also control whether movement and chat messages are duplicated in the main console:
-
-```
-ui settings set hide_movement_messages false   # Show movement messages in main console too
-ui settings set hide_chat_messages false       # Show chat in main console too
+ui off    # Disable the UI and restore the default Mudlet
 ```
 
 ## Quick Reference

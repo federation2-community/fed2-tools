@@ -208,8 +208,27 @@ end
 -- ============================================================================
 
 -- Shared style constants
-local _BG  = "background-color: rgb(18, 18, 26); border: none;"
-local _ROW = "background-color: rgb(22, 22, 30); border: none; border-bottom: 1px solid rgba(255,255,255,35);"
+local _BG      = "background-color: rgb(18, 18, 26); border: none;"
+local _ROW     = "background-color: rgb(22, 22, 30); border: none; border-bottom: 1px solid rgba(255,255,255,35);"
+local _BTN_CUR = [[
+    QLabel{
+        background-color: rgba(40, 40, 45, 200);
+        border-style: solid;
+        border-width: 1px;
+        border-radius: 3px;
+        border-color: rgba(255, 140, 0, 200);
+        color: rgba(200, 200, 210, 255);
+        font-size: 11px;
+        font-weight: bold;
+        qproperty-alignment: AlignCenter;
+    }
+    QLabel::hover{
+        background-color: rgba(60, 60, 70, 220);
+        border-color: rgba(255, 165, 0, 255);
+        color: white;
+        qproperty-alignment: AlignCenter;
+    }
+]]
 
 -- Layout constants (% of row width)
 -- Rows are always x=0; indentation is via child widget x-position only.
@@ -403,7 +422,7 @@ end
 
 -- ── Row builder ──────────────────────────────────────────────────────────────
 
-function ui_create_galaxy_row(parent, name, row_type, indent_level, y_px, data)
+function ui_create_galaxy_row(parent, name, row_type, indent_level, y_px, data, is_current)
     local cartel_ctx = (data and data.cartel) or ""
     local uid = string.format("gxrow_%d_%s_%s_%s",
         UI.galaxy_draw_epoch, row_type, cartel_ctx, name)
@@ -467,7 +486,7 @@ function ui_create_galaxy_row(parent, name, row_type, indent_level, y_px, data)
         x     = name_x_pct .. "%", y = 1,
         width = name_w_pct .. "%", height = ROW_H - 2
     }, row)
-    nlbl:setStyleSheet(UI.style.button_css)
+    nlbl:setStyleSheet(is_current and _BTN_CUR or UI.style.button_css)
     nlbl:echo(name)
     nlbl:setClickCallback(function() ui_galaxy_get_info(row_type, name) end)
     nlbl:setToolTip("Click for info")
@@ -619,6 +638,26 @@ function ui_populate_galaxy_dropdown()
     for cn in pairs(UI.galaxy.cartels) do table.insert(sorted_cartels, cn) end
     table.sort(sorted_cartels)
 
+    -- Determine current location for row highlighting
+    local ri          = gmcp and gmcp.room and gmcp.room.info
+    local cur_cartel  = ri and ri.cartel or ""
+    local cur_system  = ri and ri.system or ""
+    local cur_area    = ri and ri.area   or ""
+
+    -- Check whether cur_area is a known planet in cur_system.
+    -- If it is, highlight that planet row; otherwise highlight the system row.
+    local cur_planet = ""
+    local _ccd = cur_cartel ~= "" and UI.galaxy.cartels[cur_cartel]
+    local _csd = _ccd and _ccd.systems[cur_system]
+    if _csd then
+        for _, pd in ipairs(_csd.planets or {}) do
+            if pd.name == cur_area then
+                cur_planet = cur_area
+                break
+            end
+        end
+    end
+
     local visible_rows = _count_visible_rows(sorted_cartels, q)
     local content_h    = math.max(visible_rows * ROW_H + 4, 2000)
 
@@ -647,7 +686,10 @@ function ui_populate_galaxy_dropdown()
                         local system_data = cartel_data.systems[system_name]
 
                         if not searching or _system_has_match(system_data, q) then
-                            local sr = ui_create_galaxy_row(UI.galaxy_scroll_content, system_name, "system", 1, y_px, system_data)
+                            local sys_is_cur = (system_name == cur_system)
+                                and (cartel_name == cur_cartel)
+                                and (cur_planet == "")
+                            local sr = ui_create_galaxy_row(UI.galaxy_scroll_content, system_name, "system", 1, y_px, system_data, sys_is_cur)
                             table.insert(UI.galaxy_rows, sr)
                             y_px = y_px + ROW_H
 
@@ -656,7 +698,9 @@ function ui_populate_galaxy_dropdown()
                                 for _, planet_data in ipairs(system_data.planets or {}) do
                                     if planet_data.name ~= (system_name .. " Space") then
                                         if not searching or _planet_matches(planet_data, q) then
-                                            local pr = ui_create_galaxy_row(UI.galaxy_scroll_content, planet_data.name, "planet", 2, y_px, planet_data)
+                                            local pl_is_cur = (planet_data.name == cur_planet)
+                                                and (system_name == cur_system)
+                                            local pr = ui_create_galaxy_row(UI.galaxy_scroll_content, planet_data.name, "planet", 2, y_px, planet_data, pl_is_cur)
                                             table.insert(UI.galaxy_rows, pr)
                                             y_px = y_px + ROW_H
                                         end
@@ -694,6 +738,16 @@ function ui_toggle_galaxy()
         -- Auto-load on first open if not yet loaded and not already loading
         if not UI.galaxy.loaded and not UI.galaxy.loading then
             ui_galaxy_init()
+        end
+        -- Auto-expand current cartel and system on each open
+        local ri = gmcp and gmcp.room and gmcp.room.info
+        local cur_cartel = ri and ri.cartel
+        local cur_system = ri and ri.system
+        if cur_cartel and cur_cartel ~= "" then
+            UI.galaxy.expanded[cur_cartel] = true
+            if cur_system and cur_system ~= "" then
+                UI.galaxy.expanded[cur_cartel .. ":" .. cur_system] = true
+            end
         end
         ui_populate_galaxy_dropdown()
         UI.galaxy_dropdown:show()
