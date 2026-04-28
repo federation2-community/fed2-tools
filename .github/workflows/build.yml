@@ -126,6 +126,12 @@ jobs:
 
           cd mudlet-repo
 
+          # Sync fork's main with upstream before branching to avoid merge conflicts
+          gh repo sync "${OWNER}/mudlet-package-repository" \
+            --source Mudlet/mudlet-package-repository \
+            --branch main
+          git pull origin main
+
           # Create a versioned branch so each release gets its own PR
           git checkout -b "$BRANCH"
 
