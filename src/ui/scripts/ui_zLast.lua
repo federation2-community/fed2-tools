@@ -179,6 +179,11 @@ function ui_build()
 
     ui_built = true
     f2t_debug_log("[ui] ui_build finished")
+
+    -- Run adaptive fit after a short delay to let Geyser settle final pixel sizes.
+    tempTimer(0.2, function()
+        if ui_adaptive_fit then ui_adaptive_fit() end
+    end)
 end
 
 function ui_register_trigger()

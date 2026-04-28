@@ -5,7 +5,11 @@
       "WebFetch(domain:api.github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(python3 -c ' *)",
-      "Bash(python3)"
+      "Bash(python3)",
+      "WebFetch(domain:federation2.com)",
+      "WebFetch(domain:www.ibgames.net)",
+      "WebFetch(domain:www.ibgames.com)",
+      "WebSearch"
     ]
   }
 }
