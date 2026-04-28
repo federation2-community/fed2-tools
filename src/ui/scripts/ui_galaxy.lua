@@ -282,6 +282,10 @@ function ui_build_galaxy_dropdown()
         autoLoad      = false,
     })
     UI.galaxy_dropdown:lockContainer("border")
+    -- Re-enable dragging after lock: lockContainer sets locked=true which disables
+    -- mouse drag/resize, but the "border" style already applied the correct visual
+    -- layout (Inside inset by padding, title cleared, buttons hidden).
+    UI.galaxy_dropdown.locked = false
     f2t_ui_register_container("galaxy_dropdown", UI.galaxy_dropdown)
 
     -- Parent all children to Inside so they automatically clear the 1-px border.
