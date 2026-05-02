@@ -73,24 +73,13 @@ jobs:
         if: steps.version.outputs.is_release == 'true'
         id: release_notes
         run: |
-          # Get the current tag
-          CURRENT_TAG="${GITHUB_REF#refs/tags/}"
+            TAG="${GITHUB_REF#refs/tags/}"
 
-          # Find the previous tag (exclude current)
-          PREVIOUS_TAG=$(git tag --sort=-v:refname | grep -v "^prerelease$" | grep -v "^${CURRENT_TAG}$" | head -n1)
+            SUMMARY=$(git tag -l --format='%(contents)' "$TAG")
 
-          if [ -z "$PREVIOUS_TAG" ]; then
-            # No previous tag, get all commits
-            COMMITS=$(git log --format='- %s' HEAD)
-          else
-            # Get commits between previous tag and current
-            COMMITS=$(git log --format='- %s' "${PREVIOUS_TAG}..HEAD")
-          fi
-
-          # Store in output using heredoc for multiline
-          echo "notes<<EOF" >> $GITHUB_OUTPUT
-          echo "$COMMITS" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+            echo "summary<<EOF" >> $GITHUB_OUTPUT
+            echo "$SUMMARY" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create tagged release
         if: steps.version.outputs.is_release == 'true'
@@ -98,10 +87,7 @@ jobs:
         with:
           name: Release ${{ steps.version.outputs.release_name }}
           body: |
-            ## fed2-tools ${{ steps.version.outputs.release_name }}
-
-            ### Changes
-            ${{ steps.release_notes.outputs.notes }}
+            ${{ steps.release_notes.outputs.summary }}
           draft: false
           prerelease: false
           files: build/*.mpackage
@@ -125,6 +111,13 @@ jobs:
             mudlet-repo
 
           cd mudlet-repo
+
+          # Sync fork main with upstream before branching
+          git remote add upstream https://github.com/Mudlet/mudlet-package-repository.git
+          git fetch upstream main
+          git checkout main
+          git reset --hard upstream/main
+          git push origin main --force
 
           # Create a versioned branch so each release gets its own PR
           git checkout -b "$BRANCH"
@@ -150,7 +143,10 @@ jobs:
               --title "Update fed2-tools to v${VERSION}" \
               --body "## fed2-tools v${VERSION}
 
-          Automated submission from [${GITHUB_REPOSITORY}](https://github.com/${GITHUB_REPOSITORY}) release [v${VERSION}](https://github.com/${GITHUB_REPOSITORY}/releases/tag/v${VERSION}).
+              Release Notes:
+              ${{ steps.release_notes.outputs.summary }}
 
-          **Description:** Federation 2 Community Edition tools collection for Mudlet."
+              Automated submission from [${GITHUB_REPOSITORY}](https://github.com/${GITHUB_REPOSITORY}) release [v${VERSION}](https://github.com/${GITHUB_REPOSITORY}/releases/tag/v${VERSION}).
+
+              **Description:** Federation 2 Community Edition tools collection for Mudlet."
           fi

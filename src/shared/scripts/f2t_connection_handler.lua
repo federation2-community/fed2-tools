@@ -13,11 +13,11 @@ F2T_CONNECTED = false
 
 -- Check if we're currently connected to the game
 function f2t_check_connection()
-    local conn_info = getConnectionInfo()
+    local host, port, connected = getConnectionInfo()
 
-    if conn_info and conn_info.host and conn_info.host ~= "" then
+    if connected then
         F2T_CONNECTED = true
-        f2t_debug_log("[connection] Connected to: %s:%s", conn_info.host, tostring(conn_info.port))
+        f2t_debug_log("[connection] Connected to: %s:%s", tostring(host), tostring(port))
         return true
     else
         F2T_CONNECTED = false
@@ -45,16 +45,13 @@ function f2t_register_connection_handler()
     registerAnonymousEventHandler("sysConnectionEvent", function()
         f2t_debug_log("[connection] Connection event received")
 
-        -- Check new connection state
-        local now_connected = f2t_check_connection()
+        -- Capture previous state before f2t_check_connection mutates F2T_CONNECTED
+        local was_connected  = F2T_CONNECTED
+        local now_connected  = f2t_check_connection()
 
-        if now_connected and not F2T_CONNECTED then
-            -- Just connected
-            F2T_CONNECTED = true
+        if now_connected and not was_connected then
             f2t_debug_log("[connection] Connection established, components ready")
-        elseif not now_connected and F2T_CONNECTED then
-            -- Just disconnected
-            F2T_CONNECTED = false
+        elseif not now_connected and was_connected then
             f2t_debug_log("[connection] Disconnected from game")
         end
     end)
