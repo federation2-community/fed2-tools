@@ -73,6 +73,8 @@ jobs:
         if: steps.version.outputs.is_release == 'true'
         id: release_notes
         run: |
+            TAG="${GITHUB_REF_NAME}"
+
             # Get full tag object (NOT commit)
             TAG_OBJECT=$(git cat-file -p "$TAG")
 
