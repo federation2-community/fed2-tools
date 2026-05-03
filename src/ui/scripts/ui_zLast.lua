@@ -149,6 +149,7 @@ function ui_build_gear_icon()
     UI.gear_icon:setStyleSheet(UI.style.button_css)
     UI.gear_icon:setFontSize(13)
     UI.gear_icon:echo("<center>⚙</center>")
+    UI.gear_icon:setToolTip("Fed2-Tools Settings")
     UI.gear_icon:setClickCallback("ui_toggle_settings")
 
     -- Position it correctly, then raise above other widgets
@@ -170,12 +171,56 @@ function ui_reposition_gear_icon()
     UI.gear_icon:raise()
 end
 
+-- ── Bug Report / Issues Flag Icon ─────────────────────────────────────────────
+local _FLAG_SIZE = 26   -- same size as gear
+
+function ui_build_flag_icon()
+    UI.flag_icon = Geyser.Label:new({
+        name   = "UI.flag_icon",
+        x      = 0,
+        y      = 0,
+        width  = _FLAG_SIZE,
+        height = _FLAG_SIZE,
+    })
+    
+    UI.flag_icon:setStyleSheet(UI.style.button_css)
+    UI.flag_icon:setFontSize(13)
+    UI.flag_icon:echo("<center>🚩</center>")   -- waving flag emoji
+    UI.flag_icon:setToolTip("Report a bug / Open issues page")
+
+    -- Open GitHub issues page on click
+    UI.flag_icon:setClickCallback("ui_open_issues_page")
+    
+    ui_reposition_flag_icon()
+    UI.flag_icon:raise()
+end
+
+function ui_open_issues_page()
+    openUrl("https://github.com/tmtocloud/fed2-tools/issues")
+end
+
+-- Reposition flag immediately to the right of the gear
+function ui_reposition_flag_icon()
+    if not UI.flag_icon or not UI.gear_icon then return end
+    
+    local gx = UI.gear_icon:get_x()
+    local gy = UI.gear_icon:get_y()
+    
+    -- Place flag right next to gear (no gap)
+    local fx = gx + _FLAG_SIZE
+    local fy = gy
+    
+    UI.flag_icon:move(fx, fy)
+    UI.flag_icon:raise()
+end
+
 function ui_build()
     ui_create_containers()
     ui_build_tabs()
     ui_build_tab_content()
     ui_build_header()
     ui_build_gear_icon()
+    ui_build_flag_icon()
     ui_build_quick_buttons()
     ui_build_movement()
     ui_hauling()

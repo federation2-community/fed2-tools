@@ -73,9 +73,11 @@ jobs:
         if: steps.version.outputs.is_release == 'true'
         id: release_notes
         run: |
-            TAG="${GITHUB_REF_NAME}"
+            # Get full tag object (NOT commit)
+            TAG_OBJECT=$(git cat-file -p "$TAG")
 
-            SUMMARY=$(git for-each-ref refs/tags/$TAG --format='%(contents)')
+            # Extract everything after the tag header
+            SUMMARY=$(echo "$TAG_OBJECT" | sed -n '/^$/,$p' | tail -n +2)
 
             echo "summary<<EOF" >> $GITHUB_OUTPUT
             echo "$SUMMARY" >> $GITHUB_OUTPUT

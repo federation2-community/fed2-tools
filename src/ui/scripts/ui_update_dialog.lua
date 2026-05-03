@@ -95,6 +95,7 @@ end
 function _close()
     if UI.update_dialog then
         UI.update_dialog:hide()
+        UI.update_dialog = nil
     end
 end
 
@@ -113,58 +114,82 @@ local function _btn(par, x, y, w, h, txt, css, cb)
     return b
 end
 
+local function _close_btn(par, x, y, size)
+    local btn = Geyser.Label:new({
+        name = _uid(),
+        x = x, y = y,
+        width = size, height = size
+    }, par)
+    
+    btn:setStyleSheet([[
+        QLabel {
+            background-color: transparent;
+            color: rgba(220,230,255,180);
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 3px;
+        }
+        QLabel::hover {
+            background-color: rgba(255,80,80,200);
+            color: white;
+        }
+    ]])
+    
+    btn:echo("<center>×</center>")
+    btn:setClickCallback(_close)
+    return btn
+end
+
 function ui_update_show_dialog(current_version, new_version)
     _close()
-
     local sw, sh = getMainWindowSize()
     local dw = 500
-    
+   
     -- 1. Calculate Dynamic Height (80% max)
     local header_h = 135
     local footer_h = 80
     local estimated_lines = 0
-    
+   
     if F2T_CHANGELOG and #F2T_CHANGELOG > 0 then
         for _, entry in ipairs(F2T_CHANGELOG) do
-            estimated_lines = estimated_lines + 2 -- Header
+            estimated_lines = estimated_lines + 2
             local _, newlines = entry.body:gsub("\n", "\n")
             estimated_lines = estimated_lines + newlines + math.ceil(#entry.body / 65)
         end
     else
         estimated_lines = 3
     end
-
     local content_h = math.max(100, estimated_lines * 16)
     local dh = math.min(header_h + content_h + footer_h, math.floor(sh * 0.8))
-
-    UI.update_dialog = {}
-    
-    -- 2. Create/Overwrite Main Frame
-    -- Static name "f2t_update_dialog" ensures we don't stack windows
-    local d = Geyser.Label:new({
-        name  = "f2t_update_dialog",
-        x     = math.floor((sw - dw) / 2),
-        y     = math.floor((sh - dh) / 2),
+   
+    -- 2. Create Main Frame
+    UI.update_dialog = Geyser.Label:new({
+        name = "f2t_update_dialog",
+        x = math.floor((sw - dw) / 2),
+        y = math.floor((sh - dh) / 2),
         width = dw, height = dh,
     })
-    d:setStyleSheet(_CSS_FRAME)
-    d:show()
-    d:raise()
-    UI.update_dialog = d
+    UI.update_dialog:setStyleSheet(_CSS_FRAME)
+    UI.update_dialog:show()
+    UI.update_dialog:raise()
 
-    -- Static Labels (Header)
-    _lbl(d, 0, 0, dw, 44, "Update Available", _CSS_HDR)
-    _lbl(d, 0, 44, dw, 1, "", _CSS_DIV)
-    _lbl(d, 0, 55, dw, 26, "A new version of <b>fed2-tools</b> is available.", _CSS_BODY)
-    _lbl(d, 0, 81, dw, 22, string.format("You have <b>v%s</b>. Latest is <b>v%s</b>.", current_version or "???", new_version), _CSS_SUB)
-    _lbl(d, 16, 115, dw-32, 20, "What's New:", _CSS_SUB)
+    -- === HEADER ===
+    local header = _lbl(UI.update_dialog, 0, 0, dw, 44, "Update Available", _CSS_HDR)
+    
+    -- Close button (X) in top right
+    _close_btn(UI.update_dialog, dw - 36, 4, 28)
+
+    _lbl(UI.update_dialog, 0, 44, dw, 1, "", _CSS_DIV)
+    _lbl(UI.update_dialog, 0, 55, dw, 26, "A new version of <b>fed2-tools</b> is available.", _CSS_BODY)
+    _lbl(UI.update_dialog, 0, 81, dw, 22, string.format("You have <b>v%s</b>. Latest is <b>v%s</b>.", current_version or "???", new_version), _CSS_SUB)
+    _lbl(UI.update_dialog, 16, 115, dw-32, 20, "What's New:", _CSS_SUB)
 
     -- 3. Dynamic Console Container
     local box_w, box_h = dw - 32, dh - header_h - footer_h + 20
     local notes_box = Geyser.Label:new({
         name = "f2t_notes_box", x = 16, y = 140,
         width = box_w, height = box_h
-    }, d)
+    }, UI.update_dialog)
     notes_box:setStyleSheet(_CSS_NOTES)
     
     local notes_console = Geyser.MiniConsole:new({
@@ -186,22 +211,22 @@ function ui_update_show_dialog(current_version, new_version)
     end
 
     -- 4. Footer Buttons
-    _lbl(d, 0, dh - 60, dw, 1, "", _CSS_DIV)
+    _lbl(UI.update_dialog, 0, dh - 60, dw, 1, "", _CSS_DIV)
     local bw, bh, by = 140, 32, dh - 44
 
-    _btn(d, 16, by, bw, bh, "Never", _CSS_DANGER, function()
+    _btn(UI.update_dialog, 16, by, bw, bh, "Never", _CSS_DANGER, function()
         _close()
         f2t_settings_set("shared", "update_check_enabled", false)
         f2t_settings_set("shared", "update_check_remind_skip", 0)
     end)
     
-    _btn(d, (dw - bw) / 2, by, bw, bh, "Remind Later", _CSS_BTN, function()
+    _btn(UI.update_dialog, (dw - bw) / 2, by, bw, bh, "Remind Later", _CSS_BTN, function()
         _close()
         f2t_settings_set("shared", "update_check_enabled", true)
         f2t_settings_set("shared", "update_check_remind_skip", 5)
     end)
     
-    _btn(d, dw - 16 - bw, by, bw, bh, "Update Now", _CSS_OK, function()
+    _btn(UI.update_dialog, dw - 16 - bw, by, bw, bh, "Update Now", _CSS_OK, function()
         _close()
         mpkg.upgrade("fed2-tools")
     end)

@@ -81,7 +81,7 @@ function f2t_trigger_update_dialog(currentVersion, latestVersion)
         for _, release in ipairs(releases) do
             local tag = release.tag_name:gsub("^v","")
 
-            if f2t_version_is_newer(tag, currentVersion) then
+            if f2t_version_is_newer(tag, currentVersion) and not f2t_version_is_newer(tag, latestVersion) then
                 table.insert(F2T_CHANGELOG, {
                     version = tag,
                     body = release.body
