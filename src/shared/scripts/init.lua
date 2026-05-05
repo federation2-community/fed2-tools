@@ -101,3 +101,33 @@ tempTimer(1, function()
         f2t_debug_log("[shared] Death monitoring auto-started")
     end
 end)
+
+-- ========================================
+-- First-Run Welcome Dialog
+-- ========================================
+
+-- Register the first-run completion flag.
+-- Named f2t_settings_welcome.lua so it loads after f2t_settings_a_manager.lua.
+f2t_settings_register("shared", "first_run_complete", {
+    description = "Set after the first-run welcome dialog is dismissed",
+    default = false,
+    validator = function(value)
+        if value ~= true and value ~= false and value ~= "true" and value ~= "false" then
+            return false, "Must be true or false"
+        end
+        return true
+    end
+})
+
+-- Show the welcome dialog if this is the first install. The 2-second delay
+-- ensures all component scripts (including the ui component) are fully loaded.
+tempTimer(2, function()
+    local completed = f2t_settings_get("shared", "first_run_complete")
+    if not completed or completed == false or completed == "false" then
+        if ui_welcome_show_dialog then
+            ui_welcome_show_dialog()
+        else
+            f2t_debug_log("[shared] First run: ui_welcome_show_dialog not yet available")
+        end
+    end
+end)

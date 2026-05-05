@@ -148,7 +148,7 @@ local function _make_toggle(parent, wx, wy, uid, comp, name, widget_w)
     local function _ref()
         local v = f2t_settings_get(comp, name)
         w:setStyleSheet(v and css_on or css_off)
-        w:echo("<center>" .. (v and "ON" or "OFF") .. "</center>")
+        w:echo("<center>" .. (v and "TRUE" or "FALSE") .. "</center>")
     end
     _ref()
     w:setClickCallback(function()

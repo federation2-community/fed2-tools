@@ -120,6 +120,12 @@ end
 
 -- Runs on game connection
 function f2t_startup_check()
+    -- Don't run the update check until the first-run welcome dialog is dismissed.
+    -- This prevents the update dialog competing with the welcome dialog on a
+    -- fresh install, and ensures the user sees the welcome before anything else.
+    local first_run = f2t_settings_get("shared", "first_run_complete")
+    if not first_run or first_run == false or first_run == "false" then return end
+
     -- Check if update check is enabled in your settings system
     local update_check = f2t_settings_get("shared", "update_check_enabled")
     
