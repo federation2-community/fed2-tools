@@ -65,6 +65,7 @@ function ui_on_gmcp_room_info()
 
     ui_fuel_status()
     ui_update_local_players()
+    ui_futures_update_buttons()
 end
 
 function ui_update_for_rank()
@@ -95,6 +96,15 @@ function ui_update_for_rank()
         end
     else
         UI.tab_bottom_right:removeTab("Company")
+    end
+
+    -- Futures: Trader and Financier only
+    if f2t_is_rank_exactly("Trader") or f2t_is_rank_exactly("Financier") then
+        if not f2t_has_value(UI.tab_bottom_right.tabs, "Futures") then
+            UI.tab_bottom_right:addTab("Futures", 4)
+        end
+    else
+        UI.tab_bottom_right:removeTab("Futures")
     end
 end
 
@@ -226,6 +236,7 @@ function ui_build()
     ui_hauling()
     ui_trading()
     ui_company()
+    ui_futures()
     ui_update_for_rank()
     ui_update_header()
     ui_who_init()

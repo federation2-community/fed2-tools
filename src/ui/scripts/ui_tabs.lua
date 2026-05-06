@@ -90,7 +90,7 @@ function ui_build_tabs()
             width            = "100%",
             height           = "100%",
             tabBarHeight     = "8%",
-            tabs             = {"Hauling","Trading","Company"},
+            tabs             = {"Hauling","Trading","Company","Futures"},
             activeTabStyle   = UI.style.active_tab_css,
             inactiveTabStyle = UI.style.inactive_tab_css,
             notifyTabStyle   = UI.style.notify_inactive_tab_css,
@@ -347,5 +347,44 @@ function ui_build_tab_content()
             color     = "black",
         },
         UI.trading_container
+    )
+
+    -- put futures container in futures tab
+    UI.futures_container = Geyser.Container:new(
+        {
+            name   = "UI.futures_container",
+            x      = "0%",
+            y      = "0%",
+            width  = "100%",
+            height = "100%",
+        },
+        UI.tab_bottom_right.Futurescenter
+    )
+
+    -- Button bar at top
+    UI.futures_button_bar = Geyser.HBox:new(
+        {
+            name   = "UI.futures_button_bar",
+            x      = "0%",
+            y      = "0%",
+            width  = "100%",
+            height = "25px",
+        },
+        UI.futures_container
+    )
+
+    UI.futures_window = Geyser.MiniConsole:new(
+        {
+            name      = "UI.futures_window",
+            x         = "0%",
+            y         = "25px",
+            width     = "100%",
+            height    = "100%-25px",
+            autoWrap  = true,
+            scrollBar = true,
+            fontSize  = 12,
+            color     = "black",
+        },
+        UI.futures_container
     )
 end
