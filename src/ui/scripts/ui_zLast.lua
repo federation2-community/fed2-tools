@@ -261,9 +261,6 @@ function ui_register_trigger()
     f2t_ui_register_trigger("spynetReport")
     f2t_ui_register_trigger("tradingLine")
     f2t_ui_register_trigger("tradingProfitSearch")
-    f2t_ui_register_trigger("whoListStart")
-    f2t_ui_register_trigger("whoListLine")
-    f2t_ui_register_trigger("whoListEnd")
 
     ui_triggered = true
     f2t_debug_log("[ui] registered triggers")
@@ -284,9 +281,11 @@ function ui_register_event()
     f2t_ui_register_event("gmcp.room.info"                     , "ui_on_gmcp_room_info")
     f2t_ui_register_event("gmcp.char.vitals.tools"             , "ui_remote_access_status")
     f2t_ui_register_event("sysConnectionEvent"                 , "ui_chat_on_connect")
+    f2t_ui_register_event("sysConnectionEvent"                 , "ui_company_on_connect")
     f2t_ui_register_event("sysDisconnectionEvent"              , "ui_chat_on_disconnect")
-    f2t_ui_register_event("gmcp.char.vitals"                   , "ui_who_on_login_vitals")
+    f2t_ui_register_event("gmcp.players"                       , "ui_who_from_gmcp")
     f2t_ui_register_event("gmcp.char.company"                  , "ui_on_company_gmcp")
+    f2t_ui_register_event("gmcp.exchange"                      , "ui_futures_on_gmcp_exchange")
 
     ui_evented = true
     f2t_debug_log("[ui] registered events")
