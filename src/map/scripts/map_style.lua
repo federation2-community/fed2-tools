@@ -52,6 +52,23 @@ local FLAG_STYLES = {
 local DEFAULT_SYMBOL = ""
 
 -- ========================================
+-- Orbit Symbol Helper
+-- ========================================
+
+-- Returns the symbol to use for an orbit room.
+-- When orbit_planet_initial is enabled, uses the first letter of the stored planet name.
+-- Falls back to default_symbol if the setting is off or the planet name isn't stored yet.
+local function get_orbit_symbol(room_id, default_symbol)
+    if f2t_settings_get("map", "orbit_planet_initial") then
+        local planet = getRoomUserData(room_id, "fed2_planet")
+        if planet and planet ~= "" then
+            return string.upper(string.sub(planet, 1, 1))
+        end
+    end
+    return default_symbol
+end
+
+-- ========================================
 -- Styling Application
 -- ========================================
 
@@ -72,18 +89,20 @@ function f2t_map_apply_room_style(room_id, flags)
     local has_link = f2t_has_value(flags, "link")
     local has_orbit = f2t_has_value(flags, "orbit")
     if has_link and has_orbit then
-        setRoomChar(room_id, "Ø")
+        local symbol = get_orbit_symbol(room_id, "Ø")
+        setRoomChar(room_id, symbol)
         setRoomEnv(room_id, ENV_ORBIT)  -- Use orbit environment
         unsetRoomCharColor(room_id)
-        f2t_debug_log("[map] Room %d styled: Ø (link+orbit, env: %d)", room_id, ENV_ORBIT)
+        f2t_debug_log("[map] Room %d styled: %s (link+orbit, env: %d)", room_id, symbol, ENV_ORBIT)
         return true
     end
 
     -- Find first matching flag in priority order
     for _, style in ipairs(FLAG_STYLES) do
         if f2t_has_value(flags, style.flag) then
-            -- Apply symbol
-            setRoomChar(room_id, style.symbol)
+            -- Apply symbol (orbit uses dynamic label based on setting)
+            local symbol = style.flag == "orbit" and get_orbit_symbol(room_id, style.symbol) or style.symbol
+            setRoomChar(room_id, symbol)
 
             -- Apply environment (background color)
             setRoomEnv(room_id, style.env)
@@ -96,7 +115,7 @@ function f2t_map_apply_room_style(room_id, flags)
             end
 
             f2t_debug_log("[map] Room %d styled: %s (flag: %s, env: %d)",
-                room_id, style.symbol, style.flag, style.env)
+                room_id, symbol, style.flag, style.env)
 
             return true
         end

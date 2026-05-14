@@ -1287,6 +1287,7 @@ See `src/shared/CLAUDE.md` for settings system documentation.
 - `speedwalk_timeout` (number, default: 3, range: 1-10) - Timeout in seconds to wait for movement (detects stuck speedwalk)
 - `speedwalk_max_retries` (number, default: 3, range: 1-10) - Maximum retry attempts before stopping speedwalk
 - `map_manual_confirm` (boolean, default: true) - Require confirmation for destructive manual mapping operations
+- `orbit_planet_initial` (boolean, default: false) - Use first letter of planet name as orbit room label instead of 'O' (updates as you explore; rooms visited before enabling will show 'O' until re-visited)
 
 **Complex Settings (direct access):**
 - `destinations` - Saved destination table

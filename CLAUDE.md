@@ -1157,7 +1157,7 @@ Unified settings with consistent interface and auto-persistence.
 **Available Settings:**
 
 - **Commodities** (`price settings`): `results_count` (number, 1-20, default: 5)
-- **Map** (`map settings`): `enabled` (boolean), `planet_nav_default` (shuttlepad|orbit)
+- **Map** (`map settings`): `enabled` (boolean), `planet_nav_default` (shuttlepad|orbit), `orbit_planet_initial` (boolean)
 - **Refuel** (`refuel settings`): `enabled` (boolean), `threshold` (0-100)
 - **Shared** (`f2t settings`): `debug` (boolean), `stamina_enabled` (boolean), `stamina_threshold` (1-99), `food_source` (string), `safe_room` (string)
 - **Hauling** (`haul settings`): `margin_threshold` (0-100), `cycle_pause` (0-300), `use_safe_room` (boolean), `po_deficit_threshold` (-525 to -75), `po_excess_threshold` (750-20000), `po_max_sell_attempts` (1-10), `po_mode` (both|deficit)

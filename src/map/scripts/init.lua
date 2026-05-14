@@ -108,6 +108,17 @@ f2t_settings_register("map", "brief_additional_flags", {
     end
 })
 
+f2t_settings_register("map", "orbit_planet_initial", {
+    description = "Use first letter of planet name as orbit room label instead of 'O'",
+    default = false,
+    validator = function(value)
+        if value ~= true and value ~= false and value ~= "true" and value ~= "false" then
+            return false, "Must be true or false"
+        end
+        return true
+    end
+})
+
 -- NOTE: System and cartel modes ALWAYS do brief exploration (flag discovery only)
 -- There is no user setting for this - it's the only supported mode
 
@@ -129,16 +140,20 @@ F2T_MAP_CURRENT_ROOM_ID = nil
 -- Open map widget to initialize the map database
 -- This ensures the map database exists for auto-mapping
 
---If UI is enabled, map will appear in a frame with a movable tab, so there is no need to open default map widget. Unsure if this is important for database at this time
-if not F2T_UI_STATE.enabled then
-  local success, err = pcall(openMapWidget)
-  if success then
-      f2t_debug_log("[map] Map widget opened and database initialized")
-  else
-      f2t_debug_log("[map] WARNING: Failed to open map widget: %s", tostring(err))
-  end
+-- UI may not be initialized yet (loads after map alphabetically), so read directly from
+-- persistent settings. If no saved value exists, default to true (UI defaults to enabled).
+local ui_enabled = f2t_settings_get("ui", "enabled")
+if ui_enabled == nil then ui_enabled = true end
+
+if not ui_enabled then
+    local success, err = pcall(openMapWidget)
+    if success then
+        f2t_debug_log("[map] Map widget opened and database initialized")
+    else
+        f2t_debug_log("[map] WARNING: Failed to open map widget: %s", tostring(err))
+    end
 else
-    f2t_debug_log("[map} map widget opening skipped, mapper initialize in UI]")
+    f2t_debug_log("[map] Map widget opening skipped, mapper initialized in UI")
 end
 -- ========================================
 -- Initialization Message
