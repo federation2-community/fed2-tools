@@ -551,7 +551,7 @@ function ui_player_card_show(player, pos)
     local action_key = string.format("_ui_qsend_%d", n)
     _G[action_key] = not is_offline and function(text)
         if text and text ~= "" then
-            send(string.format("tb %s %s", name, text), true)
+            expandAlias(string.format("tb %s %s", name, text), false)
             clearCmdLine(quick_cmd_name)
         end
     end or nil
@@ -936,7 +936,7 @@ function ui_player_card_show(player, pos)
         send_btn:setClickCallback(function()
             local text = getCmdLine(quick_cmd_name)
             if text and text ~= "" then
-                send(string.format("tb %s %s", name, text), true)
+                expandAlias(string.format("tb %s %s", name, text), false)
                 clearCmdLine(quick_cmd_name)
             end
         end)
