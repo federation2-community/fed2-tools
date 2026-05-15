@@ -231,6 +231,12 @@ function f2t_map_speedwalk_complete()
 
     -- Clear navigation ownership
     f2t_map_clear_nav_owner()
+
+    -- Snap map to final room (deferred so Mudlet renders after all GMCP event processing)
+    local arrival_room = F2T_MAP_CURRENT_ROOM_ID
+    if arrival_room then
+        tempTimer(0.05, function() centerview(arrival_room) end)
+    end
 end
 
 -- Stop/cancel speedwalk completely

@@ -98,7 +98,7 @@ f2t_settings_register("map", "area_zoom", {
 
 f2t_settings_register("map", "brief_additional_flags", {
     description = "Additional flags to discover in brief mode (shuttlepad is always included)",
-    default = "exchange",
+    default = "exchange, courier",
     validator = function(value)
         -- Accept string (single flag) or comma-separated list
         if type(value) ~= "string" then
@@ -110,7 +110,7 @@ f2t_settings_register("map", "brief_additional_flags", {
 
 f2t_settings_register("map", "orbit_planet_initial", {
     description = "Use first letter of planet name as orbit room label instead of 'O'",
-    default = false,
+    default = true,
     validator = function(value)
         if value ~= true and value ~= false and value ~= "true" and value ~= "false" then
             return false, "Must be true or false"

@@ -38,6 +38,23 @@ QScrollBar::add-page:vertical,
 QScrollBar::sub-page:vertical {
     background: none;
 }
+
+/* Mudlet's native mapper renders its room-info as a QStatusBar at the
+   bottom of the mapper widget.  Setting the background to match our UI
+   and making the text transparent turns it into an invisible seam rather
+   than a jarring white/grey strip. The widget dimensions are preserved so
+   Mudlet's own mapper toolbar (collapse arrow) is not affected. */
+QStatusBar {
+    background: rgba(14, 18, 32, 255);
+    color:       rgba(0, 0, 0, 0);
+    border:      none;
+    border-top:  1px solid rgba(255, 255, 255, 0.06);
+    padding:     0px;
+}
+QStatusBar QLabel {
+    background: transparent;
+    color:      rgba(0, 0, 0, 0);
+}
 ]])
 
 UI.style.frame_css = [[
@@ -237,6 +254,42 @@ UI.style.local_players_dropdown_standalone_css = [[
     color: rgba(255,255,255,0.95);
     -webkit-backdrop-filter: blur(4px) saturate(110%);
     backdrop-filter: blur(4px) saturate(110%);
+]]
+
+-- Map room info bar — strip along the top of the map tab
+UI.style.map_info_bar_css = [[
+    background-color: rgba(14, 18, 32, 252);
+    border-bottom: 2px solid rgba(90, 110, 150, 0.40);
+    color: rgba(210, 222, 235, 0.95);
+    font-family: "Consolas", "Monaco", monospace;
+    font-size: 13px;
+    padding: 0px;
+]]
+
+-- Map legend toggle button — small floating button in bottom-right of map
+UI.style.map_legend_btn_css = [[
+    QLabel {
+        background-color: rgba(25, 30, 45, 200);
+        border: 1px solid rgba(255, 255, 255, 0.30);
+        border-radius: 3px;
+        color: rgba(160, 180, 200, 0.85);
+        font-size: 13px;
+    }
+    QLabel::hover {
+        background-color: rgba(45, 55, 80, 220);
+        border-color: rgba(255, 255, 255, 0.50);
+        color: rgba(200, 215, 235, 0.95);
+    }
+]]
+
+-- Map legend window — floating overlay showing color/symbol reference
+UI.style.map_legend_css = [[
+    background-color: rgba(10, 12, 20, 245);
+    border: 1px solid rgba(255, 255, 255, 0.28);
+    border-radius: 4px;
+    color: rgba(200, 210, 220, 0.9);
+    font-family: "Consolas", "Monaco", monospace;
+    font-size: 9px;
 ]]
 
 -- With-cargo (cargo visible): starts at top_left_height so needs top border; no right border (cargo is adjacent)

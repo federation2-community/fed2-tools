@@ -84,16 +84,16 @@ function f2t_map_handle_gmcp_room()
     -- Update current room tracking
     F2T_MAP_CURRENT_ROOM_ID = room_id
 
-    -- Center map on current room
-    f2t_debug_log("[map] Centering map on room %d", room_id)
-    centerview(room_id)
-
     -- Set map zoom for the area
     local area_id = getRoomArea(room_id)
     if area_id then
         local zoom = f2t_settings_get("map", "area_zoom")
         setMapZoom(zoom, area_id)
     end
+
+    -- Center map on current room (after setMapZoom so zoom doesn't override the view position)
+    f2t_debug_log("[map] Centering map on room %d", room_id)
+    centerview(room_id)
 
     -- Check for pending special exit discovery
     if F2T_MAP_PENDING_SPECIAL_EXIT then
