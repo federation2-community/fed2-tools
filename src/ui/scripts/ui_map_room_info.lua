@@ -1,48 +1,71 @@
--- Map info overlay: replaces the built-in "Short" canvas text with a
--- Fed2-aware breadcrumb drawn directly on the mapper tiles.
+-- Map info overlay: renders Fed2 breadcrumb directly on the mapper canvas.
+-- Uses room_id parameter so clicking any room shows that room's stored data.
 -- Requires Mudlet 4.11+ (registerMapInfo API).
 
--- Disable built-in overlays so our handler is the only one shown.
 pcall(function() disableMapInfo("Short") end)
 pcall(function() disableMapInfo("Full") end)
 
-local FLAG_LABELS = {
-    link       = "⟡ Link",
-    orbit      = "○ Orbit",
-    shuttlepad = "🚀 Pad",
-    exchange   = "$ Exchange",
-    shipyard   = "🔧 Shipyard",
-    hospital   = "✚ Hospital",
-    bar        = "🍸 Bar",
-    courier    = "AC",
-    space      = "Space",
+local ICON_FOR_FLAG = {
+    link       = "⟡",
+    orbit      = "○",
+    shuttlepad = "🚀",
+    exchange   = "$",
+    shipyard   = "🔧",
+    hospital   = "✚",
+    bar        = "🍸",
+    courier    = "💼",
 }
 
-local FLAG_ORDER = {
-    "link", "orbit", "shuttlepad", "exchange", "shipyard", "hospital", "bar", "courier", "space"
+local ICON_PRIORITY = {
+    "link", "orbit", "shuttlepad", "exchange", "shipyard", "hospital", "bar", "courier"
 }
+
+-- After the player moves, snap the info display back to the current room.
+-- Mudlet persists the user's clicked-room selection even after centerview();
+-- this override holds for 1.5s so movement snaps cleanly without permanently
+-- disabling click-to-inspect on other rooms.
+local _snap_to_current = false
+
+function f2t_map_info_snap_to_current()
+    _snap_to_current = true
+    tempTimer(1.5, function()
+        _snap_to_current = false
+    end)
+end
 
 registerMapInfo("fed2_info", function(room_id, sel_size, area_id, displayed_area_id)
+    -- Snap to current room immediately after player movement
+    if _snap_to_current and F2T_MAP_CURRENT_ROOM_ID and
+       roomExists(F2T_MAP_CURRENT_ROOM_ID) then
+        room_id = F2T_MAP_CURRENT_ROOM_ID
+        area_id = getRoomArea(room_id)
+    end
+
     if not room_id or not roomExists(room_id) then return "" end
 
     local system = getRoomUserData(room_id, "fed2_system") or ""
     local planet = getRoomUserData(room_id, "fed2_planet") or ""
     local name   = getRoomName(room_id) or ""
+    local cartel = getRoomUserData(room_id, "fed2_cartel") or ""
 
-    local active_flags = {}
-    for _, f in ipairs(FLAG_ORDER) do
+    -- Pick highest-priority room type icon from stored flags
+    local room_icon = ""
+    for _, f in ipairs(ICON_PRIORITY) do
         if getRoomUserData(room_id, "fed2_flag_" .. f) == "true" then
-            table.insert(active_flags, FLAG_LABELS[f])
+            room_icon = ICON_FOR_FLAG[f] .. " "
+            break
         end
     end
 
+    -- Line 1: galaxy path breadcrumb
     local parts = {}
-    if system ~= "" then table.insert(parts, system) end
-    if planet ~= "" and planet ~= system then table.insert(parts, planet) end
-    if name   ~= "" then table.insert(parts, name) end
-
+    if cartel ~= "" then table.insert(parts, "🌌 " .. cartel) end
+    if system ~= "" then table.insert(parts, "⭐ " .. system) end
+    if planet ~= "" then table.insert(parts, "🌍 " .. planet) end
     local line1 = table.concat(parts, " › ")
-    local line2 = table.concat(active_flags, "  ")
+
+    -- Line 2: room type icon + room name
+    local line2 = name ~= "" and (room_icon .. name) or ""
 
     local text = line1
     if line2 ~= "" then text = text .. "\n" .. line2 end

@@ -77,6 +77,15 @@ function f2t_map_manual_create_room(system, area, num, name)
     setRoomUserData(room_id, "fed2_area", area)
     setRoomUserData(room_id, "fed2_num", tostring(num))
 
+    -- Inherit cartel from area data if already stored (best-effort)
+    local area_id_for_cartel = getRoomArea(room_id)
+    if area_id_for_cartel then
+        local cartel = getAreaUserData(area_id_for_cartel, "fed2_cartel")
+        if cartel and cartel ~= "" then
+            setRoomUserData(room_id, "fed2_cartel", cartel)
+        end
+    end
+
     cecho(string.format("\n<green>[map]<reset> Room created: <white>%s<reset> (ID: %d)\n", hash, room_id))
     cecho(string.format("  <dim_grey>Area: %s | Coords: (%d, %d, %d)<reset>\n", area, x, y, z))
 

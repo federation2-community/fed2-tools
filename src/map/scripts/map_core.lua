@@ -95,6 +95,11 @@ function f2t_map_handle_gmcp_room()
     f2t_debug_log("[map] Centering map on room %d", room_id)
     centerview(room_id)
 
+    -- Snap info overlay to current room (Mudlet retains clicked-room selection across centerview)
+    if type(f2t_map_info_snap_to_current) == "function" then
+        f2t_map_info_snap_to_current()
+    end
+
     -- Check for pending special exit discovery
     if F2T_MAP_PENDING_SPECIAL_EXIT then
         f2t_debug_log("[map] Completing special exit discovery")

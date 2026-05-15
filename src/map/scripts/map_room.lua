@@ -161,6 +161,12 @@ function f2t_map_store_room_metadata(room_id, room_data)
         f2t_debug_log("[map]   Stored system: %s", room_data.system)
     end
 
+    -- Store cartel (enables breadcrumb info overlay on any room, not just current)
+    if room_data.cartel then
+        setRoomUserData(room_id, "fed2_cartel", room_data.cartel)
+        f2t_debug_log("[map]   Stored cartel: %s", room_data.cartel)
+    end
+
     -- Store area (always useful for reference)
     if room_data.area then
         setRoomUserData(room_id, "fed2_area", room_data.area)

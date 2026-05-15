@@ -48,7 +48,7 @@ local SYM_EXCHANGE   = "$"
 local SYM_SHIPYARD   = "🔧"
 local SYM_HOSPITAL   = "✚"
 local SYM_BAR        = "🍸"
-local SYM_COURIER    = "AC"
+local SYM_COURIER    = "💼"
 local SYM_LINK       = "⟡"
 local SYM_UNKNOWN    = "?"
 
