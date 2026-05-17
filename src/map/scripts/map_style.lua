@@ -48,7 +48,7 @@ local SYM_EXCHANGE   = "$"
 local SYM_SHIPYARD   = "🔧"
 local SYM_HOSPITAL   = "✚"
 local SYM_BAR        = "🍸"
-local SYM_COURIER    = "💼"
+local SYM_COURIER    = "AC"
 local SYM_LINK       = "⟡"
 local SYM_UNKNOWN    = "?"
 
@@ -276,6 +276,30 @@ end
 -- All room types use environment color only; no separate character color.
 function f2t_map_get_flag_color(flag)
     return nil
+end
+
+-- RGB values matching setCustomEnvColor() calls above, keyed by env ID.
+-- Env 272 (planet default) intentionally omitted — nil return means no badge.
+local ENV_COLOR_RGB = {
+    [257] = {200,  50,  50},
+    [258] = { 50, 160,  50},
+    [259] = {185, 165,  30},
+    [260] = { 50, 100, 200},
+    [261] = {120,   0,  30},
+    [262] = { 30, 170, 170},
+    [263] = { 40, 130,  40},
+    [267] = {140,  80,  20},
+    [269] = {200, 120,   0},
+}
+
+-- Returns r, g, b for the badge color associated with a flag type.
+-- Returns nil for flags with no distinct badge (plain planet rooms).
+function f2t_map_get_flag_badge_rgb(flag)
+    local env = f2t_map_get_flag_env(flag)
+    if not env then return nil end
+    local color = ENV_COLOR_RGB[env]
+    if not color then return nil end
+    return color[1], color[2], color[3]
 end
 
 -- Returns a structured table describing every named room type, for building the legend.

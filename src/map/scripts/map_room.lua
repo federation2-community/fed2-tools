@@ -221,8 +221,7 @@ function f2t_map_store_room_metadata(room_id, room_data)
         f2t_debug_log("[map]   Stored exits data: %s", exits_str)
     end
 
-    -- Store planet name for orbit rooms
-    -- orbit field contains shuttlepad hash (system.planet.num) - extract planet name
+    -- Store planet name: from orbit hash for orbit rooms, from area name for surface rooms
     if room_data.orbit then
         local parts = {}
         for part in string.gmatch(room_data.orbit, "[^.]+") do
@@ -233,6 +232,9 @@ function f2t_map_store_room_metadata(room_id, room_data)
             setRoomUserData(room_id, "fed2_planet", planet_name)
             f2t_debug_log("[map]   Stored planet (orbit): %s", planet_name)
         end
+    elseif room_data.area and not string.match(room_data.area, " Space$") then
+        setRoomUserData(room_id, "fed2_planet", room_data.area)
+        f2t_debug_log("[map]   Stored planet (surface): %s", room_data.area)
     end
 
     return true

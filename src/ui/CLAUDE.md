@@ -84,6 +84,10 @@ UI.trading_window = Geyser.MiniConsole:new({ fontSize = 12, ... })
 | Fixed chrome (headers, button bars) | pixels (`"25px"`, `"20"`) |
 | Scrollbox content label width | `scrollbox:get_width() - 17` (scrollbar allowance) |
 
+## ScrollBox limitation
+
+**`Geyser.ScrollBox` does NOT support `setStyleSheet()`** — calling it on a ScrollBox will not work. Find a different approach for any styling need on a ScrollBox widget.
+
 ## Function separation
 
 Structural layout (containers, VBox, TabWindows) belongs in `ui_build_tabs()`.

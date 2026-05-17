@@ -8,7 +8,7 @@ function ui_build_movement()
         {
             name          = "UI.map_commands_container",
             x             = "0%",
-            y             = "82%",
+            y             = "80%",
             width         = "30%",
             height        = "21%",
             lockStyle     = "none",
