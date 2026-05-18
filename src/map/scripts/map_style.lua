@@ -302,21 +302,29 @@ function f2t_map_get_flag_badge_rgb(flag)
     return color[1], color[2], color[3]
 end
 
+-- Convert an env ID's RGB entry to an HTML hex color string.
+local function env_hex(env_id)
+    local c = ENV_COLOR_RGB[env_id]
+    if not c then return "#666666" end
+    return string.format("#%02x%02x%02x", c[1], c[2], c[3])
+end
+
 -- Returns a structured table describing every named room type, for building the legend.
 -- Each entry: {label, symbol, html_color, [text_color], note}
 -- text_color is optional; defaults to "#ddeeff" if omitted (legend renders it).
+-- html_color is derived from ENV_COLOR_RGB so map tiles and legend stay in sync.
 function f2t_map_get_legend_data()
     return {
-        {label = "Cartel Link",             symbol = SYM_LINK,       html_color = "#4477cc",                    note = "Hub system jump gate"},
-        {label = "System Link",             symbol = SYM_LINK,       html_color = "#aaaa33", text_color = "#141400", note = "Jump gate"},
-        {label = "Orbit",                   symbol = "E / O",        html_color = "#44aa44", text_color = "#001a00", note = "Above planet (first letter = planet name)"},
-        {label = "Multi-service",           symbol = "🚀 / $ …",     html_color = "#cc3333",                    note = "2+ services — top priority shown"},
-        {label = "Shuttlepad",              symbol = SYM_SHUTTLEPAD, html_color = "#22aaaa", text_color = "#001a1a", note = "Dock / launch pad"},
-        {label = "Exchange",                symbol = SYM_EXCHANGE,   html_color = "#7a0000",                    note = "Commodity market"},
-        {label = "Shipyard",                symbol = SYM_SHIPYARD,   html_color = "#7a4500", text_color = "#ffd090", note = "Repairs & upgrades"},
-        {label = "Hospital",                symbol = SYM_HOSPITAL,   html_color = "#1a5c1a", text_color = "#88dd88", note = "Medical"},
-        {label = "Bar",                     symbol = SYM_BAR,        html_color = "#cc6600", text_color = "#1a0800", note = "Food & drink"},
-        {label = "Armstrong Cuthbert (AC)", symbol = SYM_COURIER,    html_color = "#aaaa33", text_color = "#141400", note = "AC offices — courier jobs"},
+        {label = "Cartel Link",             symbol = SYM_LINK,       html_color = env_hex(ENV_LINK_CARTEL),                      note = "Hub system jump gate"},
+        {label = "System Link",             symbol = SYM_LINK,       html_color = env_hex(ENV_LINK_SYSTEM), text_color = "#141400", note = "Jump gate"},
+        {label = "Orbit",                   symbol = "E / O",        html_color = env_hex(ENV_ORBIT),       text_color = "#001a00", note = "Above planet (first letter = planet name)"},
+        {label = "Multi-service",           symbol = "🚀 / $ …",     html_color = env_hex(ENV_MULTI_FLAG),                        note = "2+ services — top priority shown"},
+        {label = "Shuttlepad",              symbol = SYM_SHUTTLEPAD, html_color = env_hex(ENV_SHUTTLEPAD),  text_color = "#001a1a", note = "Dock / launch pad"},
+        {label = "Exchange",                symbol = SYM_EXCHANGE,   html_color = env_hex(ENV_EXCHANGE),                          note = "Commodity market"},
+        {label = "Shipyard",                symbol = SYM_SHIPYARD,   html_color = env_hex(ENV_SHIPYARD),    text_color = "#ffd090", note = "Repairs & upgrades"},
+        {label = "Hospital",                symbol = SYM_HOSPITAL,   html_color = env_hex(ENV_HOSPITAL),    text_color = "#88dd88", note = "Medical"},
+        {label = "Bar",                     symbol = SYM_BAR,        html_color = env_hex(ENV_BAR),         text_color = "#1a0800", note = "Food & drink"},
+        {label = "Armstrong Cuthbert (AC)", symbol = SYM_COURIER,    html_color = env_hex(ENV_COURIER),     text_color = "#141400", note = "AC offices — courier jobs"},
     }
 end
 

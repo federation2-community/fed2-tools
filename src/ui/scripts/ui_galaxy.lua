@@ -74,6 +74,22 @@ local function _cartel_has_match(cd, q)
     return false
 end
 
+-- Returns true only when matches exist inside the cartel, not when the cartel name itself matched.
+local function _cartel_has_children_match(cd, q)
+    for _, sd in pairs(cd.systems or {}) do
+        if _system_has_match(sd, q) then return true end
+    end
+    return false
+end
+
+-- Returns true only when a planet inside the system matches (not the system name itself).
+local function _system_has_planet_match(sd, q)
+    for _, pd in ipairs(sd.planets or {}) do
+        if _planet_matches(pd, q) then return true end
+    end
+    return false
+end
+
 -- ── Data loading ──────────────────────────────────────────────────────────────
 
 -- Send "di systems" and begin capturing output.
@@ -532,8 +548,8 @@ end
 -- always starts at scroll offset 0.  Instead we keep ONE permanent content
 -- label (galaxy_main_content) and only RESIZE it on each redraw.  Qt's
 -- QScrollArea preserves its vertical scroll offset as long as the same child
--- widget is in place.  Old row labels are hidden (not destroyed) and new ones
--- are created with epoch-suffixed names so the Geyser registry never collides.
+-- widget is in place.  Row labels (children of galaxy_main_content) are
+-- deleted on each redraw so hidden widgets don't accumulate and slow drags.
 
 function ui_populate_galaxy_dropdown()
     if not UI.galaxy_scroll then return end
@@ -545,11 +561,11 @@ function ui_populate_galaxy_dropdown()
         UI.galaxy_refresh_icon:setToolTip("Refresh: " .. _age_str(UI.galaxy.last_updated))
     end
 
-    -- Hide all rows from the previous draw pass.
-    -- Row labels are children of galaxy_main_content; hiding each row also
-    -- hides its children (expand btn, icon, name, nav) in Qt.
+    -- Delete all rows from the previous draw pass so hidden widgets don't
+    -- accumulate and slow down window drags. Qt composites every child widget
+    -- (including hidden ones) during a drag, so we must truly destroy old rows.
     UI.galaxy_rows = UI.galaxy_rows or {}
-    for _, r in ipairs(UI.galaxy_rows) do r:hide() end
+    for _, r in ipairs(UI.galaxy_rows) do r:delete() end
     UI.galaxy_rows = {}
 
     -- ── Ensure the two permanent sibling labels exist ────────────────────────
@@ -643,7 +659,11 @@ function ui_populate_galaxy_dropdown()
             table.insert(UI.galaxy_rows, r)
             y_px = y_px + ROW_H
 
-            if searching or UI.galaxy.expanded[cartel_name] then
+            -- Auto-expand cartel only when matches exist inside it, not when the cartel name itself
+            -- matched. This lets the user see a matched cartel and manually click + to browse children.
+            local auto_expand_cartel = searching and _cartel_has_children_match(cartel_data, q)
+
+            if UI.galaxy.expanded[cartel_name] or auto_expand_cartel then
                 local sorted_sys = {}
                 for sn in pairs(cartel_data.systems or {}) do table.insert(sorted_sys, sn) end
                 table.sort(sorted_sys)
@@ -652,7 +672,12 @@ function ui_populate_galaxy_dropdown()
                     if system_name ~= (cartel_name .. " Space") then
                         local system_data = cartel_data.systems[system_name]
 
-                        if not searching or _system_has_match(system_data, q) then
+                        -- Manual cartel expand shows all systems; auto-expand filters to matching only.
+                        local show_system = not searching
+                                         or UI.galaxy.expanded[cartel_name]
+                                         or _system_has_match(system_data, q)
+
+                        if show_system then
                             local sys_is_cur = (system_name == cur_system)
                                 and (cartel_name == cur_cartel)
                                 and (cur_planet == "")
@@ -661,10 +686,23 @@ function ui_populate_galaxy_dropdown()
                             y_px = y_px + ROW_H
 
                             local sys_key = cartel_name .. ":" .. system_name
-                            if searching or UI.galaxy.expanded[sys_key] then
+                            local system_name_matched = searching and _q_matches(system_data.name, q)
+
+                            -- Auto-expand system only when planet matches exist inside it, not when the
+                            -- system name itself matched. Lets the user click + to browse all planets.
+                            local auto_expand_system = searching
+                                and not system_name_matched
+                                and _system_has_planet_match(system_data, q)
+
+                            if UI.galaxy.expanded[sys_key] or auto_expand_system then
                                 for _, planet_data in ipairs(system_data.planets or {}) do
                                     if planet_data.name ~= (system_name .. " Space") then
-                                        if not searching or _planet_matches(planet_data, q) then
+                                        -- Manual system expand shows all planets; auto-expand filters to matching only.
+                                        local show_planet = not searching
+                                                         or UI.galaxy.expanded[sys_key]
+                                                         or _planet_matches(planet_data, q)
+
+                                        if show_planet then
                                             local pl_is_cur = (planet_data.name == cur_planet)
                                                 and (system_name == cur_system)
                                             local pr = ui_create_galaxy_row(UI.galaxy_scroll_content, planet_data.name, "planet", 2, y_px, planet_data, pl_is_cur)

@@ -81,7 +81,7 @@ registerMapInfo("fed2_rm", function(room_id)
             r, g, b = f2t_map_get_flag_badge_rgb(matched_flag)
         end
         if r then
-            return "■ " .. sym .. "  " .. name, false, false, r, g, b
+            return sym .. "  " .. name, false, false, r, g, b
         end
         return sym .. "  " .. name, false, false, 190, 210, 230
     end
