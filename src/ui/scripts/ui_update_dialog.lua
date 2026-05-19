@@ -304,6 +304,11 @@ function ui_update_show_dialog(current_version, new_version)
     btn_update:setStyleSheet(_CSS_OK)
     btn_update:echo("<center>Update Now</center>")
     btn_update:setClickCallback(function()
+        -- Persist the map-db-upgrade flag so the new package can read it
+        -- on its sysInstall event and show the import dialog.
+        if F2T_PENDING_MAP_DB_UPGRADE then
+            f2t_settings_set("shared", "map_db_upgrade_on_install", true)
+        end
         _close()
         mpkg.upgrade("fed2-tools")
     end)

@@ -13,6 +13,17 @@ f2t_settings_register("shared", "update_check_enabled", {
     end
 })
 
+f2t_settings_register("shared", "map_db_upgrade_on_install", {
+    description = "Set when upgrading to a version that includes an updated map database",
+    default = false,
+    validator = function(value)
+        if value ~= true and value ~= false and value ~= "true" and value ~= "false" then
+            return false, "Must be true or false"
+        end
+        return true
+    end
+})
+
 f2t_settings_register("shared", "update_check_remind_skip", {
     description = "Sessions remaining before update reminder re-appears (managed by 'Remind Later')",
     default = 0,
@@ -60,6 +71,7 @@ function f2t_trigger_update_dialog(currentVersion, latestVersion)
 
     -- RESET: Clear previous notes before starting a new download
     F2T_CHANGELOG = {}
+    F2T_PENDING_MAP_DB_UPGRADE = false
 
     -- Clean up previous handler if it exists
     if F2T_DL_HANDLER then killAnonymousEventHandler(F2T_DL_HANDLER) end
@@ -77,7 +89,7 @@ function f2t_trigger_update_dialog(currentVersion, latestVersion)
         local releases = yajl.to_value(content)
         if not releases then return end
 
-        -- Populate F2T_CHANGELOG with release data
+        -- Populate F2T_CHANGELOG with release data; check for map-db-upgrade flag
         for _, release in ipairs(releases) do
             local tag = release.tag_name:gsub("^v","")
 
@@ -86,6 +98,11 @@ function f2t_trigger_update_dialog(currentVersion, latestVersion)
                     version = tag,
                     body = release.body
                 })
+                -- [MAP-DB-UPGRADE] in any intermediate release notes flags the
+                -- upgrade path as requiring a map database reload.
+                if (release.body or ""):lower():find("[map-db-upgrade]", 1, true) then
+                    F2T_PENDING_MAP_DB_UPGRADE = true
+                end
             end
         end
 

@@ -136,28 +136,50 @@ end)
 -- Mudlet Mapper Config (install/upgrade only)
 -- ========================================
 
--- Apply preferred mapper defaults on package install or upgrade.
--- sysInstall fires only during installation, not on normal session start,
--- so this runs once per install/upgrade and never overwrites user changes.
+-- sysInstall fires only during installation, not on normal session start.
 registerAnonymousEventHandler("sysInstall", function(_, pkg)
     if pkg ~= "fed2-tools" then return end
-    -- Delay to ensure the mapper widget is open before calling setConfig.
-    tempTimer(3, function()
-        local ok, err = setConfig(
-            {
-                mapExitSize        = 10,
-                mapRoomSize        = 5,
-                mapRoundRooms      = false,
-                mapShowGrid        = false,
-                mapShowRoomBorders = false
-            }
-        )
 
-        if ok then
-            updateMap()
-            f2t_debug_log("[shared] Mapper config applied on install/upgrade")
-        else
-            f2t_debug_log("[shared] Could not apply mapper config: %s", tostring(err))
-        end
-    end)
+    local completed     = f2t_settings_get("shared", "first_run_complete")
+    local is_upgrade    = completed == true or completed == "true"
+
+    -- Apply preferred mapper defaults only on fresh install so user
+    -- customisations made after the initial install are never overwritten.
+    if not is_upgrade then
+        tempTimer(3, function()
+            local ok, err = setConfig(
+                {
+                    mapExitSize        = 10,
+                    mapRoomSize        = 5,
+                    mapRoundRooms      = false,
+                    mapShowGrid        = false,
+                    mapShowRoomBorders = false
+                }
+            )
+
+            if ok then
+                updateMap()
+                f2t_debug_log("[shared] Mapper config applied on first install")
+            else
+                f2t_debug_log("[shared] Could not apply mapper config: %s", tostring(err))
+            end
+        end)
+    end
+
+    -- Show the standalone map import dialog when upgrading to a version that
+    -- includes an updated map database.  The is_upgrade guard prevents this
+    -- from firing on a fresh install (the welcome dialog handles that case).
+    local needs_upgrade = f2t_settings_get("shared", "map_db_upgrade_on_install")
+    local wants_dialog  = needs_upgrade == true or needs_upgrade == "true"
+
+    if is_upgrade and wants_dialog then
+        -- Clear the flag immediately so it only shows once.
+        f2t_settings_set("shared", "map_db_upgrade_on_install", false)
+        -- Small delay so the UI is fully built before the dialog appears.
+        tempTimer(4, function()
+            if ui_map_import_show_dialog then
+                ui_map_import_show_dialog()
+            end
+        end)
+    end
 end)
