@@ -75,11 +75,15 @@ registerMapInfo("fed2_rm", function(room_id)
     end
 
     if matched_flag and type(f2t_map_get_flag_symbol) == "function" then
-        local sym = f2t_map_get_flag_symbol(matched_flag) or matched_flag
         local r, g, b
         if type(f2t_map_get_flag_badge_rgb) == "function" then
             r, g, b = f2t_map_get_flag_badge_rgb(matched_flag)
         end
+        -- Orbit: show badge color but no symbol (O / planet letter are map-canvas-only)
+        if matched_flag == "orbit" then
+            return name, false, false, r or 190, g or 210, b or 230
+        end
+        local sym = f2t_map_get_flag_symbol(matched_flag) or matched_flag
         if r then
             return sym .. "  " .. name, false, false, r, g, b
         end

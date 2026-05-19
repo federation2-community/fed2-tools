@@ -472,8 +472,27 @@ function f2t_map_explore_brief_check_room_flags(room_id)
                 cecho(string.format("  <green>✓<reset> Found <yellow>%s<reset> at: %s\n", flag, room_name))
                 f2t_debug_log("[map-explore-brief] Found flag '%s' at room %d (%s)", flag, room_id, room_name)
 
-                -- Check if all flags found
-                if F2T_MAP_EXPLORE_STATE.brief_flags_remaining_count == 0 then
+                -- Check if all applicable flags found
+                -- Outside Sol, courier is at the shuttlepad (not flagged separately) so skip it
+                local effective_remaining = F2T_MAP_EXPLORE_STATE.brief_flags_remaining_count
+                if effective_remaining > 0 then
+                    local area_id = F2T_MAP_EXPLORE_STATE.starting_area_id
+                    local system_name = area_id and getAreaUserData(area_id, "fed2_system") or ""
+                    if string.lower(system_name) ~= "sol" then
+                        local non_courier_remaining = 0
+                        for remaining_flag, _ in pairs(F2T_MAP_EXPLORE_STATE.brief_flags_set) do
+                            if not flags_found[remaining_flag] and remaining_flag ~= "courier" then
+                                non_courier_remaining = non_courier_remaining + 1
+                            end
+                        end
+                        if non_courier_remaining == 0 then
+                            effective_remaining = 0
+                            f2t_debug_log("[map-explore-brief] Only courier missing outside Sol (at shuttlepad) - treating as complete")
+                        end
+                    end
+                end
+
+                if effective_remaining == 0 then
                     f2t_debug_log("[map-explore-brief] All flags found! Brief exploration complete")
                     cecho("\n<green>[map-explore]<reset> All target flags found!\n\n")
 

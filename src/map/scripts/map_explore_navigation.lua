@@ -37,56 +37,82 @@ function f2t_map_explore_navigate_to_next()
         -- Check if this is brief mode with unfound flags (incomplete exploration)
         if F2T_MAP_EXPLORE_STATE.brief_flags_remaining_count and
            F2T_MAP_EXPLORE_STATE.brief_flags_remaining_count > 0 then
-            -- Brief mode failed to find all flags
             local planet_name = F2T_MAP_EXPLORE_STATE.brief_planet_name or "Unknown"
-            local missing_flags = {}
 
-            -- Collect which flags are still missing
+            -- Determine which flags are truly missing vs. expected-absent
+            -- Outside Sol, courier is at the shuttlepad and not flagged separately on player planets
+            local area_id = F2T_MAP_EXPLORE_STATE.starting_area_id
+            local system_name = area_id and getAreaUserData(area_id, "fed2_system") or ""
+            local is_sol = (string.lower(system_name) == "sol")
+
+            local missing_flags = {}
             for flag, _ in pairs(F2T_MAP_EXPLORE_STATE.brief_flags_set or {}) do
                 if not F2T_MAP_EXPLORE_STATE.brief_flags_found[flag] then
-                    table.insert(missing_flags, flag)
+                    if flag == "courier" and not is_sol then
+                        f2t_debug_log("[map-explore] Skipping courier warning outside Sol (at shuttlepad) on '%s'", planet_name)
+                    else
+                        table.insert(missing_flags, flag)
+                    end
                 end
             end
 
-            -- Sort for consistent output
             table.sort(missing_flags)
 
-            -- Build warning message based on number of missing flags
-            local flags_msg = table.concat(missing_flags, ", ")
-            cecho(string.format("\n  <yellow>Warning:<reset> Flag%s not found on '%s': <yellow>%s<reset> (explored all reachable rooms)\n",
-                #missing_flags > 1 and "s" or "", planet_name, flags_msg))
-            f2t_debug_log("[map-explore] Brief incomplete: planet=%s, missing flags=%s",
-                planet_name, flags_msg)
+            if #missing_flags == 0 then
+                -- Only Sol-specific flags (like courier) were missing - count as complete
+                f2t_debug_log("[map-explore] Brief complete (courier skipped outside Sol): planet=%s", planet_name)
 
-            -- Update system stats if in system mode
-            if F2T_MAP_EXPLORE_STATE.system_stats then
-                if not F2T_MAP_EXPLORE_STATE.system_stats.planets_incomplete then
-                    F2T_MAP_EXPLORE_STATE.system_stats.planets_incomplete = 0
-                    F2T_MAP_EXPLORE_STATE.system_stats.incomplete_planets = {}
-                end
-                F2T_MAP_EXPLORE_STATE.system_stats.planets_incomplete =
-                    F2T_MAP_EXPLORE_STATE.system_stats.planets_incomplete + 1
-
-                -- Store planet with its missing flags
-                table.insert(F2T_MAP_EXPLORE_STATE.system_stats.incomplete_planets, {
-                    name = planet_name,
-                    missing_flags = missing_flags
-                })
-
-                -- Aggregate to cartel stats if in cartel mode
-                if F2T_MAP_EXPLORE_STATE.mode == "cartel" then
-                    if not F2T_MAP_EXPLORE_STATE.cartel_stats.total_planets_incomplete then
-                        F2T_MAP_EXPLORE_STATE.cartel_stats.total_planets_incomplete = 0
-                        F2T_MAP_EXPLORE_STATE.cartel_stats.incomplete_planets = {}
+                if F2T_MAP_EXPLORE_STATE.system_stats then
+                    F2T_MAP_EXPLORE_STATE.system_stats.planets_explored =
+                        F2T_MAP_EXPLORE_STATE.system_stats.planets_explored + 1
+                    if F2T_MAP_EXPLORE_STATE.brief_flags_found["exchange"] then
+                        F2T_MAP_EXPLORE_STATE.system_stats.exchanges_found =
+                            F2T_MAP_EXPLORE_STATE.system_stats.exchanges_found + 1
                     end
-                    F2T_MAP_EXPLORE_STATE.cartel_stats.total_planets_incomplete =
-                        F2T_MAP_EXPLORE_STATE.cartel_stats.total_planets_incomplete + 1
 
-                    -- Store planet with its missing flags
-                    table.insert(F2T_MAP_EXPLORE_STATE.cartel_stats.incomplete_planets, {
+                    if F2T_MAP_EXPLORE_STATE.mode == "cartel" or F2T_MAP_EXPLORE_STATE.mode == "galaxy" then
+                        F2T_MAP_EXPLORE_STATE.cartel_stats.total_planets =
+                            F2T_MAP_EXPLORE_STATE.cartel_stats.total_planets + 1
+                        if F2T_MAP_EXPLORE_STATE.brief_flags_found["exchange"] then
+                            F2T_MAP_EXPLORE_STATE.cartel_stats.total_exchanges =
+                                F2T_MAP_EXPLORE_STATE.cartel_stats.total_exchanges + 1
+                        end
+                    end
+                end
+            else
+                -- Truly missing flags - show warning and record as incomplete
+                local flags_msg = table.concat(missing_flags, ", ")
+                cecho(string.format("\n  <yellow>Warning:<reset> Flag%s not found on '%s': <yellow>%s<reset> (explored all reachable rooms)\n",
+                    #missing_flags > 1 and "s" or "", planet_name, flags_msg))
+                f2t_debug_log("[map-explore] Brief incomplete: planet=%s, missing flags=%s",
+                    planet_name, flags_msg)
+
+                if F2T_MAP_EXPLORE_STATE.system_stats then
+                    if not F2T_MAP_EXPLORE_STATE.system_stats.planets_incomplete then
+                        F2T_MAP_EXPLORE_STATE.system_stats.planets_incomplete = 0
+                        F2T_MAP_EXPLORE_STATE.system_stats.incomplete_planets = {}
+                    end
+                    F2T_MAP_EXPLORE_STATE.system_stats.planets_incomplete =
+                        F2T_MAP_EXPLORE_STATE.system_stats.planets_incomplete + 1
+
+                    table.insert(F2T_MAP_EXPLORE_STATE.system_stats.incomplete_planets, {
                         name = planet_name,
                         missing_flags = missing_flags
                     })
+
+                    if F2T_MAP_EXPLORE_STATE.mode == "cartel" then
+                        if not F2T_MAP_EXPLORE_STATE.cartel_stats.total_planets_incomplete then
+                            F2T_MAP_EXPLORE_STATE.cartel_stats.total_planets_incomplete = 0
+                            F2T_MAP_EXPLORE_STATE.cartel_stats.incomplete_planets = {}
+                        end
+                        F2T_MAP_EXPLORE_STATE.cartel_stats.total_planets_incomplete =
+                            F2T_MAP_EXPLORE_STATE.cartel_stats.total_planets_incomplete + 1
+
+                        table.insert(F2T_MAP_EXPLORE_STATE.cartel_stats.incomplete_planets, {
+                            name = planet_name,
+                            missing_flags = missing_flags
+                        })
+                    end
                 end
             end
         end
