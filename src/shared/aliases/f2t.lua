@@ -72,6 +72,13 @@ elseif subcommand == "version" then
     -- f2t version - Show package version and check for updates
     f2t_check_latest_version()
 
+elseif subcommand == "reload" then
+    -- f2t reload [fresh] - Dev-only: reinstall from local build (uninstall + install).
+    -- Not advertised in help. See DEVELOPER.md for usage.
+    local reload_args = args:match("^reload%s*(.*)") or ""
+    local is_fresh = reload_args:match("^fresh") ~= nil
+    f2t_devmode_reload(is_fresh)
+
 else
     cecho(string.format("\n<red>[f2t]<reset> Unknown command: %s\n", subcommand))
     f2t_show_help_hint("f2t")

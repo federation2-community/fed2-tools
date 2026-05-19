@@ -14,7 +14,8 @@
 
 [CmdletBinding()]
 param(
-    [string]$Version
+    [string]$Version,
+    [string]$Profile  # Mudlet profile name to deploy to after building (triggers auto-reload)
 )
 
 # Configuration
@@ -535,6 +536,63 @@ function Remove-MapFiles {
     }
 }
 
+# Find the Mudlet config directory across OS/install variations
+function Find-MudletConfigPath {
+    $candidates = @()
+
+    if ($env:XDG_CONFIG_HOME) {
+        $candidates += Join-Path $env:XDG_CONFIG_HOME "mudlet"
+    }
+    if ($HOME) {
+        $candidates += Join-Path $HOME ".config" "mudlet"
+        $candidates += Join-Path $HOME ".config" "Mudlet"
+        $candidates += Join-Path $HOME "Library" "Application Support" "mudlet"
+        $candidates += Join-Path $HOME "Library" "Application Support" "Mudlet"
+    }
+    if ($env:APPDATA) {
+        $candidates += Join-Path $env:APPDATA "Mudlet"
+        $candidates += Join-Path $env:APPDATA "mudlet"
+    }
+    if ($env:LOCALAPPDATA) {
+        $candidates += Join-Path $env:LOCALAPPDATA "Mudlet"
+    }
+
+    foreach ($path in $candidates) {
+        if ($path -and (Test-Path (Join-Path $path "profiles"))) {
+            return $path
+        }
+    }
+    return $null
+}
+
+# Deploy built package to a Mudlet profile directory and write a rebuild stamp
+# so the in-game auto-reload timer can detect the new build
+function Deploy-ToProfile {
+    param([string]$PackageName, [string]$PackageFile, [string]$ProfileName)
+
+    $mudletConfig = Find-MudletConfigPath
+    if (-not $mudletConfig) {
+        Write-Host "Warning: Could not find Mudlet config directory. Skipping deploy." -ForegroundColor Yellow
+        Write-Host "  Run setup-dev-profile.ps1 first, or pass -MudletConfigPath to it." -ForegroundColor DarkGray
+        return
+    }
+
+    $profileDir = Join-Path $mudletConfig "profiles" $ProfileName
+    if (-not (Test-Path $profileDir)) {
+        Write-Host "Warning: Profile '$ProfileName' not found at $profileDir" -ForegroundColor Yellow
+        Write-Host "  Run: ./setup-dev-profile.ps1 -ProfileName '$ProfileName'" -ForegroundColor DarkGray
+        return
+    }
+
+    $destPackage = Join-Path $profileDir "$PackageName.mpackage"
+    Copy-Item $PackageFile -Destination $destPackage -Force
+    Write-Host "Deployed to '$ProfileName': $destPackage" -ForegroundColor Green
+
+    $stampFile = Join-Path $profileDir "$PackageName-rebuild.stamp"
+    [System.DateTime]::UtcNow.ToString("o") | Set-Content $stampFile -Encoding UTF8
+    Write-Host "Rebuild stamp written (Mudlet auto-reload will trigger within ~30s)" -ForegroundColor DarkGray
+}
+
 # Main build function
 function Invoke-Build {
     Write-Host "Building Mudlet package..." -ForegroundColor Cyan
@@ -812,6 +870,12 @@ description = "$($config.description)"
 
     Write-Host "`nBuild complete: $packageFile" -ForegroundColor Green
     Write-Host "Total items - Scripts: $($totalCounts.Scripts), Triggers: $($totalCounts.Triggers), Aliases: $($totalCounts.Aliases), Timers: $($totalCounts.Timers), Keybindings: $($totalCounts.Keybindings), Resources: $($totalCounts.Resources)" -ForegroundColor Cyan
+
+    # -Profile is a local dev convenience only. CI workflows call build.ps1 with
+    # -Version only and never pass -Profile, so this block is dead in CI.
+    if ($Profile) {
+        Deploy-ToProfile -PackageName $config.name -PackageFile $packageFile -ProfileName $Profile
+    }
 }
 
 # Run the build
