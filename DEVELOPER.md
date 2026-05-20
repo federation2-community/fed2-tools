@@ -10,11 +10,13 @@ release promotion, GitHub Actions behaviour, and MPR submission.
 | Task | Command |
 |---|---|
 | One-time local profile setup | `./setup-dev-profile.ps1 -Username <name>` |
-| Build + deploy to Mudlet | `./build.ps1 -Profile fed2-dev` |
+| Build + deploy to Mudlet | `./build.ps1` |
+| Build with explicit version | `./build.ps1 -Version 1.2.0` |
 | Immediate reload in Mudlet | type `f2t reload` in-game |
 | Test fresh-install path | type `f2t reload fresh` in-game |
 | Test update dialog UI | call `f2t_trigger_update_dialog("1.0.0","9.9.9")` in Lua console |
-| Promote a build to production | GitHub → Actions → "Build Package" → Run workflow → enter version |
+| Promote to production (local) | `git tag -a v1.2.0 -m "Release notes"` then `git push origin v1.2.0` |
+| Promote to production (GitHub UI) | Actions → "Build Package" → Run workflow → enter version |
 
 ---
 
@@ -59,7 +61,7 @@ After this initial install, you never use the GUI install flow again.
 
 ```powershell
 # Edit code, then:
-./build.ps1 -Profile fed2-dev
+./build.ps1
 ```
 
 This builds the package and deploys it directly into your Mudlet profile directory.
@@ -118,7 +120,7 @@ f2t_trigger_update_dialog("0.0.0", "9.9.9")
 To test upgrading from a specific earlier production release:
 
 1. Install that version from MPR: `mpkg install fed2-tools` (after `mpkg update`)
-2. Run `./build.ps1 -Profile fed2-dev`
+2. Run `./build.ps1`
 3. In Mudlet: `f2t reload`
 
 This exercises the exact `sysInstall` upgrade path a real user would experience.
@@ -135,10 +137,9 @@ or by `installPackage()` directly.
 ## Build Script
 
 ```powershell
-./build.ps1                        # Dev build, no version injected
-./build.ps1 -Version 1.2.3         # Injects F2T_VERSION = "1.2.3"
-./build.ps1 -Profile fed2-dev      # Build + deploy to Mudlet profile
-./build.ps1 -Version 1.2.3 -Profile fed2-dev  # Both
+./build.ps1                   # Dev build, deploys to fed2-dev profile
+./build.ps1 -Version 1.2.3    # Simulate a specific version (suppresses update popup)
+./build.ps1 -Profile other    # Deploy to a different profile name
 ```
 
 Output is always `build/fed2-tools.mpackage`. The `-Profile` flag also writes a
@@ -217,6 +218,46 @@ MPR's CI validates every PR. A submission fails if:
 
 The `config.lua` is generated automatically by `build.ps1` from `project.json`.
 Do not edit `config.lua` directly.
+
+---
+
+## Version Simulation
+
+### Dev builds (no `-Version` flag)
+
+`build.ps1` automatically derives a version string from the last git tag:
+
+```
+1.1.8-dev   ← if last tag is v1.1.8
+```
+
+The in-game update checker strips the `-dev` suffix for comparison, so `1.1.8-dev`
+is treated as numerically equal to `1.1.8`. The update popup is suppressed because
+the MPR version is not newer than what's installed.
+
+### Testing a planned release version
+
+To test locally as if you were already on `1.2.0` (prevents the update popup and
+exercises any version-gated logic):
+
+```powershell
+./build.ps1 -Version 1.2.0
+```
+
+### Releasing to production
+
+**Option A — local tag push** (triggers GitHub Actions via the `v*` tag rule):
+
+```powershell
+git tag -a v1.2.0 -m "Brief release notes here"
+git push origin v1.2.0
+```
+
+**Option B — GitHub UI** (no local tag needed; CI creates the tag):
+
+GitHub → Actions → "Build Package" → Run workflow → enter version
+
+Both paths produce an identical release: annotated tag, GitHub release, MPR PR.
 
 ---
 

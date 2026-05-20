@@ -539,7 +539,7 @@ local function _build_settings_window()
     UI.settings_window = Adjustable.Container:new({
         name           = "f2t_settings_window",
         x = x, y = y, width = w, height = h,
-        titleText      = "⚙  Settings",
+        titleText      = string.format("⚙  Settings  v%s", F2T_VERSION or "?"),
         titleTxtColor  = "white",
         adjLabelstyle  = _SETTINGS_FRAME_CSS,
         buttonstyle    = [[QLabel{background:rgba(180,50,50,200);color:white;font-size:12px;

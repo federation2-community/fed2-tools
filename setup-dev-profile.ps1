@@ -201,7 +201,7 @@ if (-not $profileExists) {
 }
 
 Write-Host "ONGOING DEV WORKFLOW:" -ForegroundColor Yellow
-Write-Host "  ./build.ps1 -Profile $ProfileName" -ForegroundColor Cyan
+Write-Host "  ./build.ps1" -ForegroundColor Cyan
 Write-Host "  The package auto-reloads in Mudlet within ~30 seconds." -ForegroundColor DarkGray
 Write-Host "  Or type in Mudlet: f2t reload   for an immediate reload." -ForegroundColor DarkGray
 Write-Host ""

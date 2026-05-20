@@ -15,7 +15,7 @@
 [CmdletBinding()]
 param(
     [string]$Version,
-    [string]$Profile  # Mudlet profile name to deploy to after building (triggers auto-reload)
+    [string]$Profile = "fed2-dev"  # Mudlet profile name to deploy to after building (triggers auto-reload)
 )
 
 # Configuration
@@ -651,19 +651,27 @@ function Invoke-Build {
         $totalCounts.Resources += $data.Resources.Count
     }
 
-    # Inject version script into shared component (only if -Version provided)
+    # Resolve the effective version for this build.
+    # Dev builds (no -Version) derive "<last-tag>-dev" from git so the in-game
+    # update checker treats them as pre-release and suppresses the update popup.
     if ($Version) {
-        $versionScript = @{
-            Name = "00_version"
-            Code = "-- Auto-generated version file`nF2T_VERSION = `"$Version`""
-        }
-        $sharedComponent = $componentData | Where-Object { $_.Name -eq "shared" }
-        if ($sharedComponent) {
-            # Insert at beginning so it loads first (scripts load alphabetically)
-            $sharedComponent.Scripts = @($versionScript) + $sharedComponent.Scripts
-            $totalCounts.Scripts += 1
-            Write-Host "  - Injected version script (F2T_VERSION = `"$Version`")" -ForegroundColor Gray
-        }
+        $effectiveVersion = $Version
+    } else {
+        $lastTag = & git describe --tags --match "v*" --abbrev=0 2>$null
+        $baseVersion = if ($lastTag) { $lastTag -replace '^v', '' } else { "0.0.0" }
+        $effectiveVersion = "$baseVersion-dev"
+    }
+
+    # Always inject F2T_VERSION so the update checker always has a usable version.
+    $versionScript = @{
+        Name = "00_version"
+        Code = "F2T_VERSION = `"$effectiveVersion`""
+    }
+    $sharedComponent = $componentData | Where-Object { $_.Name -eq "shared" }
+    if ($sharedComponent) {
+        $sharedComponent.Scripts = @($versionScript) + $sharedComponent.Scripts
+        $totalCounts.Scripts += 1
+        Write-Host "  - Version: $effectiveVersion" -ForegroundColor Gray
     }
 
     # Build XML
@@ -751,14 +759,13 @@ function Invoke-Build {
 
     $xmlParts += '</MudletPackage>'
 
-    # Write XML file
     $xmlFile = Join-Path $BuildDir "$($config.name).xml"
     $xmlParts -join "`n" | Set-Content -Path $xmlFile -Encoding UTF8
     Write-Host "Generated XML: $xmlFile" -ForegroundColor Green
 
     # Write config.lua (fields required by the Mudlet package repository validator)
     $configLua = Join-Path $BuildDir "config.lua"
-    $configVersion = if ($Version) { $Version } else { "dev" }
+    $configVersion = $effectiveVersion
     $configCreated = (Get-Date -Format "yyyy-MM-dd")
     $configContent = @"
 mpackage = "$($config.name)"
@@ -811,53 +818,34 @@ description = "$($config.description)"
         Remove-Item $packageFile -Force
     }
 
-    # Create the zip archive
-    $filesToZip = @(
-        (Get-Item $configLua),
-        (Get-Item $xmlFile)
-    )
+    # Build a temp staging directory containing everything the archive needs,
+    # then zip it with ZipFile::CreateFromDirectory. This guarantees all files
+    # sit at the archive root (Compress-Archive wildcard behavior is buggy in
+    # PS 5.1 and it also rejects non-.zip extensions).
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
 
-    # Add resource files to zip
-    $filesToZip += $copiedResources
+    $tempZipDir = Join-Path $BuildDir "temp_zip"
+    if (Test-Path $tempZipDir) { Remove-Item $tempZipDir -Recurse -Force }
+    New-Item -ItemType Directory -Path $tempZipDir | Out-Null
 
-    # Compress to .mpackage (need to handle directory structure)
-    if ($copiedResources.Count -gt 0) {
-        # Create temp directory structure for proper zipping
-        $tempZipDir = Join-Path $BuildDir "temp_zip"
-        if (Test-Path $tempZipDir) {
-            Remove-Item $tempZipDir -Recurse -Force
-        }
-        New-Item -ItemType Directory -Path $tempZipDir | Out-Null
+    Copy-Item $configLua -Destination $tempZipDir
+    Copy-Item $xmlFile   -Destination $tempZipDir
 
-        # Copy files to temp structure
-        Copy-Item $configLua -Destination $tempZipDir
-        Copy-Item $xmlFile -Destination $tempZipDir
-
-        # Copy resource directories
-        foreach ($comp in $componentData) {
-            if ($comp.Resources.Count -gt 0) {
-                $compDir = Join-Path $BuildDir $comp.Name
-                if (Test-Path $compDir) {
-                    Copy-Item $compDir -Destination $tempZipDir -Recurse
-                }
+    foreach ($comp in $componentData) {
+        if ($comp.Resources.Count -gt 0) {
+            $compDir = Join-Path $BuildDir $comp.Name
+            if (Test-Path $compDir) {
+                Copy-Item $compDir -Destination $tempZipDir -Recurse
             }
         }
-
-        # Create archive from temp directory
-        $tempFiles = Get-ChildItem -Path $tempZipDir -Recurse -File
-        Compress-Archive -Path (Join-Path $tempZipDir "*") -DestinationPath $packageFile -Force
-
-        # Clean up temp directory
-        Remove-Item $tempZipDir -Recurse -Force
-    } else {
-        # No resources, simple zip
-        Compress-Archive -Path $filesToZip.FullName -DestinationPath $packageFile -Force
     }
+
+    [System.IO.Compression.ZipFile]::CreateFromDirectory($tempZipDir, $packageFile)
+    Remove-Item $tempZipDir -Recurse -Force
 
     # Bundle icon inside mpackage at .mudlet/Icon/<filename> so reindex.lua can extract it
     if ($iconFile) {
         $iconLeaf = Split-Path $iconFile -Leaf
-        Add-Type -AssemblyName System.IO.Compression.FileSystem
         $zip = [System.IO.Compression.ZipFile]::Open($packageFile, 'Update')
         $entryPath = ".mudlet/Icon/$iconLeaf"
         [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $iconFile, $entryPath) | Out-Null
@@ -871,8 +859,8 @@ description = "$($config.description)"
     Write-Host "`nBuild complete: $packageFile" -ForegroundColor Green
     Write-Host "Total items - Scripts: $($totalCounts.Scripts), Triggers: $($totalCounts.Triggers), Aliases: $($totalCounts.Aliases), Timers: $($totalCounts.Timers), Keybindings: $($totalCounts.Keybindings), Resources: $($totalCounts.Resources)" -ForegroundColor Cyan
 
-    # -Profile is a local dev convenience only. CI workflows call build.ps1 with
-    # -Version only and never pass -Profile, so this block is dead in CI.
+    # Deploy to the Mudlet profile. Defaults to "fed2-dev" locally; CI runners
+    # have no Mudlet install so Deploy-ToProfile exits early with a warning.
     if ($Profile) {
         Deploy-ToProfile -PackageName $config.name -PackageFile $packageFile -ProfileName $Profile
     }
