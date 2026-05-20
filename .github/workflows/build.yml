@@ -97,11 +97,13 @@ jobs:
       - name: Generate release notes
         if: steps.version.outputs.is_release == 'true'
         id: release_notes
+        env:
+          INPUT_RELEASE_NOTES: ${{ inputs.release_notes }}
         run: |
           # Dispatch releases: use the notes provided in the workflow input if given
-          if [[ "${{ steps.version.outputs.is_dispatch_release }}" == "true" && -n "${{ inputs.release_notes }}" ]]; then
+          if [[ "${{ steps.version.outputs.is_dispatch_release }}" == "true" && -n "$INPUT_RELEASE_NOTES" ]]; then
             echo "summary<<EOF" >> $GITHUB_OUTPUT
-            echo "${{ inputs.release_notes }}" >> $GITHUB_OUTPUT
+            printf '%s\n' "$INPUT_RELEASE_NOTES" >> $GITHUB_OUTPUT
             echo "EOF" >> $GITHUB_OUTPUT
           elif [[ "${{ steps.version.outputs.is_dispatch_release }}" == "true" ]]; then
             # Auto-generate from git log since the last production tag
@@ -148,9 +150,10 @@ jobs:
         if: steps.version.outputs.is_release == 'true'
         env:
           GH_TOKEN: ${{ secrets.MUDLET_REPO_PAT }}
+          RELEASE_SUMMARY: ${{ steps.release_notes.outputs.summary }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          OWNER="${{ github.repository_owner }}"
+          OWNER="$GITHUB_REPOSITORY_OWNER"
           BRANCH="fed2-tools-v${VERSION}"
 
           git config --global user.name "github-actions[bot]"
@@ -187,17 +190,19 @@ jobs:
             --json number --jq 'length')
 
           if [ "$EXISTING" -eq 0 ]; then
+            # Build PR body via printf so any chars in RELEASE_SUMMARY are safe
+            {
+              printf '## fed2-tools v%s\n\n' "$VERSION"
+              printf 'Release Notes:\n%s\n\n' "$RELEASE_SUMMARY"
+              printf 'Automated submission from [%s](https://github.com/%s) release [v%s](https://github.com/%s/releases/tag/v%s).\n\n' \
+                "$GITHUB_REPOSITORY" "$GITHUB_REPOSITORY" "$VERSION" "$GITHUB_REPOSITORY" "$VERSION"
+              printf '**Description:** Federation 2 Community Edition tools collection for Mudlet.'
+            } > /tmp/pr_body.md
+
             gh pr create \
               --repo Mudlet/mudlet-package-repository \
               --head "${OWNER}:${BRANCH}" \
               --base main \
               --title "Update fed2-tools to v${VERSION}" \
-              --body '## fed2-tools v${VERSION}
-
-              Release Notes:
-              ${{ steps.release_notes.outputs.summary }}
-
-              Automated submission from [${GITHUB_REPOSITORY}](https://github.com/${GITHUB_REPOSITORY}) release [v${VERSION}](https://github.com/${GITHUB_REPOSITORY}/releases/tag/v${VERSION}).
-
-              **Description:** Federation 2 Community Edition tools collection for Mudlet.'
+              --body-file /tmp/pr_body.md
           fi
