@@ -192,12 +192,12 @@ jobs:
               --head "${OWNER}:${BRANCH}" \
               --base main \
               --title "Update fed2-tools to v${VERSION}" \
-              --body "## fed2-tools v${VERSION}
+              --body '## fed2-tools v${VERSION}
 
               Release Notes:
               ${{ steps.release_notes.outputs.summary }}
 
               Automated submission from [${GITHUB_REPOSITORY}](https://github.com/${GITHUB_REPOSITORY}) release [v${VERSION}](https://github.com/${GITHUB_REPOSITORY}/releases/tag/v${VERSION}).
 
-              **Description:** Federation 2 Community Edition tools collection for Mudlet."
+              **Description:** Federation 2 Community Edition tools collection for Mudlet.'
           fi
