@@ -15,7 +15,7 @@ A Mudlet package for [Federation 2 Community Edition](https://federation2.com) t
 | Commodities | `price`, `bb`, `bs` | Check commodity prices across all cartel exchanges. Find the best places to buy and sell, with profit calculations. Buy or sell commodities in bulk at exchanges. |
 | Auto-Refuel | `f2t settings` | Automatically refuels your ship when landing at shuttlepads. Triggers when fuel drops below your configured threshold. |
 | Stamina Monitor | `f2t settings` | Detects low stamina and navigates to buy food. Pauses active automation, refills stamina, then returns you to where you were. |
-| Death Monitor | `f2t settings` | Handles death automatically by stopping all automation and running `insure`. Permanently locks the death room so navigation avoids it. |
+| Death Monitor | `f2t settings`, `map room` | Handles death automatically by stopping all automation and running `insure`. Locks the death room so navigation avoids it. Filters out suicide and starvation deaths. Rooms can be manually marked as danger (skull icon), locked (lock icon), or safe (never auto-locked). |
 | UI | `ui` | Replaces the default Mudlet layout with a purpose-built interface: resizable frames, tabbed output windows, an embedded map, and rank-aware tabs for hauling and trading. |
 
 ## Installation
@@ -112,11 +112,31 @@ When enabled, the system automatically handles death by:
 - Running `insure` after respawn
 - Locking the room where death occurred so navigation avoids it in the future
 
+Deaths from suicide or starvation do **not** lock a room — only deaths caused by a room hazard do.
+
 To enable:
 
 ```
 f2t settings set death_monitor_enabled true
 ```
+
+**Manual danger marking** — for known hazards you can mark before dying there:
+
+```
+map exit death up          # Mark the exit above as a death trap (skull icon on destination)
+map exit death down        # Mark the exit below as a death trap
+map room death <room_id>   # Mark a specific room as dangerous
+```
+
+**Safe rooms** — for rooms the death monitor should never auto-lock (e.g. a room that's safe to stand in but has a dangerous exit leading into it):
+
+```
+map room safe              # Mark current room safe from auto-locking
+map room safe <room_id>    # Mark specific room safe
+map room unsafe <room_id>  # Remove safe mark and mark as death/danger
+```
+
+Room status is visible in `map room info` and on the map: skull icon (☠) for confirmed death/danger rooms, lock icon (🔒) for generically locked rooms.
 
 ### 5. Enable the UI (Enabled by default)
 

@@ -30,7 +30,7 @@ function f2t_map_parse_optional_room_id(words, index)
     -- Check if it matches Fed2 hash pattern: system.area.num
     if potential_hash:match("^[^%.]+%.[^%.]+%.%d+$") then
         room_id = getRoomIDbyHash(potential_hash)
-        if room_id then
+        if room_id and room_id > 0 then
             return room_id, false
         else
             -- Hash format valid but room not found
@@ -52,20 +52,24 @@ end
 --- @return string|nil arg The required argument after room_id
 --- @return boolean success True if parsing succeeded
 function f2t_map_parse_optional_room_and_arg(words, start_index)
-    if #words >= start_index + 1 then
-        -- Check if first param is a number (room_id provided)
-        local potential_room = tonumber(words[start_index])
-        if potential_room and words[start_index + 1] then
+    if not words[start_index] then
+        return nil, nil, false
+    end
+
+    -- Check if first param is a number (room_id provided)
+    local potential_room = tonumber(words[start_index])
+    if potential_room then
+        if words[start_index + 1] then
             -- Format: command <room_id> <arg>
             return potential_room, words[start_index + 1], true
         else
-            -- Format: command <arg> (use current room)
-            return F2T_MAP_CURRENT_ROOM_ID, words[start_index], true
+            -- Number provided but no following argument - insufficient
+            return nil, nil, false
         end
     end
 
-    -- Insufficient arguments
-    return nil, nil, false
+    -- Format: command <arg> (use current room)
+    return F2T_MAP_CURRENT_ROOM_ID, words[start_index], true
 end
 
 --- Parse optional room_id + multiple required arguments

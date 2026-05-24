@@ -29,23 +29,40 @@ function f2t_clean_room_name(name)
     return cleaned
 end
 
+-- Count display characters in a UTF-8 string.
+-- Continuation bytes (0x80-0xBF) are not character starts, so we skip them.
+local function _dlen(s)
+    local n = 0
+    for i = 1, #s do
+        local b = s:byte(i)
+        if b < 0x80 or b >= 0xC0 then n = n + 1 end
+    end
+    return n
+end
+
 function f2t_padding(str, len, dir)
     str = tostring(str)
+    local dlen = _dlen(str)
 
-    -- If the string is longer than the length, truncate characters without doing anything
-    if #str > len then
-        return str:sub(1, len)
+    if dlen > len then
+        -- Truncate to `len` display characters without splitting a multi-byte sequence.
+        local n, i = 0, 1
+        while i <= #str and n < len do
+            local b = str:byte(i)
+            if b < 0x80 or b >= 0xC0 then n = n + 1 end
+            i = i + 1
+        end
+        return str:sub(1, i - 1)
     end
 
+    local pad = len - dlen
     if dir == "left" then
-        return str .. string.rep(" ", len - #str)
+        return str .. string.rep(" ", pad)
     elseif dir == "right" then
-        return string.rep(" ", len - #str) .. str
+        return string.rep(" ", pad) .. str
     elseif dir == "center" then
-        local total_padding = len - #str
-        local left_padding  = math.floor(total_padding / 2)
-        local right_padding = total_padding - left_padding
-
-        return string.rep(" ", left_padding) .. str .. string.rep(" ", right_padding)
+        local left  = math.floor(pad / 2)
+        local right = pad - left
+        return string.rep(" ", left) .. str .. string.rep(" ", right)
     end
 end

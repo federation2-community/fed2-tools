@@ -19,14 +19,20 @@ local ICON_PRIORITY = {
 -- this override holds for 1.5s so movement snaps cleanly without permanently
 -- disabling click-to-inspect on other rooms.
 local _snap_to_current = false
+local _snap_timer_id = nil
 
 function f2t_map_info_snap_to_current()
     _snap_to_current = true
     -- centerview() already fired before this call, so force a second render
     -- now that the snap flag is set so the overlay shows the new room immediately.
     updateMap()
-    tempTimer(1.5, function()
+    -- Kill previous timer so rapid room changes don't prematurely clear the snap flag.
+    if _snap_timer_id then
+        killTimer(_snap_timer_id)
+    end
+    _snap_timer_id = tempTimer(1.5, function()
         _snap_to_current = false
+        _snap_timer_id = nil
     end)
 end
 

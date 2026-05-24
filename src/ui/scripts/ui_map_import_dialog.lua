@@ -179,18 +179,38 @@ local _CSS_XBTN = [[
 
 local _MAP_OPTIONS = {
     {
-        file  = "galaxy_brief.json",
-        label = "  --  Whole Galaxy  (Recommended)  --  ~4,500 rooms",
+        file        = "galaxy_brief.json",
+        label_base  = "  --  Whole Galaxy  (Recommended)  --  ",
     },
     {
-        file  = "starter_map_with_exchanges.json",
-        label = "  --  Starter Map with Exchanges  --  ~280 rooms",
+        file        = "starter_map_with_exchanges.json",
+        label_base  = "  --  Starter Map with Exchanges  --  ",
     },
     {
-        file  = "starter_map.json",
-        label = "  --  Starter Map  (Basic)  --  ~250 rooms",
+        file        = "starter_map.json",
+        label_base  = "  --  Starter Map  (Basic)  --  ",
     },
 }
+
+local function _count_map_rooms(file_path)
+    local file = io.open(file_path, "r")
+    if not file then return nil end
+    local content = file:read("*all")
+    file:close()
+    local total = 0
+    for n in content:gmatch('"roomCount"%s*:%s*(%d+)') do
+        total = total + tonumber(n)
+    end
+    return total
+end
+
+local function _map_option_label(opt, map_dir)
+    local count = _count_map_rooms(map_dir .. opt.file)
+    if count and count > 0 then
+        return string.format("%s%d rooms", opt.label_base, count)
+    end
+    return opt.label_base .. "? rooms"
+end
 
 -- ── Section layout constants ──────────────────────────────────────────────────
 -- Exposed as a global so callers can factor the height into their own layouts
@@ -285,6 +305,8 @@ function ui_map_import_build_section(parent_in, n, prefix, y_start, opts)
     local y_imp  = y_opt3 + _H_OPT  + 10
     local y_stat = y_imp  + _H_IMP  + 4
 
+    local map_dir = getMudletHomeDir() .. "/fed2-tools/shared/"
+
     local _sel         = 1
     local _import_done = false
     local map_btns     = {}
@@ -326,7 +348,7 @@ function ui_map_import_build_section(parent_in, n, prefix, y_start, opts)
             name   = string.format("%sopt%d_%d", prefix, i, n),
             x = "3%", y = opt_ys[i], width = "94%", height = _H_OPT,
         }, parent_in)
-        btn:echo(opt.label)
+        btn:echo(_map_option_label(opt, map_dir))
         table.insert(map_btns, btn)
 
         local idx = i
@@ -360,7 +382,7 @@ function ui_map_import_build_section(parent_in, n, prefix, y_start, opts)
         if _import_done then return end
 
         local opt      = _MAP_OPTIONS[_sel]
-        local map_path = getMudletHomeDir() .. "/fed2-tools/shared/" .. opt.file
+        local map_path = map_dir .. opt.file
 
         status_lbl:setStyleSheet(_CSS_STATUS_INFO)
         status_lbl:echo("  Importing, please wait...")

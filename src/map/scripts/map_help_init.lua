@@ -19,6 +19,7 @@ f2t_register_help("map", {
         {cmd = "Diagnostics:", desc = ""},
         {cmd = "map raw", desc = "Show raw mapper + GMCP data (current room)"},
         {cmd = "map raw <room_id>", desc = "Show raw mapper data for specified room"},
+        {cmd = "map restyle", desc = "Re-apply correct styling to every room in the database"},
         {cmd = "", desc = ""},
         {cmd = "Settings:", desc = ""},
         {cmd = "map settings", desc = "List all mapper settings"},
@@ -126,6 +127,26 @@ f2t_register_help("map raw", {
     examples = {
         "map raw        # Show current room's raw data",
         "map raw 1234   # Show room 1234's raw data"
+    }
+})
+
+f2t_register_help("map restyle", {
+    description = "Re-apply correct visual styling to every room in the map database",
+    usage = {
+        {cmd = "map restyle", desc = "Scan all rooms and update icons/colors based on metadata"},
+        {cmd = "", desc = ""},
+        {cmd = "Styling priority applied to each room:", desc = ""},
+        {cmd = "  1. Death/danger metadata  → skull icon, blood-red background", desc = ""},
+        {cmd = "  2. Locked (no death data) → lock icon, dark slate background", desc = ""},
+        {cmd = "  3. Room flags             → shuttlepad, exchange, orbit, etc.", desc = ""},
+        {cmd = "  4. Default               → plain planet or space styling", desc = ""}
+    },
+    examples = {
+        "map restyle    # Fix styling for all rooms without visiting them",
+        "",
+        "# Use after: package updates that change colors or icons,",
+        "#             manually marking rooms as death/safe/locked,",
+        "#             importing a map from another player"
     }
 })
 
@@ -402,26 +423,40 @@ f2t_register_help("map room", {
     description = "Create, delete, and edit rooms (supplement auto-mapping)",
     usage = {
         {cmd = "map room add <system> <area> <num> [name]", desc = "Create new room"},
-        {cmd = "map room delete <room_id>", desc = "Delete room (requires confirmation)"},
-        {cmd = "map room info <room_id>", desc = "Display room properties and lock status"},
+        {cmd = "map room delete [room_id]", desc = "Delete room (requires confirmation)"},
+        {cmd = "map room info [room_id]", desc = "Display room properties and lock/safe status"},
         {cmd = "", desc = ""},
-        {cmd = "map room set name <room_id> <name>", desc = "Set room name"},
-        {cmd = "map room set area <room_id> <area>", desc = "Move to different area"},
-        {cmd = "map room set coords <room_id> <x> <y> <z>", desc = "Set coordinates"},
-        {cmd = "map room set symbol <room_id> <char>", desc = "Set symbol (1 char)"},
-        {cmd = "map room set color <room_id> <r> <g> <b>", desc = "Set color (RGB 0-255)"},
-        {cmd = "map room set env <room_id> <env_id>", desc = "Set environment ID"},
-        {cmd = "map room set weight <room_id> <weight>", desc = "Set pathfinding weight"},
+        {cmd = "map room set name [room_id] <name>", desc = "Set room name"},
+        {cmd = "map room set area [room_id] <area>", desc = "Move to different area"},
+        {cmd = "map room set coords [room_id] <x> <y> <z>", desc = "Set coordinates"},
+        {cmd = "map room set symbol [room_id] <char>", desc = "Set symbol (1 char)"},
+        {cmd = "map room set color [room_id] <r> <g> <b>", desc = "Set color (RGB 0-255)"},
+        {cmd = "map room set env [room_id] <env_id>", desc = "Set environment ID"},
+        {cmd = "map room set weight [room_id] <weight>", desc = "Set pathfinding weight"},
         {cmd = "", desc = ""},
-        {cmd = "map room lock <room_id>", desc = "Lock room (navigation avoids)"},
-        {cmd = "map room unlock <room_id>", desc = "Unlock room"}
+        {cmd = "Lock Management:", desc = ""},
+        {cmd = "map room lock [room_id]", desc = "Lock room — navigation avoids (lock icon)"},
+        {cmd = "map room unlock [room_id]", desc = "Unlock room and clear all death/danger metadata"},
+        {cmd = "map room death <room_id>", desc = "Mark room as death/danger — locked with skull icon"},
+        {cmd = "", desc = ""},
+        {cmd = "Safe Override (death monitor):", desc = ""},
+        {cmd = "map room safe [room_id]", desc = "Mark room safe — death monitor never auto-locks it"},
+        {cmd = "map room unsafe [room_id]", desc = "Remove safe mark and mark as death/danger"},
+        {cmd = "", desc = ""},
+        {cmd = "Note: [room_id] defaults to current room when omitted.", desc = ""},
+        {cmd = "      map room death requires explicit room_id (can't be in a death room).", desc = ""}
     },
     examples = {
         "map room add Coffee Latte 459 'Exchange Room'  # Create room",
-        "map room info 1234                             # View room details + lock status",
+        "map room info                                  # View current room details",
+        "map room info 1234                             # View room 1234 details",
         "map room set name 1234 New Name                # Rename room",
         "map room set coords 1234 10 20 0               # Reposition room",
-        "map room lock 1234                             # Lock dangerous room",
+        "map room lock                                  # Lock current room",
+        "map room unlock 1234                           # Unlock room, clear death metadata",
+        "map room death 1234                            # Mark room 1234 as dangerous (skull)",
+        "map room safe                                  # Mark current room safe from auto-lock",
+        "map room unsafe 908                            # Remove safe flag, mark as death",
         "map room delete 1234                           # Delete (requires confirm)"
     }
 })
@@ -436,8 +471,9 @@ f2t_register_help("map exit", {
         {cmd = "", desc = ""},
         {cmd = "Note: For bidirectional, use two add commands", desc = ""},
         {cmd = "", desc = ""},
-        {cmd = "map exit lock [room] <dir>", desc = "Lock exit (navigation avoids)"},
+        {cmd = "map exit lock [room] <dir>", desc = "Lock exit — navigation avoids (lock icon on dest)"},
         {cmd = "map exit unlock [room] <dir>", desc = "Unlock exit"},
+        {cmd = "map exit death [room] <dir>", desc = "Mark exit as danger — dest gets skull icon, locked"},
         {cmd = "", desc = ""},
         {cmd = "Stub Exits:", desc = ""},
         {cmd = "map exit stub create [room] <dir>", desc = "Create stub exit"},
@@ -465,6 +501,7 @@ f2t_register_help("map exit", {
         "map exit remove 123 north                     # Delete",
         "map exit lock north                           # Lock exit in current room",
         "map exit lock 123 north                       # Lock exit in room 123",
+        "map exit death up                             # Mark 'up' exit as death trap (skull on dest)",
         "",
         "# Stub exits (placeholders for unexplored exits):",
         "map exit stub create north                   # Create stub in current room",

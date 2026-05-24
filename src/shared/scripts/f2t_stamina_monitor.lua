@@ -168,9 +168,9 @@ function f2t_stamina_check_low_stamina(percent)
         return
     end
 
-    -- Skip if stamina is 0 (dead - can't refill)
-    if percent == 0 then
-        f2t_debug_log("[stamina] Low stamina check skipped: stamina is 0 (dead)")
+    -- Skip if stamina is zero or negative (dead / instant room damage — can't refill)
+    if percent <= 0 then
+        f2t_debug_log("[stamina] Low stamina check skipped: stamina is %d%% (dead or room damage)", percent)
         return
     end
 

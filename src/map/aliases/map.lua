@@ -494,6 +494,40 @@ elseif subcommand == "room" then
         end
         f2t_map_manual_unlock_room(room_id)
 
+    elseif room_subcmd == "death" then
+        -- map room death <room_id> - mark a specific room as death/danger (room_id required)
+        local room_id = tonumber(words[2])
+        if not room_id then
+            cecho("\n<red>[map]<reset> Usage: map room death <room_id>\n")
+            cecho("\n<dim_grey>A room ID is required (you cannot be standing in a death room)<reset>\n")
+            return
+        end
+        f2t_map_manual_mark_room_death(room_id)
+
+    elseif room_subcmd == "safe" then
+        -- map room safe [room_id] - mark room as safe from auto-locking (defaults to current)
+        local room_id, error_shown = f2t_map_parse_optional_room_id(words, 2)
+        if not room_id then
+            if not error_shown then
+                cecho("\n<red>[map]<reset> No current room. Please specify room_id\n")
+                f2t_show_help_hint("map room")
+            end
+            return
+        end
+        f2t_map_manual_mark_room_safe(room_id)
+
+    elseif room_subcmd == "unsafe" then
+        -- map room unsafe [room_id] - remove safe mark and mark as death (defaults to current)
+        local room_id, error_shown = f2t_map_parse_optional_room_id(words, 2)
+        if not room_id then
+            if not error_shown then
+                cecho("\n<red>[map]<reset> No current room. Please specify room_id\n")
+                f2t_show_help_hint("map room")
+            end
+            return
+        end
+        f2t_map_manual_mark_room_unsafe(room_id)
+
     else
         cecho(string.format("\n<red>[map]<reset> Unknown room command: %s\n", room_subcmd))
         f2t_show_help_hint("map room")
@@ -506,6 +540,10 @@ elseif subcommand == "confirm" then
 elseif subcommand == "cancel" then
     -- map cancel - Cancel pending confirmation
     f2t_map_manual_cancel_confirmation()
+
+elseif subcommand == "restyle" then
+    -- map restyle - Re-apply styling to all rooms based on their current metadata
+    f2t_map_restyle_all()
 
 elseif subcommand == "raw" then
     -- map raw - Show raw mapper + GMCP data for current room
@@ -863,6 +901,23 @@ elseif subcommand == "exit" then
         end
 
         f2t_map_manual_unlock_exit(room_id, direction)
+
+    elseif exit_subcmd == "death" then
+        -- map exit death [room_id] <direction>
+        local room_id, direction, success = f2t_map_parse_optional_room_and_arg(words, 2)
+
+        if not success then
+            cecho("\n<red>[map]<reset> Usage: map exit death [room_id] <direction>\n")
+            f2t_show_help_hint("map exit")
+            return
+        end
+
+        if not room_id then
+            cecho("\n<red>[map]<reset> No current room. Please specify room_id\n")
+            return
+        end
+
+        f2t_map_manual_death_exit(room_id, direction)
 
     elseif exit_subcmd == "stub" then
         -- map exit stub [create|delete|connect|list] [args]

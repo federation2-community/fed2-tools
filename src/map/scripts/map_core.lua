@@ -135,6 +135,11 @@ function f2t_map_handle_gmcp_room()
                     F2T_SPEEDWALK_WAITING_FOR_ARRIVAL = false
                     f2t_debug_log("[map] On-arrival command complete, continuing speedwalk")
                     f2t_map_speedwalk_on_room_change()
+                    -- Exploration returned early above because speedwalk was still active
+                    -- when GMCP arrived. Re-notify now that speedwalk has processed.
+                    if F2T_MAP_EXPLORE_STATE and F2T_MAP_EXPLORE_STATE.active then
+                        f2t_map_explore_on_room_change()
+                    end
                 end)
             end
         else

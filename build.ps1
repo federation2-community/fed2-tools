@@ -18,10 +18,11 @@ param(
     [string]$Profile = "fed2-dev"  # Mudlet profile name to deploy to after building (triggers auto-reload)
 )
 
-# Configuration
-$ProjectFile = "project.json"
-$SrcDir = "src"
-$BuildDir = "build"
+# Configuration — all paths anchored to script location so .NET ZipFile APIs
+# resolve correctly regardless of the shell's working directory.
+$ProjectFile = Join-Path $PSScriptRoot "project.json"
+$SrcDir      = Join-Path $PSScriptRoot "src"
+$BuildDir    = Join-Path $PSScriptRoot "build"
 
 # Load project configuration
 function Get-ProjectConfig {
@@ -500,7 +501,7 @@ $MapFiles = @(
 
 # Copy map files to shared resources
 function Copy-MapFiles {
-    $mapsDir = "maps"
+    $mapsDir = Join-Path $PSScriptRoot "maps"
     $destDir = Join-Path $SrcDir "shared" "resources"
 
     # Ensure destination directory exists
@@ -777,7 +778,8 @@ description = "$($config.description)"
 "@
     # Include icon filename if project declares a screenshot and the file exists.
     # reindex.lua extracts it from .mudlet/Icon/<name> inside the mpackage.
-    $iconFile = if ($config.icon -and (Test-Path $config.icon)) { $config.icon } else { $null }
+    $iconPath = if ($config.icon) { Join-Path $PSScriptRoot $config.icon } else { $null }
+    $iconFile = if ($iconPath -and (Test-Path $iconPath)) { $iconPath } else { $null }
     if ($iconFile) {
         $iconLeaf = Split-Path $iconFile -Leaf
         $configContent += "`nicon = `"$iconLeaf`""
@@ -811,12 +813,10 @@ description = "$($config.description)"
     }
 
     # Create .mpackage (zip file)
+    # Write to a temp path first so the build always succeeds even if the final
+    # file is momentarily locked (OneDrive sync, antivirus, etc.), then replace.
     $packageFile = Join-Path $BuildDir "$($config.name).mpackage"
-
-    # Remove old package if it exists
-    if (Test-Path $packageFile) {
-        Remove-Item $packageFile -Force
-    }
+    $packageTemp = Join-Path $BuildDir "$($config.name).mpackage.tmp"
 
     # Build a temp staging directory containing everything the archive needs,
     # then zip it with ZipFile::CreateFromDirectory. This guarantees all files
@@ -840,16 +840,24 @@ description = "$($config.description)"
         }
     }
 
-    [System.IO.Compression.ZipFile]::CreateFromDirectory($tempZipDir, $packageFile)
+    if (Test-Path $packageTemp) { Remove-Item $packageTemp -Force }
+    [System.IO.Compression.ZipFile]::CreateFromDirectory($tempZipDir, $packageTemp)
     Remove-Item $tempZipDir -Recurse -Force
+
+    # Replace final package — -Force overwrites; if still locked, error is clear
+    Move-Item $packageTemp $packageFile -Force
 
     # Bundle icon inside mpackage at .mudlet/Icon/<filename> so reindex.lua can extract it
     if ($iconFile) {
         $iconLeaf = Split-Path $iconFile -Leaf
-        $zip = [System.IO.Compression.ZipFile]::Open($packageFile, 'Update')
         $entryPath = ".mudlet/Icon/$iconLeaf"
-        [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $iconFile, $entryPath) | Out-Null
-        $zip.Dispose()
+        $zip = $null
+        try {
+            $zip = [System.IO.Compression.ZipFile]::Open($packageFile, 'Update')
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $iconFile, $entryPath) | Out-Null
+        } finally {
+            if ($zip) { $zip.Dispose() }
+        }
         Write-Host "  - Bundled icon: $entryPath" -ForegroundColor Gray
     }
 

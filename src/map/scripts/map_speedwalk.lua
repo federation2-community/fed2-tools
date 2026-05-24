@@ -33,6 +33,9 @@ F2T_SPEEDWALK_FAILED_EXIT_DIR = nil        -- Direction that failed (set when re
 F2T_SPEEDWALK_OWNER = nil                  -- Component name: "map-explore", "stamina", "hauling", nil=standalone
 F2T_SPEEDWALK_ON_INTERRUPT = nil           -- Callback: function(reason) -> { auto_resume = bool }
 
+-- Brief mode state for speedwalk
+F2T_SPEEDWALK_BRIEF_SWITCHED = false       -- Whether we sent "brief" during this walk
+
 -- ========================================
 -- Navigation Ownership
 -- ========================================
@@ -50,6 +53,22 @@ end
 function f2t_map_clear_nav_owner()
     F2T_SPEEDWALK_OWNER = nil
     F2T_SPEEDWALK_ON_INTERRUPT = nil
+end
+
+-- ========================================
+-- Brief Mode Management
+-- ========================================
+
+-- Restore room description mode after speedwalk ends (or before the final step).
+-- Safe to call multiple times: no-ops if nothing was switched.
+function f2t_map_speedwalk_restore_mode()
+    -- Skip restore if exploration is managing brief mode globally (it handles its own restoration)
+    if not F2T_EXPLORE_BRIEF_OWNER and F2T_SPEEDWALK_BRIEF_SWITCHED then
+        local after_mode = f2t_settings_get("map", "speedwalk_after_mode") or "full"
+        send(after_mode)
+        F2T_SPEEDWALK_BRIEF_SWITCHED = false
+        f2t_debug_log("[map] Speedwalk: restored %s room descriptions", after_mode)
+    end
 end
 
 -- ========================================
@@ -83,11 +102,23 @@ function doSpeedWalk()
     F2T_SPEEDWALK_MOVE_TIMEOUT_ID = nil
     F2T_SPEEDWALK_CONSECUTIVE_FAILURES = 0
 
+    -- Reset brief mode state
+    F2T_SPEEDWALK_BRIEF_SWITCHED = false
+
     local path_length = #speedWalkDir
 
     cecho(string.format("\n<green>[map]<reset> Speedwalking (%d steps)\n", path_length))
     f2t_debug_log("[map] Speedwalk started: %d steps to room %s", path_length,
         F2T_SPEEDWALK_DESTINATION_ROOM_ID and tostring(F2T_SPEEDWALK_DESTINATION_ROOM_ID) or "unknown (blind)")
+
+    -- Switch to brief immediately for walks of 3+ steps (no detection delay).
+    -- Exploration suppresses this via F2T_EXPLORE_BRIEF_OWNER so it can manage
+    -- brief mode across the entire session rather than cycling per leg.
+    if path_length >= 3 and f2t_settings_get("map", "speedwalk_brief") and not F2T_EXPLORE_BRIEF_OWNER then
+        send("brief")
+        F2T_SPEEDWALK_BRIEF_SWITCHED = true
+        f2t_debug_log("[map] Speedwalk: switched to brief mode")
+    end
 
     -- Take the first step
     f2t_map_speedwalk_next_step()
@@ -209,6 +240,9 @@ function f2t_map_speedwalk_complete()
     -- Set result for integration with other components
     F2T_SPEEDWALK_LAST_RESULT = "completed"
 
+    -- Restore room description mode (no-op if already restored before final step)
+    f2t_map_speedwalk_restore_mode()
+
     -- Reset speedwalk state
     F2T_SPEEDWALK_ACTIVE = false
     F2T_SPEEDWALK_PAUSED = false
@@ -255,6 +289,9 @@ function f2t_map_speedwalk_stop()
     if F2T_SPEEDWALK_LAST_RESULT ~= "failed" then
         F2T_SPEEDWALK_LAST_RESULT = "stopped"
     end
+
+    -- Restore room description mode
+    f2t_map_speedwalk_restore_mode()
 
     -- Clean up circuit state if active
     if F2T_MAP_CIRCUIT_STATE and F2T_MAP_CIRCUIT_STATE.active then
@@ -385,6 +422,11 @@ function f2t_map_speedwalk_on_room_change()
             F2T_SPEEDWALK_CONSECUTIVE_FAILURES = 0
             F2T_SPEEDWALK_EXPECTED_ROOM_ID = nil
             F2T_SPEEDWALK_ROOM_BEFORE_MOVE = nil
+
+            -- Restore full mode before the last step so destination arrives in original mode
+            if F2T_SPEEDWALK_CURRENT_STEP == #F2T_SPEEDWALK_DIR - 1 then
+                f2t_map_speedwalk_restore_mode()
+            end
 
             -- Continue to next step
             f2t_map_speedwalk_next_step()
@@ -575,6 +617,10 @@ function f2t_map_speedwalk_handle_move_failure()
         -- IMPORTANT: We inline the stop logic here instead of calling f2t_map_speedwalk_stop()
         -- because that function sets result to "stopped", which would overwrite our "failed" result.
         -- Components need to distinguish between "user stopped manually" vs "path genuinely blocked".
+
+        -- Restore room description mode
+        f2t_map_speedwalk_restore_mode()
+
         cecho("\n<yellow>[map]<reset> Speedwalk stopped\n")
         f2t_debug_log("[map] Speedwalk stopped at step %d/%d",
             F2T_SPEEDWALK_CURRENT_STEP, #F2T_SPEEDWALK_DIR)
@@ -608,6 +654,17 @@ function f2t_map_speedwalk_handle_move_failure()
 
         -- Clear navigation ownership
         f2t_map_clear_nav_owner()
+
+        -- Notify exploration if active.
+        -- When movement is rejected and you stay in the same room (e.g. tabi room, one-way
+        -- gates), no subsequent GMCP room-change fires, so on_room_change never consumes the
+        -- "failed" result and exploration hangs. Fire it explicitly via a zero-delay timer so
+        -- it runs after this call frame unwinds.
+        tempTimer(0, function()
+            if F2T_MAP_EXPLORE_STATE and F2T_MAP_EXPLORE_STATE.active then
+                f2t_map_explore_on_room_change()
+            end
+        end)
 
         return
     end

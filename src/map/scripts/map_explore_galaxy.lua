@@ -71,6 +71,9 @@ function f2t_map_explore_galaxy_start()
         total_planets = 0
     }
 
+    -- Manage brief mode for the entire exploration duration
+    f2t_map_explore_brief_mode_start()
+
     -- Start galaxy capture
     f2t_map_explore_galaxy_capture_start()
 

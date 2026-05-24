@@ -153,6 +153,32 @@ F2T_MAP_EXPLORE_STATE = F2T_MAP_EXPLORE_STATE or {
     }
 }
 
+-- ========================================
+-- Brief Mode Management
+-- ========================================
+-- F2T_EXPLORE_BRIEF_OWNER prevents per-speedwalk brief→after_mode cycling during
+-- exploration. Speedwalk checks this flag in doSpeedWalk() and restore_mode().
+F2T_EXPLORE_BRIEF_OWNER = false  -- true while exploration is managing brief mode
+
+function f2t_map_explore_brief_mode_start()
+    if not f2t_settings_get("map", "speedwalk_brief") then return end
+
+    F2T_EXPLORE_BRIEF_OWNER = true
+    -- Send brief once for the whole session; per-speedwalk cycling is suppressed by the flag
+    send("brief")
+    f2t_debug_log("[map-explore] Brief mode started for exploration session")
+end
+
+function f2t_map_explore_brief_mode_restore()
+    if not F2T_EXPLORE_BRIEF_OWNER then return end
+
+    F2T_EXPLORE_BRIEF_OWNER = false
+
+    local after_mode = f2t_settings_get("map", "speedwalk_after_mode") or "full"
+    send(after_mode)
+    f2t_debug_log("[map-explore] Brief mode ended; restored %s", after_mode)
+end
+
 -- ================================================================================
 -- LAYER 1: CORE EXPLORATION ENGINE (SINGLE AREA)
 -- ================================================================================
@@ -294,6 +320,18 @@ function f2t_map_explore_planet_start(planet_mode, planet_name, on_complete_call
                 local trimmed = flag:match("^%s*(.-)%s*$")  -- Trim whitespace
                 if trimmed ~= "" and trimmed ~= "shuttlepad" then
                     table.insert(brief_flags, trimmed)
+                end
+            end
+        end
+
+        -- Outside Sol, courier is always at the shuttlepad and not separately flagged.
+        -- Remove it from targets now so it never inflates the remaining count.
+        local system_name = getAreaUserData(current_area, "fed2_system") or ""
+        if string.lower(system_name) ~= "sol" then
+            for i = #brief_flags, 1, -1 do
+                if brief_flags[i] == "courier" then
+                    table.remove(brief_flags, i)
+                    f2t_debug_log("[map-explore] Removed courier from targets (outside Sol, always at shuttlepad)")
                 end
             end
         end
@@ -866,6 +904,9 @@ function f2t_map_explore_stop()
     cecho("\n<yellow>[map]<reset> Exploration stopped by user\n")
     f2t_map_explore_show_statistics()
 
+    -- Restore brief mode if exploration managed it
+    f2t_map_explore_brief_mode_restore()
+
     -- Clear state
     F2T_MAP_EXPLORE_STATE = {
         active = false,
@@ -1195,6 +1236,9 @@ function f2t_map_explore_complete()
         F2T_MAP_EXPLORE_STATE.stats.special_exits_found,
         F2T_MAP_EXPLORE_STATE.stats.suspected_special_exits,
         F2T_MAP_EXPLORE_STATE.stats.blocked_exits)
+
+    -- Restore brief mode if exploration managed it
+    f2t_map_explore_brief_mode_restore()
 
     -- Clear state
     F2T_MAP_EXPLORE_STATE = {

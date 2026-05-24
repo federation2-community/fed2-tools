@@ -12,6 +12,9 @@ F2T_DEATH_STATE = F2T_DEATH_STATE or {}
 -- This is critical because package reload kills old handlers but state persists
 F2T_DEATH_STATE.monitoring_active = false  -- Force re-registration of handlers
 F2T_DEATH_STATE.room_tracking_handler_id = nil
+F2T_DEATH_STATE.suicide_handler_id = nil
+F2T_DEATH_STATE.vitals_handler_id = nil
+F2T_DEATH_STATE.suicide_timeout_id = nil
 
 -- Initialize other fields if not present
 F2T_DEATH_STATE.active = F2T_DEATH_STATE.active or false
@@ -20,6 +23,8 @@ F2T_DEATH_STATE.previous_room_hash = nil   -- Reset room tracking on reload
 F2T_DEATH_STATE.current_room_hash = nil
 F2T_DEATH_STATE.death_room_hash = F2T_DEATH_STATE.death_room_hash or nil
 F2T_DEATH_STATE.death_room_id = F2T_DEATH_STATE.death_room_id or nil
+F2T_DEATH_STATE.death_cause = nil           -- "suicide", "starvation", or nil (room hazard)
+F2T_DEATH_STATE.stamina_was_critical = false
 
 -- ========================================
 -- Monitoring Control
@@ -36,6 +41,41 @@ function f2t_death_start_monitoring()
     -- Register handler to track previous room (GMCP updates before death text)
     f2t_death_register_room_tracking_handler()
 
+    -- Track suicide commands (set flag, cleared after 10s if no death follows)
+    F2T_DEATH_STATE.suicide_handler_id = registerAnonymousEventHandler("sysDataSendRequest", function(_, data)
+        if data and string.lower(string.gsub(data, "%s+$", "")) == "suicide" then
+            F2T_DEATH_STATE.death_cause = "suicide"
+            -- Clear after 10s in case the suicide didn't result in death
+            if F2T_DEATH_STATE.suicide_timeout_id then
+                killTimer(F2T_DEATH_STATE.suicide_timeout_id)
+            end
+            F2T_DEATH_STATE.suicide_timeout_id = tempTimer(10, function()
+                if F2T_DEATH_STATE.death_cause == "suicide" and not F2T_DEATH_STATE.active then
+                    F2T_DEATH_STATE.death_cause = nil
+                end
+                F2T_DEATH_STATE.suicide_timeout_id = nil
+            end)
+            f2t_debug_log("[death] Suicide command detected")
+        end
+    end)
+
+    -- Track critical stamina (exactly 0 = starvation; negative = room damage, ignored)
+    F2T_DEATH_STATE.vitals_handler_id = registerAnonymousEventHandler("gmcp.char.vitals", function()
+        local vstam = gmcp and gmcp.char and gmcp.char.vitals and gmcp.char.vitals.stamina
+        if vstam and vstam.cur ~= nil then
+            local cur = tonumber(vstam.cur) or 0
+            if cur == 0 then
+                -- Exactly 0 = player ran out of stamina (starvation-style death possible)
+                F2T_DEATH_STATE.stamina_was_critical = true
+                f2t_debug_log("[death] Stamina reached 0 — starvation flag set")
+            elseif cur > 0 and not F2T_DEATH_STATE.active then
+                -- Stamina recovered while not dying — clear the flag
+                F2T_DEATH_STATE.stamina_was_critical = false
+            end
+            -- Negative cur values (room damage) do NOT set the flag
+        end
+    end)
+
     f2t_debug_log("[death] Death monitoring started")
 end
 
@@ -49,6 +89,20 @@ function f2t_death_stop_monitoring()
 
     -- Unregister room tracking handler
     f2t_death_unregister_room_tracking_handler()
+
+    -- Unregister suicide and vitals handlers
+    if F2T_DEATH_STATE.suicide_handler_id then
+        killAnonymousEventHandler(F2T_DEATH_STATE.suicide_handler_id)
+        F2T_DEATH_STATE.suicide_handler_id = nil
+    end
+    if F2T_DEATH_STATE.vitals_handler_id then
+        killAnonymousEventHandler(F2T_DEATH_STATE.vitals_handler_id)
+        F2T_DEATH_STATE.vitals_handler_id = nil
+    end
+    if F2T_DEATH_STATE.suicide_timeout_id then
+        killTimer(F2T_DEATH_STATE.suicide_timeout_id)
+        F2T_DEATH_STATE.suicide_timeout_id = nil
+    end
 
     F2T_DEATH_STATE.monitoring_active = false
     f2t_debug_log("[death] Death monitoring stopped")
@@ -96,7 +150,8 @@ function f2t_death_capture_location()
     if F2T_DEATH_STATE.previous_room_hash then
         F2T_DEATH_STATE.death_room_hash = F2T_DEATH_STATE.previous_room_hash
         -- Look up room ID from hash (don't use F2T_MAP_CURRENT_ROOM_ID - race condition)
-        F2T_DEATH_STATE.death_room_id = getRoomIDbyHash(F2T_DEATH_STATE.previous_room_hash)
+        local looked_up = getRoomIDbyHash(F2T_DEATH_STATE.previous_room_hash)
+        F2T_DEATH_STATE.death_room_id = (looked_up and looked_up > 0) and looked_up or nil
         f2t_debug_log("[death] Captured death location from previous room: %s (ID: %s)",
             F2T_DEATH_STATE.death_room_hash,
             tostring(F2T_DEATH_STATE.death_room_id))
@@ -240,12 +295,44 @@ end
 
 function f2t_death_lock_room()
     local room_id = F2T_DEATH_STATE.death_room_id
+    local cause = F2T_DEATH_STATE.death_cause
+
+    -- Suicide is player-caused — do not lock the room
+    if cause == "suicide" then
+        f2t_debug_log("[death] Death was a suicide — skipping room lock")
+        f2t_death_show_summary(false, "suicide")
+        f2t_death_complete()
+        return
+    end
+
+    -- Starvation: stamina reached exactly 0 before death, which means the player slowly
+    -- ran out of stamina (not instant room damage). Room itself is not a hazard.
+    -- Note: room damage (e.g. Mocha hill) drops stamina to negative values, which does NOT
+    -- set stamina_was_critical, so those deaths still result in room locking.
+    if F2T_DEATH_STATE.stamina_was_critical then
+        f2t_debug_log("[death] Death preceded by stamina reaching 0 — likely starvation, skipping room lock")
+        f2t_death_show_summary(false, "starvation")
+        f2t_death_complete()
+        return
+    end
+
+    -- Safe room override: user explicitly declared this room should never be auto-locked.
+    -- The death summary will show the skip reason so the user knows the flag is active.
+    if room_id and roomExists(room_id) then
+        local is_safe = getRoomUserData(room_id, "f2t_safe")
+        if is_safe == "true" then
+            f2t_debug_log("[death] Room %d is marked safe — skipping auto-lock", room_id)
+            f2t_death_show_summary(false, "safe_room")
+            f2t_death_complete()
+            return
+        end
+    end
 
     if not room_id or not roomExists(room_id) then
         -- Room not in map - still complete recovery
         f2t_debug_log("[death] Death room not mapped, cannot lock (hash: %s)",
             F2T_DEATH_STATE.death_room_hash or "unknown")
-        f2t_death_show_summary(false)
+        f2t_death_show_summary(false, nil)
         f2t_death_complete()
         return
     end
@@ -269,12 +356,18 @@ function f2t_death_lock_room()
         setRoomUserData(room_id, "f2t_death_date", os.date("%Y-%m-%d %H:%M:%S"))
 
         f2t_debug_log("[death] Death metadata added to room")
+
+        -- Apply skull/blood-red styling (map component may not be loaded in all contexts)
+        if f2t_map_apply_death_room_style then
+            f2t_map_apply_death_room_style(room_id)
+            updateMap()
+        end
     else
         f2t_debug_log("[death] WARNING: Failed to lock room")
     end
 
     -- Show summary and complete
-    f2t_death_show_summary(success ~= false)
+    f2t_death_show_summary(success ~= false, nil)
     f2t_death_complete()
 end
 
@@ -282,7 +375,7 @@ end
 -- User Summary
 -- ========================================
 
-function f2t_death_show_summary(room_locked)
+function f2t_death_show_summary(room_locked, cause)
     local death_hash = F2T_DEATH_STATE.death_room_hash or "unknown"
     local death_room_id = F2T_DEATH_STATE.death_room_id
     local room_name = death_room_id and roomExists(death_room_id) and getRoomName(death_room_id) or nil
@@ -303,7 +396,13 @@ function f2t_death_show_summary(room_locked)
 
     cecho("<red>|<reset>  Insurance: <green>Claimed<reset>\n")
 
-    if room_locked then
+    if cause == "suicide" then
+        cecho("<red>|<reset>  Room Status: <dim_grey>Skipped (suicide)<reset>\n")
+    elseif cause == "starvation" then
+        cecho("<red>|<reset>  Room Status: <dim_grey>Skipped (starvation)<reset>\n")
+    elseif cause == "safe_room" then
+        cecho("<red>|<reset>  Room Status: <cyan>Safe<reset> (marked safe — use 'map room unsafe' to change)\n")
+    elseif room_locked then
         cecho("<red>|<reset>  Room Status: <red>LOCKED<reset> (navigation avoids)\n")
     elseif death_room_id then
         cecho("<red>|<reset>  Room Status: <yellow>Lock failed<reset>\n")
@@ -329,6 +428,12 @@ function f2t_death_complete()
     F2T_DEATH_STATE.current_phase = "idle"
     F2T_DEATH_STATE.death_room_hash = nil
     F2T_DEATH_STATE.death_room_id = nil
+    F2T_DEATH_STATE.death_cause = nil
+    F2T_DEATH_STATE.stamina_was_critical = false
+    if F2T_DEATH_STATE.suicide_timeout_id then
+        killTimer(F2T_DEATH_STATE.suicide_timeout_id)
+        F2T_DEATH_STATE.suicide_timeout_id = nil
+    end
 end
 
 function f2t_death_cleanup()

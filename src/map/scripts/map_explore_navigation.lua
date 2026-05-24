@@ -140,6 +140,12 @@ function f2t_map_explore_navigate_to_next()
         return
     end
 
+    -- First actual movement: lazily start brief mode so it isn't sent when all
+    -- flags are already mapped and exploration completes without moving.
+    if not F2T_EXPLORE_BRIEF_OWNER then
+        f2t_map_explore_brief_mode_start()
+    end
+
     -- Navigate to the room with the stub exit
     f2t_debug_log("[map-explore] Navigation check: current_room=%s, next_exit.room_id=%d, equal=%s",
         tostring(current_room), next_exit.room_id, tostring(current_room == next_exit.room_id))

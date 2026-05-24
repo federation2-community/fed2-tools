@@ -149,7 +149,7 @@ end
 -- Exit Listing
 -- ========================================
 
---- List all exits for a room
+--- List all exits for a room (connected, stubs, GMCP-only)
 --- @param room_id number Room ID
 function f2t_map_manual_list_exits(room_id)
     if not room_id or not roomExists(room_id) then
@@ -159,35 +159,84 @@ function f2t_map_manual_list_exits(room_id)
 
     local room_name = getRoomName(room_id) or "unnamed"
 
-    -- Get standard exits
-    local exits = getRoomExits(room_id)
+    -- Direction number → abbreviated name (Mudlet's internal numbering)
+    local dir_num_to_name = {
+        [1]="north", [2]="northeast", [3]="northwest", [4]="east", [5]="west",
+        [6]="south", [7]="southeast", [8]="southwest", [9]="up", [10]="down",
+        [11]="in", [12]="out"
+    }
+    -- Abbreviated GMCP key → full name (for GMCP-only exit display)
+    local abbrev_to_full = {
+        n="north", ne="northeast", nw="northwest", e="east", w="west",
+        s="south", se="southeast", sw="southwest", u="up", d="down",
+        ["in"]="in", out="out"
+    }
+
+    -- Collect connected exits
+    local exits = getRoomExits(room_id) or {}
+
+    -- Collect stubs (direction numbers for exits whose destinations are unknown)
+    local stub_dirs = {}
+    local stubs = getExitStubs(room_id) or {}
+    for _, dir_num in ipairs(stubs) do
+        local dir_name = dir_num_to_name[dir_num]
+        if dir_name and not exits[dir_name] then
+            stub_dirs[dir_name] = true
+        end
+    end
+
+    -- Collect GMCP exits for current room that aren't in the mapper at all
+    local gmcp_only_dirs = {}
+    if room_id == F2T_MAP_CURRENT_ROOM_ID and gmcp and gmcp.room and gmcp.room.info and gmcp.room.info.exits then
+        for abbrev, fed2_num in pairs(gmcp.room.info.exits) do
+            local full = abbrev_to_full[abbrev] or abbrev
+            if not exits[full] and not stub_dirs[full] then
+                gmcp_only_dirs[full] = fed2_num
+            end
+        end
+    end
 
     -- Get special exits
     local special_exits = getSpecialExitsSwap(room_id)
 
     cecho(string.format("\n<green>[map]<reset> Exits for room %d (<white>%s<reset>):\n", room_id, room_name))
 
-    -- Display standard exits
-    if exits and next(exits) ~= nil then
-        cecho("\n  <yellow>Standard Exits:<reset>\n")
+    -- Connected exits
+    if next(exits) ~= nil then
+        cecho("\n  <yellow>Connected Exits:<reset>\n")
         for dir, dest_id in pairs(exits) do
             local dest_name = getRoomName(dest_id) or "unnamed"
             local dest_hash = getRoomHashByID(dest_id) or "unknown"
-            cecho(string.format("    <cyan>%-10s<reset> -> <white>%s<reset> <dim_grey>[%d | %s]<reset>\n",
-                dir, dest_name, dest_id, dest_hash))
+            local lock_marker = hasExitLock(room_id, dir) and " <red>[LOCKED]<reset>" or ""
+            cecho(string.format("    <cyan>%-12s<reset> -> <white>%s<reset> <dim_grey>[%d | %s]<reset>%s\n",
+                dir, dest_name, dest_id, dest_hash, lock_marker))
         end
     else
-        cecho("\n  <dim_grey>No standard exits<reset>\n")
+        cecho("\n  <dim_grey>No connected exits<reset>\n")
     end
 
-    -- Display special exits
+    -- Unexplored exits: stubs + GMCP-only, merged — all are equally "not yet visited"
+    local unexplored = {}
+    for dir, _ in pairs(stub_dirs) do
+        unexplored[dir] = true
+    end
+    for dir, _ in pairs(gmcp_only_dirs) do
+        unexplored[dir] = true
+    end
+
+    if next(unexplored) ~= nil then
+        cecho("\n  <yellow>Unexplored Exits:<reset>\n")
+        for dir, _ in pairs(unexplored) do
+            cecho(string.format("    <dim_grey>%-12s<reset> -> <dim_grey>(unexplored)<reset>\n", dir))
+        end
+    end
+
+    -- Special exits
     if special_exits and next(special_exits) ~= nil then
         cecho("\n  <yellow>Special Exits:<reset>\n")
         for dest_id, command in pairs(special_exits) do
             local dest_name = getRoomName(dest_id) or "unnamed"
             local dest_hash = getRoomHashByID(dest_id) or "unknown"
-
-            -- Check if auto-transit
             if command:match("^__move_no_op_%d+$") then
                 cecho(string.format("    <magenta>%-30s<reset> <dim_grey>(auto-transit)<reset> -> <white>%s<reset> <dim_grey>[%d | %s]<reset>\n",
                     command, dest_name, dest_id, dest_hash))

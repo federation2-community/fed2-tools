@@ -13,10 +13,10 @@
 --   262 = Cyan          → shuttlepad (alone)
 --   263 = White         → hospital
 --   264 = Black         → open space (default)
---   265 = Light Red     → (unused)
+--   265 = Light Red     → death rooms (confirmed kill locations)
 --   266 = Light Green   → courier/AC
 --   267 = Light Yellow  → shipyard
---   268 = Light Blue    → (unused)
+--   268 = Light Blue    → generic locked rooms
 --   269 = Light Magenta → bar
 --   270 = Light Cyan    → (unused)
 --   271 = Light White   → (unused)
@@ -34,6 +34,8 @@ local ENV_EXCHANGE       = 261  -- Magenta: commodity exchange
 local ENV_SHUTTLEPAD     = 262  -- Cyan: shuttlepad (alone)
 local ENV_HOSPITAL       = 263  -- White: hospital
 local ENV_SPACE_DEFAULT  = 264  -- Black: open space
+local ENV_DEATH          = 265  -- Blood red: confirmed death location
+local ENV_LOCKED         = 268  -- Dark slate: generic locked room
 local ENV_COURIER        = 259  -- Yellow: courier/AC jobs (same base color as system links; symbol "AC" distinguishes)
 local ENV_SHIPYARD       = 267  -- Light Yellow: shipyard
 local ENV_BAR            = 269  -- Light Magenta: bar
@@ -51,6 +53,8 @@ local SYM_BAR        = "🍸"
 local SYM_COURIER    = "AC"
 local SYM_LINK       = "⟡"
 local SYM_UNKNOWN    = "?"
+local SYM_DEATH      = "☠"
+local SYM_LOCKED     = "🔒"
 
 -- ========================================
 -- Surface Room Style Definitions
@@ -226,6 +230,26 @@ function f2t_map_apply_room_style(room_id, flags)
     return false
 end
 
+-- Apply blood-red skull styling for confirmed death rooms and manually-flagged danger rooms.
+-- Called immediately when a death/danger marker is set, so the tile updates without a relog.
+function f2t_map_apply_death_room_style(room_id)
+    if not room_id or not roomExists(room_id) then return end
+    setRoomChar(room_id, SYM_DEATH)
+    setRoomEnv(room_id, ENV_DEATH)
+    unsetRoomCharColor(room_id)
+    f2t_debug_log("[map] Room %d styled: %s (death/danger, env: %d)", room_id, SYM_DEATH, ENV_DEATH)
+end
+
+-- Apply dark-slate lock styling for rooms that are locked without a death/danger marker.
+-- Called by manual lock operations when no special danger metadata is present.
+function f2t_map_apply_locked_room_style(room_id)
+    if not room_id or not roomExists(room_id) then return end
+    setRoomChar(room_id, SYM_LOCKED)
+    setRoomEnv(room_id, ENV_LOCKED)
+    unsetRoomCharColor(room_id)
+    f2t_debug_log("[map] Room %d styled: %s (locked, env: %d)", room_id, SYM_LOCKED, ENV_LOCKED)
+end
+
 -- ========================================
 -- Re-apply Styling for Existing Rooms
 -- ========================================
@@ -233,6 +257,20 @@ end
 -- Re-read flags from room user data and re-apply style.
 -- Called on every room visit (new + existing) and when settings change.
 function f2t_map_update_room_style(room_id)
+    -- Death/danger rooms override flag-based styling regardless of other properties.
+    local death_date = getRoomUserData(room_id, "f2t_death_date")
+    local is_danger  = getRoomUserData(room_id, "f2t_danger")
+
+    if (death_date and death_date ~= "") or (is_danger == "true") then
+        f2t_map_apply_death_room_style(room_id)
+        return
+    end
+
+    if roomLocked(room_id) then
+        f2t_map_apply_locked_room_style(room_id)
+        return
+    end
+
     local flags = {}
     local known_flags = {
         "shuttlepad", "exchange", "orbit", "link", "space",
@@ -288,7 +326,9 @@ local ENV_COLOR_RGB = {
     [261] = {120,   0,  30},
     [262] = { 30, 170, 170},
     [263] = { 40, 130,  40},
+    [265] = {120,   0,   0},  -- Death: blood red
     [267] = {140,  80,  20},
+    [268] = { 50,  50,  65},  -- Locked: dark slate
     [269] = {200, 120,   0},
 }
 
@@ -315,7 +355,9 @@ end
 -- html_color is derived from ENV_COLOR_RGB so map tiles and legend stay in sync.
 function f2t_map_get_legend_data()
     return {
-        {label = "Cartel Link",             symbol = SYM_LINK,       html_color = env_hex(ENV_LINK_CARTEL),                      note = "Hub system jump gate"},
+        {label = "Death Room",              symbol = SYM_DEATH,      html_color = env_hex(ENV_DEATH),                             note = "Confirmed kill — navigation locked"},
+        {label = "Locked Room",             symbol = SYM_LOCKED,     html_color = env_hex(ENV_LOCKED),                            note = "Manually locked — navigation avoids"},
+        {label = "Cartel Link",             symbol = SYM_LINK,       html_color = env_hex(ENV_LINK_CARTEL),                       note = "Hub system jump gate"},
         {label = "System Link",             symbol = SYM_LINK,       html_color = env_hex(ENV_LINK_SYSTEM), text_color = "#141400", note = "Jump gate"},
         {label = "Orbit",                   symbol = "E / O",        html_color = env_hex(ENV_ORBIT),       text_color = "#001a00", note = "Above planet (first letter = planet name)"},
         {label = "Multi-service",           symbol = "🚀 / $ …",     html_color = env_hex(ENV_MULTI_FLAG),                        note = "2+ services — top priority shown"},
@@ -343,9 +385,41 @@ local function f2t_map_apply_env_colors()
     setCustomEnvColor(262,  30, 170, 170, 255)  -- Shuttlepad:    cyan
     setCustomEnvColor(263,  40, 130,  40, 255)  -- Hospital:      green
     setCustomEnvColor(264,  40,  40,  40, 255)  -- Space:         dark grey
+    setCustomEnvColor(265, 120,   0,   0, 255)  -- Death:         blood red
     setCustomEnvColor(267, 140,  80,  20, 255)  -- Shipyard:      brown
+    setCustomEnvColor(268,  50,  50,  65, 255)  -- Locked:        dark slate
     setCustomEnvColor(269, 200, 120,   0, 255)  -- Bar:           orange
     setCustomEnvColor(272,  80,  80,  90, 255)  -- Planet default: mid grey
 end
 
 f2t_map_apply_env_colors()
+
+-- ========================================
+-- Bulk Restyle
+-- ========================================
+
+--- Re-apply correct styling to every room in the map database based on its current metadata.
+--- Useful after visual changes (new env colors, icon updates) or to fix rooms that were
+--- styled under old logic (e.g. rooms visited before death/locked icons were introduced).
+--- No movement required — reads metadata directly from the map database.
+--- @return number rooms_processed Total rooms styled
+function f2t_map_restyle_all()
+    local rooms = getRooms()
+    if not rooms then
+        cecho("\n<red>[map]<reset> No rooms found in map database\n")
+        return 0
+    end
+
+    local count = 0
+    for room_id, _ in pairs(rooms) do
+        f2t_map_update_room_style(room_id)
+        count = count + 1
+    end
+
+    updateMap()
+
+    cecho(string.format("\n<green>[map]<reset> Restyled <white>%d<reset> rooms based on current metadata\n", count))
+    f2t_debug_log("[map_style] Bulk restyle complete: %d rooms processed", count)
+
+    return count
+end

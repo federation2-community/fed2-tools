@@ -69,6 +69,28 @@ f2t_settings_register("map", "speedwalk_max_retries", {
     end
 })
 
+f2t_settings_register("map", "speedwalk_brief", {
+    description = "Use brief room descriptions during speedwalk",
+    default = true,
+    validator = function(value)
+        if value ~= true and value ~= false and value ~= "true" and value ~= "false" then
+            return false, "Must be true or false"
+        end
+        return true
+    end
+})
+
+f2t_settings_register("map", "speedwalk_after_mode", {
+    description = "Room description mode to restore after speedwalk ends (brief or full)",
+    default = "full",
+    validator = function(value)
+        if value ~= "brief" and value ~= "full" then
+            return false, "Must be 'brief' or 'full'"
+        end
+        return true
+    end
+})
+
 f2t_settings_register("map", "map_manual_confirm", {
     description = "Require confirmation for destructive manual mapping operations",
     default = true,

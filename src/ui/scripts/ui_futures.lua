@@ -3,11 +3,15 @@
 -- Visible to Trader and Financier ranks.
 --
 -- Market view (at exchange): reads gmcp.exchange live — no game commands needed.
---   Gap = how far the futures price can move favorably before reaching base:
---     LONG:  gap = base - price  (positive when base > price → price trends up)
---     SHORT: gap = price - base  (positive when price > base → price trends down)
---   Futures price converges toward commodity BASE PRICE at ~1ig/ton per tick
---   (every 5-10 min). Gap tells you how many ticks of headroom remain.
+--   P&L at liquidation = exchange price (for contract type) − futures price at purchase.
+--     LONG uses exchange SELL price.  SHORT uses exchange BUY price.
+--   BΔ (Base Δ)  = base − futures price (LONG) / futures price − base (SHORT).
+--     Positive = futures has room to move favorably; each unit ≈ 1 tick (~5-10 min).
+--   EΔ (Exch Δ) = exchange price − futures price (LONG) / futures price − exchange (SHORT).
+--     Positive = currently profitable to liquidate now.
+--   Exchange price converges toward BASE over time; POs can manipulate exchange
+--   price (stockpile/production/consumption) to influence futures direction.
+--   "?" in Exch/EΔ = price exists but exchange not actively buying/selling (not in GMCP).
 --
 -- Portfolio view (outside exchange): di futures → held contracts with P&L,
 --   margin health, and liquidate links when at the matching exchange.
@@ -47,11 +51,11 @@ local function fmt_ig_signed(n)
     return (n >= 0 and "+" or "") .. fmt_ig(n)
 end
 
--- Gap in ig/ton in the direction that benefits the contract type.
--- Positive = price has room to move favourably before reaching base.
--- LONG:  gap = base - price  (want price to rise toward base)
--- SHORT: gap = price - base  (want price to fall toward base)
-local function opp_gap(contract_type, futures_price, base_price)
+-- BΔ: futures price distance from base in the favorable direction.
+-- Positive = futures has room to move toward base; each unit ≈ 1 tick (~5-10 min).
+-- LONG:  base - futures  (positive when futures below base → will rise)
+-- SHORT: futures - base  (positive when futures above base → will fall)
+local function calc_b_delta(contract_type, futures_price, base_price)
     if not base_price then return nil end
     if contract_type == "long" then
         return base_price - futures_price
@@ -77,22 +81,15 @@ local function fmt_gap_str(n)
     end
 end
 
--- Derive exchange price midpoint from GMCP commodity buy/sell fields.
--- buy  = what the exchange pays you (≈ midpoint × 0.9)
--- sell = what the exchange charges you (≈ midpoint × 1.1)
--- Returns nil when the commodity is not traded at this exchange.
-local function exchange_midpoint(comm_data)
-    if not comm_data then return nil end
-    local buy  = comm_data.buy  or 0
-    local sell = comm_data.sell or 0
-    if buy > 0 and sell > 0 then
-        return math.floor((buy + sell) / 2)
-    elseif buy > 0 then
-        return math.floor(buy / 0.9)
-    elseif sell > 0 then
-        return math.floor(sell / 1.1)
-    end
-    return nil
+-- Composite hold/liquidate score 1-10.
+-- composite = (BΔ + EΔ) / 2, clamped to ±200ig range.
+-- When EΔ unavailable, uses BΔ × 0.6 (discounted for missing info).
+-- Both deltas are already sign-normalised (positive = good) for both Long and Short.
+local function calc_composite_score(b_delta, e_delta)
+    if not b_delta then return nil end
+    local composite = e_delta and (b_delta + e_delta) / 2 or b_delta * 0.6
+    local clamped   = math.max(-200, math.min(200, composite))
+    return math.max(1, math.min(10, math.floor(((clamped + 200) / 400) * 9 + 1.5)))
 end
 
 -- =============================================================================
@@ -134,33 +131,50 @@ local function build_market_from_gmcp()
             end
         end
 
-        local base      = exc_data and exc_data.base or nil
-        local exc_price = exchange_midpoint(exc_data)
-        local fp        = contract.price
-        local gap       = opp_gap(contract.type, fp, base)
+        local base = exc_data and exc_data.base or nil
+        local fp   = contract.price
 
-        -- Mkt: how far the exchange price still needs to move to reach base,
-        -- measured in the same favorable direction as Gap.
-        -- Positive = exchange is on the right side of base (confirms direction).
-        -- Negative = exchange has already crossed base (stale, higher risk).
-        local exc_gap = nil
-        if base and exc_price then
+        -- BΔ: futures distance from base in the favorable direction.
+        local b_delta = calc_b_delta(contract.type, fp, base)
+
+        -- Exch: the exchange price that determines P&L at liquidation.
+        -- Long uses sell price (what exchange charges = what you receive).
+        -- Short uses buy price (what exchange pays = what you receive).
+        -- exc_hidden = price exists but GMCP doesn't expose it (exchange not actively buying/selling).
+        local exc        = nil
+        local exc_hidden = false
+        if exc_data then
             if contract.type == "long" then
-                exc_gap = base - exc_price
+                local sell = exc_data.sell
+                if sell and sell > 0 then exc = sell else exc_hidden = true end
             else
-                exc_gap = exc_price - base
+                local buy = exc_data.buy
+                if buy and buy > 0 then exc = buy else exc_hidden = true end
+            end
+        end
+
+        -- EΔ: exchange price minus futures price (directional).
+        -- Positive = profitable to liquidate now.
+        local e_delta = nil
+        if exc then
+            if contract.type == "long" then
+                e_delta = exc - fp
+            else
+                e_delta = fp - exc
             end
         end
 
         table.insert(market, {
-            commodity = comm_name or name_lower,
-            type      = contract.type,
-            price     = fp,
-            base      = base,
-            gap       = gap,
-            exc       = exc_price,
-            exc_gap   = exc_gap,
-            suspended = (contract.status == "suspended"),
+            commodity  = comm_name or name_lower,
+            type       = contract.type,
+            price      = fp,
+            base       = base,
+            b_delta    = b_delta,
+            exc        = exc,
+            exc_hidden = exc_hidden,
+            e_delta    = e_delta,
+            stock      = exc_data and (tonumber(exc_data.stock) or 0) or nil,
+            suspended  = (contract.status == "suspended"),
         })
     end
 
@@ -290,16 +304,16 @@ end
 
 local function futures_init_tables()
     -- ── Market table ──────────────────────────────────────────────────────────
-    -- Commodity | T | Fut | Base | Gap | Exc | Mkt
+    -- Commodity | T | Fut | Base | BΔ | Exch | EΔ
     --
-    -- Gap: base - futures (Long) or futures - base (Short).
-    --   Positive = futures price has room to move favorably. Each unit ≈ 1 tick (~5-10 min).
-    -- Exc: exchange price midpoint derived from GMCP buy/sell prices.
-    -- Mkt: base - exc (Long) or exc - base (Short).
-    --   Positive = exchange also on the favorable side of base (confirms direction).
-    --   Negative = exchange has already crossed base (potential reversal risk).
+    -- BΔ (Base Δ):  base − futures (Long) or futures − base (Short).
+    --   Positive = futures has room to move favorably. Each unit ≈ 1 tick (~5-10 min).
+    -- Exch: exchange sell price (Long) or buy price (Short) — the liquidation price.
+    --   "?" = price exists but not visible in GMCP (exchange not actively buying/selling).
+    -- EΔ (Exch Δ): Exch − futures (Long) or futures − Exch (Short).
+    --   Positive = currently profitable to liquidate. Negative = currently at a loss.
 
-    local function mkt_cell(window, content, row)
+    local function restricted_cell(window, content, row)
         if row.suspended then
             window:cechoLink("<maroon>" .. content .. "<reset>", function() end,
                 "Trading suspended — price frozen until hour end. Cannot purchase.", true)
@@ -314,7 +328,7 @@ local function futures_init_tables()
             key            = "commodity",
             label          = "Commodity",
             header_tooltip = "Click to buy. Maroon=trading suspended (price frozen). Grey=already owned at this exchange.",
-            width          = 10,
+            width          = 9,
             align          = "left",
             header_align   = "left",
             sortable       = true,
@@ -356,7 +370,7 @@ local function futures_init_tables()
             render         = function(v, row, window, col)
                 local display = v == "long" and "L" or "S"
                 if row.suspended or row.owned then
-                    mkt_cell(window, display, row)
+                    restricted_cell(window, display, row)
                 else
                     local color = v == "long" and "<ansiCyan>" or "<yellow>"
                     window:cecho(color .. display .. "<reset>")
@@ -376,7 +390,7 @@ local function futures_init_tables()
                 local n = tonumber(v)
                 local s = n and string.format("%4d", n) or " ???"
                 if row.suspended or row.owned then
-                    mkt_cell(window, s, row)
+                    restricted_cell(window, s, row)
                 else
                     window:cecho("<white>" .. s .. "<reset>")
                 end
@@ -394,32 +408,32 @@ local function futures_init_tables()
             render         = function(v, row, window, col)
                 local n = tonumber(v)
                 local s = n and string.format("%4d", n) or " n/a"
-                if row.suspended or row.owned then mkt_cell(window, s, row)
+                if row.suspended or row.owned then restricted_cell(window, s, row)
                 else window:cecho("<dim_grey>" .. s .. "<reset>") end
             end,
         },
         {
-            key            = "gap",
-            label          = "Gap",
-            header_tooltip = "Ticks of favorable movement remaining before futures price reaches base (LONG=base-Fut, SHORT=Fut-base). Each tick is ~1ig/ton every 5-10 min. Green>=100 Yellow>=20 Grey~0 Red=moving wrong way.",
-            width          = 6,
+            key            = "b_delta",
+            label          = "BΔ",
+            header_tooltip = "Base delta: futures distance from base (LONG=base-Fut, SHORT=Fut-base). Positive = futures has room to move favorably; each unit ~1 tick (~5-10 min). Green>=100 Yellow>=20 Grey~0 Red=moving wrong way.",
+            width          = 5,
             align          = "right",
             header_align   = "right",
             sortable       = true,
             default_sort   = "desc",
-            sort_value     = function(r) return r.gap or -9999 end,
+            sort_value     = function(r) return r.b_delta or -9999 end,
             render         = function(v, row, window, col)
                 local n = tonumber(v)
                 if not n then
-                    local s = "   n/a"
-                    if row.suspended or row.owned then mkt_cell(window, s, row)
+                    local s = "  n/a"
+                    if row.suspended or row.owned then restricted_cell(window, s, row)
                     else window:cecho("<dim_grey>" .. s .. "<reset>") end
                     return
                 end
                 local raw = fmt_gap_str(n)
-                local s   = string.rep(" ", math.max(0, 6 - #raw)) .. raw
+                local s   = string.rep(" ", math.max(0, 5 - #raw)) .. raw
                 if row.suspended or row.owned then
-                    mkt_cell(window, s, row)
+                    restricted_cell(window, s, row)
                 else
                     window:cecho(string.format("<%s>%s<reset>", gap_color(n), s))
                 end
@@ -427,8 +441,8 @@ local function futures_init_tables()
         },
         {
             key            = "exc",
-            label          = "Exc",
-            header_tooltip = "Exchange price midpoint (ig/ton) — derived from GMCP buy/sell prices ((buy+sell)/2 when both available). This is the value the game uses when recalculating futures prices each tick. n/a=not traded at this exchange.",
+            label          = "Exch",
+            header_tooltip = "Exchange price (ig/ton) at liquidation — sell price for Long, buy price for Short. n/a=not traded here. ?=price exists but not in GMCP (exchange not actively buying/selling).",
             width          = 4,
             align          = "right",
             header_align   = "right",
@@ -437,43 +451,94 @@ local function futures_init_tables()
             render         = function(v, row, window, col)
                 local n = tonumber(v)
                 if not n then
-                    local s = " n/a"
-                    if row.suspended or row.owned then mkt_cell(window, s, row)
-                    else window:cecho("<dim_grey>" .. s .. "<reset>") end
+                    if row.suspended or row.owned then
+                        local s = row.exc_hidden and "   ?" or " n/a"
+                        restricted_cell(window, s, row)
+                    elseif row.exc_hidden then
+                        window:cechoLink("<dim_grey>   ?<reset>", function() end,
+                            "Price exists but not visible in GMCP — exchange not actively buying/selling.", true)
+                    else
+                        window:cecho("<dim_grey> n/a<reset>")
+                    end
                     return
                 end
                 local s = string.format("%4d", n)
                 if row.suspended or row.owned then
-                    mkt_cell(window, s, row)
+                    restricted_cell(window, s, row)
                 else
                     window:cecho("<white>" .. s .. "<reset>")
                 end
             end,
         },
         {
-            key            = "exc_gap",
-            label          = "Mkt",
-            header_tooltip = "Exchange price gap toward base (LONG=base-Exc, SHORT=Exc-base). Positive=exchange is on the favorable side of base, confirming the trade direction. Negative=STALE: exchange has already crossed base. n/a=not traded here.",
+            key            = "stock",
+            label          = "Stk",
+            header_tooltip = "Exchange stock on hand. 0=none (exchange not selling/buying that side). High stock pushes price down; low stock pushes price up. No baseline available — use alongside BΔ and EΔ for context.",
             width          = 5,
             align          = "right",
             header_align   = "right",
             sortable       = true,
-            sort_value     = function(r) return r.exc_gap or -9999 end,
+            sort_value     = function(r) return r.stock or -1 end,
+            render         = function(v, row, window, col)
+                local n = tonumber(v)
+                local s = n and string.format("%5s", fmt_ig(n)) or "  n/a"
+                if row.suspended or row.owned then restricted_cell(window, s, row)
+                else window:cecho("<dim_grey>" .. s .. "<reset>") end
+            end,
+        },
+        {
+            key            = "e_delta",
+            label          = "EΔ",
+            header_tooltip = "Exch delta: exchange price minus futures price (LONG=Exch-Fut, SHORT=Fut-Exch). Positive=profitable to liquidate now. Negative=currently at a loss. ?=exchange price not visible in GMCP.",
+            width          = 4,
+            align          = "right",
+            header_align   = "right",
+            sortable       = true,
+            sort_value     = function(r) return r.e_delta or -9999 end,
             render         = function(v, row, window, col)
                 local n = tonumber(v)
                 if not n then
-                    local s = "  n/a"
-                    if row.suspended or row.owned then mkt_cell(window, s, row)
-                    else window:cecho("<dim_grey>" .. s .. "<reset>") end
+                    if row.suspended or row.owned then
+                        local s = row.exc_hidden and "   ?" or " n/a"
+                        restricted_cell(window, s, row)
+                    elseif row.exc_hidden then
+                        window:cechoLink("<dim_grey>   ?<reset>", function() end,
+                            "Exchange price not visible in GMCP — cannot calculate Exch delta.", true)
+                    else
+                        window:cecho("<dim_grey> n/a<reset>")
+                    end
                     return
                 end
                 local raw = fmt_gap_str(n)
-                local s   = string.rep(" ", math.max(0, 5 - #raw)) .. raw
+                local s   = string.rep(" ", math.max(0, 4 - #raw)) .. raw
                 if row.suspended or row.owned then
-                    mkt_cell(window, s, row)
+                    restricted_cell(window, s, row)
                 else
                     window:cecho(string.format("<%s>%s<reset>", gap_color(n), s))
                 end
+            end,
+        },
+        {
+            key            = "score",
+            label          = "S",
+            header_tooltip = "Overall rating 1-10: (BΔ+EΔ)/2 normalised over ±200ig. Green≥7=strong buy. Yellow 5-6=neutral. Red≤4=poor. When EΔ unknown, uses BΔ×0.6.",
+            width          = 2,
+            align          = "right",
+            header_align   = "right",
+            sortable       = true,
+            default_sort   = "desc",
+            sort_value     = function(r) return calc_composite_score(r.b_delta, r.e_delta) or 0 end,
+            render         = function(v, row, window, col)
+                local n = calc_composite_score(row.b_delta, row.e_delta)
+                if not n then
+                    if row.suspended or row.owned then restricted_cell(window, " ?", row)
+                    else window:cecho("<dim_grey> ?<reset>") end
+                    return
+                end
+                local color = n >= 7 and "green" or (n >= 5 and "yellow" or "red")
+                local s     = string.format("%2d", n)
+                if row.suspended or row.owned then restricted_cell(window, s, row)
+                else window:cecho(string.format("<%s>%s<reset>", color, s)) end
             end,
         },
     }
@@ -881,16 +946,26 @@ function ui_futures_info_open()
         "Futures price per ton — locked in at purchase.<br>",
         "<span style='color:#c8d0e0;'>Base</span> Commodity base price. Futures converge ~1ig/ton<br>",
         "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;per tick (every 5–10 min).<br>",
-        "<span style='color:#c8d0e0;'>Gap</span>&nbsp;&nbsp;",
-        "Ticks of headroom (L=base−Fut, S=Fut−base).<br>",
-        "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style='color:#44cc44;'>Green≥100</span>",
-        "  <span style='color:#cccc44;'>Yellow≥20</span>",
+        "<span style='color:#c8d0e0;'>B&Delta;</span>&nbsp;&nbsp;",
+        "Base delta (L=base&minus;Fut, S=Fut&minus;base).<br>",
+        "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style='color:#44cc44;'>Green&ge;100</span>",
+        "  <span style='color:#cccc44;'>Yellow&ge;20</span>",
         "  <span style='color:#cc4444;'>Red=wrong direction</span><br>",
-        "<span style='color:#c8d0e0;'>Exc</span>&nbsp;&nbsp;",
-        "Exchange spot midpoint from GMCP prices.<br>",
-        "<span style='color:#c8d0e0;'>Mkt</span>&nbsp;&nbsp;",
-        "Exchange gap toward base. Negative=already<br>",
-        "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;crossed base (stale direction, higher risk).<br>",
+        "<span style='color:#c8d0e0;'>Exch</span>&nbsp;",
+        "Exchange price at liquidation (sell for Long,<br>",
+        "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;buy for Short). ?=exists but not in GMCP.<br>",
+        "<span style='color:#c8d0e0;'>Stk</span>&nbsp;&nbsp;",
+        "Exchange stock on hand. 0=depleted (price hidden).<br>",
+        "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;High stock&rarr;price pressure down. Low&rarr;up.<br>",
+        "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;No per-commodity baseline &mdash; read alongside B&Delta;/E&Delta;.<br>",
+        "<span style='color:#c8d0e0;'>E&Delta;</span>&nbsp;&nbsp;",
+        "Exch delta (Exch&minus;Fut / Fut&minus;Exch).<br>",
+        "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Positive=profitable now. ?=Exch not visible.<br>",
+        "<span style='color:#c8d0e0;'>S</span>&nbsp;&nbsp;&nbsp;&nbsp;",
+        "Score 1&ndash;10: (B&Delta;+E&Delta;)/2 normalised &plusmn;200ig.<br>",
+        "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style='color:#44cc44;'>&ge;7 strong</span>  ",
+        "<span style='color:#cccc44;'>5&ndash;6 neutral</span>  ",
+        "<span style='color:#cc4444;'>&le;4 poor</span><br>",
         "<span style='color:#505870;'>",
         "Click name to buy. Maroon=suspended. Grey=already held here.</span><br>",
         "<br>",

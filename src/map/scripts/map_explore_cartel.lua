@@ -116,6 +116,9 @@ function f2t_map_explore_cartel_start(cartel_name, on_complete_callback)
 
         -- Clear any leftover callback
         F2T_MAP_EXPLORE_STATE.cartel_complete_callback = nil
+
+        -- Manage brief mode for the entire exploration duration
+        f2t_map_explore_brief_mode_start()
     end
 
     -- Start cartel capture
@@ -290,20 +293,43 @@ function f2t_map_explore_cartel_next_system()
     -- System needs exploration - navigate to it and invoke system mode
     f2t_debug_log("[map-explore-cartel] System %s needs mapping, navigating...", system_name)
 
-    -- Check if we're already in this system's space
+    -- Check if we're already in this system's space area
     local current_room = F2T_MAP_CURRENT_ROOM_ID
     if current_room then
         local current_system = getRoomUserData(current_room, "fed2_system")
         if current_system == system_name then
-            -- Already in the system, start system exploration directly
-            f2t_debug_log("[map-explore-cartel] Already in %s, starting system exploration", system_name)
-            cecho(string.format("  <dim_grey>Already in system, starting exploration<reset>\n"))
+            local space_area_name = f2t_map_get_system_space_area_actual(system_name)
+            local space_area_id_check = space_area_name and f2t_map_get_area_id(space_area_name)
+            local current_area_check = getRoomArea(current_room)
 
-            -- Update cartel stats
-            F2T_MAP_EXPLORE_STATE.cartel_stats.systems_explored = F2T_MAP_EXPLORE_STATE.cartel_stats.systems_explored + 1
+            if space_area_id_check and current_area_check == space_area_id_check then
+                -- Already in the space area, start system exploration directly
+                f2t_debug_log("[map-explore-cartel] Already in %s space, starting system exploration", system_name)
+                cecho(string.format("  <dim_grey>Already in system, starting exploration<reset>\n"))
 
-            -- Invoke system mode (which will callback to cartel mode when done)
-            f2t_map_explore_cartel_start_system_mode(system_name)
+                -- Update cartel stats
+                F2T_MAP_EXPLORE_STATE.cartel_stats.systems_explored = F2T_MAP_EXPLORE_STATE.cartel_stats.systems_explored + 1
+
+                -- Invoke system mode (which will callback to cartel mode when done)
+                f2t_map_explore_cartel_start_system_mode(system_name)
+            else
+                -- In the system but on a planet surface - navigate to space link first
+                f2t_debug_log("[map-explore-cartel] In %s but not in space area, navigating to link", system_name)
+                cecho(string.format("  <dim_grey>Navigating to %s space...<reset>\n", system_name))
+
+                F2T_MAP_EXPLORE_STATE.cartel_target_system = system_name
+                F2T_MAP_EXPLORE_STATE.phase = "arriving_in_system"
+
+                local nav_success = f2t_map_navigate(system_name .. " Space link")
+                if not nav_success then
+                    cecho(string.format("  <red>Error:<reset> Cannot navigate to %s space link, skipping\n", system_name))
+                    f2t_debug_log("[map-explore-cartel] Failed to navigate to %s space link", system_name)
+                    F2T_MAP_EXPLORE_STATE.phase = nil
+                    F2T_MAP_EXPLORE_STATE.cartel_target_system = nil
+                    f2t_map_explore_cartel_next_system()
+                end
+                -- Speedwalk in progress; arriving_in_system handler fires on arrival
+            end
             return
         end
     end
