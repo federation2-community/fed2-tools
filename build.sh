@@ -52,22 +52,26 @@ echo "=== fed2-tools build ==="
 
 # ── Read mfile ────────────────────────────────────────────────────────────────
 
+BASE_VERSION="$(jq -r '.version' "$MFILE")"
+if [[ -z "$BASE_VERSION" || "$BASE_VERSION" == "null" ]]; then
+    echo "ERROR: mfile is missing 'version' field." >&2
+    exit 1
+fi
+
 MUXLET_VERSION="$(jq -r '.muxlet_version' "$MFILE")"
 if [[ -z "$MUXLET_VERSION" || "$MUXLET_VERSION" == "null" ]]; then
     echo "ERROR: mfile is missing 'muxlet_version' field." >&2
     exit 1
 fi
 
-# ── Derive fed2-tools version from git ───────────────────────────────────────
+# ── Derive version from mfile ─────────────────────────────────────────────────
 
 EXACT_TAG="$(git describe --tags --exact-match HEAD 2>/dev/null || true)"
-if [[ "$EXACT_TAG" =~ ^v(.+)$ ]]; then
-    VERSION="${BASH_REMATCH[1]}"
+if [[ "$EXACT_TAG" == "v$BASE_VERSION" ]]; then
+    VERSION="$BASE_VERSION"
     IS_RELEASE=true
 else
-    LAST_TAG="$(git describe --tags --match "v*" --abbrev=0 2>/dev/null || echo "v0.0.0")"
-    BASE_VERSION="${LAST_TAG#v}"
-    SHORT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")"
+    SHORT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo "local")"
     VERSION="$BASE_VERSION-$SHORT_SHA"
     IS_RELEASE=false
 fi
