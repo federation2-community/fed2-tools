@@ -1,16 +1,49 @@
 -- fed2-tools — Bootstrap and initialization
 --
--- Installs Muxlet if not present, then starts Muxlet with the fed2-tools
--- workspace. Sets auto_start = false so fed2-tools owns the startup sequence.
+-- Owns the full Muxlet lifecycle: version-checks the installed Muxlet against
+-- the build-declared requirement, installs or upgrades from GitHub if needed,
+-- then starts the fed2-tools workspace.
 --
--- Also handles first-install mapper config (room sizes, grid) via sysInstall.
+-- Two values are injected by the build script (never edit manually):
+--   F2T_REQUIRED_MUXLET — minimum Muxlet version this build needs
+--   MUXLET_URL          — GitHub release URL to install/upgrade from
+--
+-- Dev builds point MUXLET_URL at the prerelease tag (no "v" prefix).
+-- Production builds point at the production tag ("v" prefix).
+-- The runtime logic is identical in both cases.
 
 local MUXLET_PKG = "Muxlet"
 
--- Dev override: injected by build script when --muxlet-tag / -MuxletTag is
--- passed.  nil (the committed value) means install from the Mudlet Package
--- Repository.  Never edit this line manually — use the build script instead.
-local MUXLET_DEV_URL = nil
+-- build-injected: minimum Muxlet version required by this fed2-tools build
+local F2T_REQUIRED_MUXLET = nil
+-- build-injected: GitHub release URL (bare tag = prerelease; v-tag = production)
+local MUXLET_URL = nil
+
+-- ── Version utilities ─────────────────────────────────────────────────────────
+
+local function versionIsNewer(v1, v2)
+    if not v1 or not v2 then return false end
+    local function parts(v)
+        local a, b, c = v:match("^(%d+)%.?(%d*)%.?(%d*)")
+        return tonumber(a) or 0, tonumber(b) or 0, tonumber(c) or 0
+    end
+    local a1, b1, c1 = parts(v1)
+    local a2, b2, c2 = parts(v2)
+    if a1 ~= a2 then return a1 > a2 end
+    if b1 ~= b2 then return b1 > b2 end
+    return c1 > c2
+end
+
+-- Returns true when the installed Muxlet meets F2T_REQUIRED_MUXLET.
+local function muxletSatisfied()
+    if not table.contains(getPackages(), MUXLET_PKG) then return false end
+    if not F2T_REQUIRED_MUXLET then return true end
+    local installed = Mux and Mux._version
+    -- "unknown" means Muxlet loaded but couldn't read its own version; treat as ok
+    -- rather than trigger a redundant reinstall.
+    if not installed or installed == "unknown" then return true end
+    return not versionIsNewer(F2T_REQUIRED_MUXLET, installed)
+end
 
 -- ── generic_mapper removal ────────────────────────────────────────────────────
 -- generic_mapper conflicts with the fed2-tools map system; remove it silently.
@@ -19,7 +52,7 @@ if table.contains(getPackages(), "generic_mapper") then
     uninstallPackage("generic_mapper")
 end
 
--- ── Install handler ──────────────────────────────────────────────────────────
+-- ── Install handler ───────────────────────────────────────────────────────────
 -- sysInstall fires during installation only, not on normal session start.
 registerAnonymousEventHandler("sysInstall", function(_, pkg)
     if pkg ~= "fed2-tools" then return end
@@ -41,24 +74,17 @@ registerAnonymousEventHandler("sysInstall", function(_, pkg)
     end
 end)
 
--- ── Startup ───────────────────────────────────────────────────────────────────
+-- ── Workspace startup ─────────────────────────────────────────────────────────
 
 local function startWorkspace()
-    -- Flush any settings registrations that queued before Mux was available.
     if f2t_settings_flush_registrations then
         f2t_settings_flush_registrations()
     end
 
-    -- Register content and workspace definition before fullStart so that
-    -- activeContent in the workspace definition resolves in the deferred
-    -- apply pass.  The "fed2-tools" workspace is always available in the
-    -- workspace list regardless of whether the user has applied it.
     if f2tRegisterMapContent then f2tRegisterMapContent() end
     if f2tRegisterWorkspace  then f2tRegisterWorkspace()  end
 
     if Mux._running then
-        -- Mid-session reinstall: Muxlet is already active.  Re-apply map content
-        -- after a short delay so pane widget state is stable post-package-reload.
         tempTimer(0.5, function()
             local mapPane = Mux.getPane("map")
             if mapPane then Mux._applyContent(mapPane, "fed2_map") end
@@ -69,67 +95,80 @@ local function startWorkspace()
         return
     end
 
-    -- fullStart() resolves: current (restored session) → default.
-    -- On first install "current" doesn't exist so Muxlet loads "default", then
-    -- the welcome dialog offers to apply the fed2-tools workspace.
     Mux.fullStart()
     tempTimer(0.8, function()
         if f2tCheckWelcome then f2tCheckWelcome() end
     end)
 end
 
--- ── Muxlet installation ───────────────────────────────────────────────────────
+-- ── Muxlet install / upgrade ──────────────────────────────────────────────────
 
 local function installMuxlet()
-    -- Keep the handler alive until Muxlet specifically completes; don't use
-    -- oneShot=true because mpkg may fire sysInstallPackage for other packages
-    -- (e.g. dependencies) before Muxlet itself finishes.
+    if not MUXLET_URL then
+        cecho("\n<red>[fed2-tools]<reset> Cannot install Muxlet: build is missing MUXLET_URL injection. Reinstall fed2-tools from MPR.\n")
+        return
+    end
+
     local handlerId
     handlerId = registerAnonymousEventHandler("sysInstallPackage", function(_, name)
         if name ~= MUXLET_PKG then return end
         killAnonymousEventHandler(handlerId)
-        cecho("\n<green>[fed2-tools]<reset> Muxlet installed.\n")
+        cecho("\n<green>[fed2-tools]<reset> Muxlet ready.\n")
         tempTimer(0.5, startWorkspace)
     end)
 
-    if MUXLET_DEV_URL then
-        cecho("\n<yellow>[fed2-tools]<reset> Installing Muxlet from dev build...\n")
-        installPackage(MUXLET_DEV_URL)
-        return
+    local action = table.contains(getPackages(), MUXLET_PKG) and "Upgrading" or "Installing"
+    local ver    = F2T_REQUIRED_MUXLET and (" " .. F2T_REQUIRED_MUXLET) or ""
+    cecho(string.format("\n<cyan>[fed2-tools]<reset> %s Muxlet%s...\n", action, ver))
+    installPackage(MUXLET_URL)
+end
+
+-- ── Dev reload watcher ────────────────────────────────────────────────────────
+-- Active only when a stamp file exists in the profile directory, which the
+-- build script writes on every local deploy.  Production installs never have
+-- this file so the watcher never activates for end users.
+
+local function startDevReloadWatcher()
+    local function parentDir(path)
+        return path:match("^(.+)[/\\][^/\\]*$") or path
     end
 
-    cecho("\n<cyan>[fed2-tools]<reset> Muxlet not found — installing from MPR...\n")
+    local profileDir = parentDir(getMudletHomeDir())
+    local stampPath  = profileDir .. "/fed2-tools-rebuild.stamp"
+    local pkgPath    = profileDir .. "/fed2-tools.mpackage"
 
-    if not mpkg then
-        cecho("\n<red>[fed2-tools]<reset> mpkg is not installed. Install mpkg from the Mudlet Package Repository, then reinstall fed2-tools.\n")
-        killAnonymousEventHandler(handlerId)
-        return
-    end
+    local f = io.open(stampPath, "r")
+    if not f then return end
+    local lastStamp = f:read("*a"):match("^%d+") or ""
+    f:close()
 
-    -- mpkg.install() silently returns if the package list isn't loaded yet.
-    -- Retry up to 5 times, refreshing the list each time, before giving up.
-    local attempts = 0
-    local function tryInstall()
-        if mpkg.ready() then
-            mpkg.install(MUXLET_PKG)
-        elseif attempts < 5 then
-            attempts = attempts + 1
-            mpkg.updatePackageList(true)
-            tempTimer(6, tryInstall)
+    local function poll()
+        local f2 = io.open(stampPath, "r")
+        if not f2 then return end
+        local stamp = f2:read("*a"):match("^%d+") or ""
+        f2:close()
+
+        if stamp ~= lastStamp then
+            lastStamp = stamp
+            cecho("\n<yellow>[fed2-tools]<reset> Build updated — reloading...\n")
+            installPackage(pkgPath)
+            -- init.lua re-runs on reload and handles any Muxlet version change.
         else
-            cecho("\n<red>[fed2-tools]<reset> Could not reach MPR after several attempts. Check your internet connection.\n")
-            killAnonymousEventHandler(handlerId)
+            tempTimer(5, poll)
         end
     end
-    tryInstall()
+
+    tempTimer(5, poll)
+    cecho("\n<cyan>[fed2-tools]<reset> Dev reload watcher active (polling every 5s).\n")
 end
 
 -- ── Boot ──────────────────────────────────────────────────────────────────────
 -- Defer past Muxlet's 1-second auto_start timer so it fires first.
--- If auto_start=true, Muxlet starts itself and we take the mid-session path.
--- If auto_start=false (default), we start it after the timer has already run.
+
 tempTimer(1.1, function()
-    if not table.contains(getPackages(), MUXLET_PKG) then
+    startDevReloadWatcher()
+
+    if not muxletSatisfied() then
         installMuxlet()
     else
         startWorkspace()

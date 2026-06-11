@@ -1,25 +1,23 @@
 #!/usr/bin/env bash
 # build.sh — Build the fed2-tools package.
 #
-# Derives version from git tags, patches mfile, runs muddle, then restores
-# mfile so the committed value stays clean.
+# Derives version from git tags, reads muxlet_version from mfile, patches
+# mfile and init.lua temporarily, runs muddle, then restores everything so
+# committed values stay clean.
 #
-#   Release build (exact git tag at HEAD): version = "0.2.0"
-#   Dev build (no exact tag):             version = "0.2.0-a3f91cd"
+# Local builds always use the Muxlet prerelease URL (bare tag, no "v" prefix).
+# Production builds (exact v* tag at HEAD, normally a CI scenario) use the
+# v-prefixed production Muxlet URL.
 #
-# Pass --muxlet-tag to override where Muxlet is installed from.  The override
-# is injected into the build copy of init.lua only — the source file is never
-# modified.  Omit --muxlet-tag to use the Mudlet Package Repository (default).
-#
-# Works in WSL, native Linux, and macOS.
+# The Muxlet version is controlled solely by "muxlet_version" in mfile.
+# To test against a different Muxlet build, change muxlet_version in mfile.
 #
 # Usage:
-#   ./build.sh [--profile PROFILE] [--muxlet-tag TAG] [--mudlet-config PATH]
+#   ./build.sh [--profile PROFILE] [--mudlet-config PATH]
 #
 # Examples:
 #   ./build.sh
 #   ./build.sh --profile fed2-dev
-#   ./build.sh --muxlet-tag 1.0.6 --profile fed2-dev
 
 set -euo pipefail
 
@@ -29,7 +27,6 @@ INIT_LUA="$SCRIPT_DIR/src/scripts/init.lua"
 SRC_PACKAGE="$SCRIPT_DIR/build/fed2-tools.mpackage"
 
 PROFILE=""
-MUXLET_TAG=""
 MUDLET_CONFIG=""
 
 # ── Parse arguments ───────────────────────────────────────────────────────────
@@ -37,7 +34,6 @@ MUDLET_CONFIG=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --profile)       PROFILE="$2";       shift 2 ;;
-        --muxlet-tag)    MUXLET_TAG="$2";    shift 2 ;;
         --mudlet-config) MUDLET_CONFIG="$2"; shift 2 ;;
         *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
@@ -46,19 +42,42 @@ done
 echo ""
 echo "=== fed2-tools build ==="
 
-# ── Derive version from git ───────────────────────────────────────────────────
+# ── Read mfile ────────────────────────────────────────────────────────────────
+
+MUXLET_VERSION="$(jq -r '.muxlet_version' "$MFILE")"
+if [[ -z "$MUXLET_VERSION" || "$MUXLET_VERSION" == "null" ]]; then
+    echo "ERROR: mfile is missing 'muxlet_version' field." >&2
+    exit 1
+fi
+
+# ── Derive fed2-tools version from git ───────────────────────────────────────
 
 EXACT_TAG="$(git describe --tags --exact-match HEAD 2>/dev/null || true)"
 if [[ "$EXACT_TAG" =~ ^v(.+)$ ]]; then
     VERSION="${BASH_REMATCH[1]}"
+    IS_RELEASE=true
 else
     LAST_TAG="$(git describe --tags --match "v*" --abbrev=0 2>/dev/null || echo "v0.0.0")"
     BASE_VERSION="${LAST_TAG#v}"
     SHORT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")"
     VERSION="$BASE_VERSION-$SHORT_SHA"
+    IS_RELEASE=false
 fi
 
 echo "Version       : $VERSION"
+
+# ── Build Muxlet URL ──────────────────────────────────────────────────────────
+# Local builds target the prerelease Muxlet (bare tag = no "v").
+# IS_RELEASE=true only for an exact v* tag at HEAD; use the production URL.
+
+if [[ "$IS_RELEASE" == true ]]; then
+    MUXLET_TAG="v$MUXLET_VERSION"
+else
+    MUXLET_TAG="$MUXLET_VERSION"
+fi
+MUXLET_URL="https://github.com/tmtocloud/Muxlet/releases/download/$MUXLET_TAG/Muxlet.mpackage"
+
+echo "Muxlet        : $MUXLET_VERSION  ($MUXLET_URL)"
 
 # ── Patch mfile temporarily ───────────────────────────────────────────────────
 
@@ -67,30 +86,24 @@ PATCHED_MFILE="$(echo "$ORIGINAL_MFILE" | sed 's/"version":[[:space:]]*"[^"]*"/"
 echo "$PATCHED_MFILE" > "$MFILE"
 echo "mfile         : version set to $VERSION"
 
-# ── Optionally inject Muxlet dev URL into init.lua ───────────────────────────
+# ── Inject into init.lua temporarily ─────────────────────────────────────────
 
 ORIGINAL_INIT="$(cat "$INIT_LUA")"
-INIT_PATCHED=0
 
-if [[ -n "$MUXLET_TAG" ]]; then
-    DEV_URL="https://github.com/tmtocloud/Muxlet/releases/download/$MUXLET_TAG/Muxlet.mpackage"
-    sed -i.bak "s|local MUXLET_DEV_URL = nil|local MUXLET_DEV_URL = \"$DEV_URL\"|" "$INIT_LUA"
-    INIT_PATCHED=1
-    echo "Muxlet URL    : $DEV_URL"
-else
-    echo "Muxlet source : MPR (default)"
-fi
+sed -i.bak \
+    -e "s|local F2T_REQUIRED_MUXLET = nil|local F2T_REQUIRED_MUXLET = \"$MUXLET_VERSION\"|" \
+    -e "s|local MUXLET_URL = nil|local MUXLET_URL = \"$MUXLET_URL\"|" \
+    "$INIT_LUA"
+echo "init.lua      : injected F2T_REQUIRED_MUXLET=$MUXLET_VERSION, MUXLET_URL"
 
 # ── Run muddle ────────────────────────────────────────────────────────────────
 
 restore_all() {
     echo "$ORIGINAL_MFILE" > "$MFILE"
     echo "mfile         : restored"
-    if [[ $INIT_PATCHED -eq 1 ]]; then
-        echo "$ORIGINAL_INIT" > "$INIT_LUA"
-        rm -f "$INIT_LUA.bak"
-        echo "init.lua      : restored"
-    fi
+    echo "$ORIGINAL_INIT" > "$INIT_LUA"
+    rm -f "$INIT_LUA.bak"
+    echo "init.lua      : restored"
 }
 trap restore_all EXIT
 
@@ -169,11 +182,11 @@ if [[ $FIRST_TIME -eq 1 ]]; then
     echo "  3. Toolbox -> Package Manager -> Install from file:"
     echo "     $DEST_PACKAGE"
     echo ""
-    echo "After this one-time install, fed2-tools loads automatically."
+    echo "After this one-time install, fed2-tools reloads automatically on each build."
     echo ""
 fi
 
 echo "WORKFLOW:"
 echo "  ./build.sh --profile $PROFILE"
-echo "  Reinstall the package in Mudlet to pick up changes."
+echo "  fed2-tools auto-reloads within ~30 seconds via the dev stamp watcher."
 echo ""

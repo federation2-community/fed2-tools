@@ -58,6 +58,10 @@ jobs:
             echo "is_dispatch_release=false" >> $GITHUB_OUTPUT
           fi
 
+          # Always read muxlet_version from mfile for downstream steps.
+          MUXLET_VERSION=$(jq -r '.muxlet_version' mfile)
+          echo "muxlet_version=$MUXLET_VERSION" >> $GITHUB_OUTPUT
+
       - name: Validate mfile version matches tag
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
@@ -75,6 +79,26 @@ jobs:
           tmp=$(mktemp)
           jq --arg v "$VERSION" '.version = $v' mfile > "$tmp" && mv "$tmp" mfile
           echo "Version set to $VERSION"
+
+      - name: Inject Muxlet variables into init.lua
+        run: |
+          MUXLET_VERSION="${{ steps.version.outputs.muxlet_version }}"
+          IS_RELEASE="${{ steps.version.outputs.is_release }}"
+
+          if [[ "$IS_RELEASE" == "true" ]]; then
+            MUXLET_TAG="v${MUXLET_VERSION}"
+          else
+            MUXLET_TAG="${MUXLET_VERSION}"
+          fi
+          MUXLET_URL="https://github.com/tmtocloud/Muxlet/releases/download/${MUXLET_TAG}/Muxlet.mpackage"
+
+          echo "Muxlet version : $MUXLET_VERSION"
+          echo "Muxlet URL     : $MUXLET_URL"
+
+          sed -i \
+            -e "s|local F2T_REQUIRED_MUXLET = nil|local F2T_REQUIRED_MUXLET = \"${MUXLET_VERSION}\"|" \
+            -e "s|local MUXLET_URL = nil|local MUXLET_URL = \"${MUXLET_URL}\"|" \
+            src/scripts/init.lua
 
       - name: Build with muddler
         run: docker run --rm -v "$PWD:/work" -w /work demonnic/muddler
