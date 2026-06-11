@@ -1,3 +1,25 @@
+UI = UI or {}
+
+-- Batch overlay state changes — delegates to the TabWindow class methods which
+-- iterate Adjustable.TabWindow.allTabs so floating/rearranged tabs are included.
+function ui_tab_overlay_disconnect_all()
+    Adjustable.TabWindow.showAllWindowOverlays("offline")
+end
+
+function ui_tab_overlay_connect_all()
+    Adjustable.TabWindow.showAllWindowOverlays("connecting")
+end
+
+function ui_tab_overlay_activate_all()
+    Adjustable.TabWindow.hideAllWindowOverlays()
+end
+
+-- Per-tab helper used by individual component init code.
+function ui_tab_show_overlay(tabname, state)
+    local tw = Adjustable.TabWindow.allTabs and Adjustable.TabWindow.allTabs[tabname]
+    if tw then tw:showTabOverlay(tabname, state) end
+end
+
 function ui_build_tabs()
     -- Build the box to split the right frame in half
     UI.vbox_left = Geyser.VBox:new(
@@ -38,11 +60,26 @@ function ui_build_tabs()
             notifyTabStyle   = UI.style.notify_inactive_tab_css,
             footerStyle      = UI.style.footer_css,
             centerStyle      = UI.style.center_css,
+            tabOverlays      = {
+                Who = {
+                    offline_sub    = "connect to see who's online",
+                    connecting_sub = "waiting for player data…",
+                    geometry       = { y = "21px", height = "100%-21px" },
+                },
+                General = {
+                    offline_sub    = "connect to receive game output",
+                    connecting_sub = "connecting to game server…",
+                },
+                Exchange = {
+                    offline_sub    = "visit an exchange while connected to view market data",
+                    connecting_sub = "loading exchange data…",
+                },
+            },
         },
         UI.vbox_left
     )
 
-    -- Place Comm tab on the top of the Bottom Left Navigation Frame (default location)
+    -- Place Chat tab on the top of the Bottom Left Navigation Frame (default location)
     UI.tab_bottom_left = Adjustable.TabWindow:new(
         {
             name             = "UI.tab_bottom_left",
@@ -51,7 +88,7 @@ function ui_build_tabs()
             width            = "100%",
             height           = "100%",
             tabBarHeight     = "8%",
-            tabs             = {"Comm"},
+            tabs             = {"Chat"},
             activeTabStyle   = UI.style.active_tab_css,
             inactiveTabStyle = UI.style.inactive_tab_css,
             notifyTabStyle   = UI.style.notify_inactive_tab_css,
@@ -70,12 +107,18 @@ function ui_build_tabs()
             width            = "100%",
             height           = "100%",
             tabBarHeight     = "8%",
-            tabs             = {"fedmap"},
+            tabs             = {"Map"},
             activeTabStyle   = UI.style.active_tab_css,
             inactiveTabStyle = UI.style.inactive_tab_css,
             notifyTabStyle   = UI.style.notify_inactive_tab_css,
             footerStyle      = UI.style.footer_css,
             centerStyle      = UI.style.center_css,
+            tabOverlays      = {
+                Map = {
+                    offline_sub    = "connect to enable live auto-mapping",
+                    connecting_sub = "loading map data…",
+                },
+            },
         },
         UI.vbox_right
     )
@@ -96,6 +139,24 @@ function ui_build_tabs()
             notifyTabStyle   = UI.style.notify_inactive_tab_css,
             footerStyle      = UI.style.footer_css,
             centerStyle      = UI.style.center_css,
+            tabOverlays      = {
+                Hauling = {
+                    offline_sub    = "connect to have access to jobs",
+                    connecting_sub = "loading haul data…",
+                },
+                Trading = {
+                    offline_sub    = "connect to trade commodities",
+                    connecting_sub = "loading trade data…",
+                },
+                Company = {
+                    offline_sub    = "connect to manage your company",
+                    connecting_sub = "loading company data…",
+                },
+                Futures = {
+                    offline_sub    = "connect to view futures markets",
+                    connecting_sub = "loading futures data…",
+                },
+            },
         },
         UI.vbox_right
     )
@@ -109,6 +170,36 @@ end
 -- tabs in their default positions.
 function ui_load_tab_layout()
     Adjustable.TabWindow:load()
+end
+
+-- Reset tab layout to factory defaults and apply immediately.
+-- Clears the TabWindowTabs save file (and any floating-tab position saves in the
+-- same directory), writes the constructor-default assignments, then calls load()
+-- to restore the layout in the running session without a package reload.
+function ui_reset_tab_layout()
+    local dir = getMudletHomeDir() .. "/AdjustableTabWindow/"
+
+    if io.exists(dir) then
+        for file in lfs.dir(dir) do
+            if file ~= "." and file ~= ".." and file:sub(-4) == ".lua" then
+                os.remove(dir .. file)
+            end
+        end
+    else
+        lfs.mkdir(dir)
+    end
+
+    -- Write factory defaults in the format load() expects.
+    local factory = {}
+    factory["UI.tab_left"]         = { tabs = {"Who","General","Exchange"},              current = "Who",     temporary = false }
+    factory["UI.tab_bottom_left"]  = { tabs = {"Chat"},                                 current = "Chat",    temporary = false }
+    factory["UI.tab_top_right"]    = { tabs = {"Map"},                                  current = "Map",     temporary = false }
+    factory["UI.tab_bottom_right"] = { tabs = {"Hauling","Trading","Company","Futures"}, current = "Hauling", temporary = false }
+    table.save(dir .. "TabWindowTabs.lua", factory)
+
+    Adjustable.TabWindow:load()
+
+    cecho("\n<green>[ui]<reset> Tab layout reset to factory defaults.\n")
 end
 
 -- Call ui_tab_notify("TabName") whenever content is added to a tab to show the
@@ -185,22 +276,109 @@ function ui_build_tab_content()
     UI.general_filter_btn:setToolTip("Show all")
     UI.general_filter_btn:setClickCallback(function() ui_general_cycle_filter() end)
 
-    --put Exchange console in Exchange tab
-    UI.exchange_window = Geyser.MiniConsole:new(
+    -- Exchange tab: market futures panel (Trader/Financier at exchange) + ticker strip.
+    -- Market panel: 18px info header + 18px col-bar + scrollbox filling remainder above ticker.
+    -- Ticker: 56px fixed at bottom, always visible while at exchange.
+    -- 36px top chrome + 56px ticker = 92px total; scrollbox fills 100%-92px.
+    UI.exchange_market_hdr = Geyser.Label:new(
         {
-            name      = "UI.exchange_window",
+            name   = "UI.exchange_market_hdr",
+            x      = "0%",
+            y      = "0px",
+            width  = "100%",
+            height = "18px",
+        },
+        UI.tab_top_left.Exchangecenter
+    )
+    UI.exchange_market_hdr:setStyleSheet("background-color:rgba(10,12,22,240); border:none;")
+
+    UI.exchange_market_col_bar = Geyser.Label:new(
+        {
+            name   = "UI.exchange_market_col_bar",
+            x      = "0%",
+            y      = "18px",
+            width  = "100%",
+            height = "18px",
+        },
+        UI.tab_top_left.Exchangecenter
+    )
+    UI.exchange_market_col_bar:setStyleSheet(
+        "background-color:rgba(20,22,38,210); border:none; border-bottom:1px solid rgba(255,255,255,0.18);"
+    )
+
+    -- 36px top chrome + 1px sep + 20px ticker col-header + 80px ticker = 137px total reserved.
+    UI.exchange_market_scroll = Geyser.ScrollBox:new(
+        {
+            name   = "UI.exchange_market_scroll",
+            x      = "0%",
+            y      = "36px",
+            width  = "100%",
+            height = "100%-137px",
+        },
+        UI.tab_top_left.Exchangecenter
+    )
+
+    local exmkt_cw = math.max(50, UI.exchange_market_scroll:get_width() - 17)
+    UI.exchange_market_content = Geyser.Label:new(
+        {
+            name   = "UI.exchange_market_content",
+            x      = 0,
+            y      = 0,
+            width  = exmkt_cw,
+            height = 2000,
+        },
+        UI.exchange_market_scroll
+    )
+    UI.exchange_market_content:setStyleSheet("background-color:rgb(10,10,16); border:none;")
+
+    -- 1px separator above the ticker column-header bar.
+    UI.exchange_ticker_sep = Geyser.Label:new(
+        {
+            name   = "UI.exchange_ticker_sep",
+            x      = "0%",
+            y      = "-101",
+            width  = "100%",
+            height = "1px",
+        },
+        UI.tab_top_left.Exchangecenter
+    )
+    UI.exchange_ticker_sep:setStyleSheet(
+        "background-color:rgba(255,255,255,0.08); border:none;"
+    )
+
+    -- Fixed column-header bar pinned just above the ticker.
+    -- Must be a MiniConsole (not a Label) so it shares the same character-grid renderer
+    -- as the ticker below and column text aligns correctly.
+    -- 20px = enough height for one line of text at the ticker's font size.
+    UI.exchange_ticker_hdr = Geyser.MiniConsole:new(
+        {
+            name      = "UI.exchange_ticker_hdr",
             x         = "0%",
-            y         = "0%",
+            y         = "-100",
             width     = "100%",
-            height    = "100%",
-            autoWrap  = true,
-            scrollBar = true,
+            height    = "20px",
             fontSize  = text_size,
+            scrollBar = false,
             color     = "black",
         },
         UI.tab_top_left.Exchangecenter
     )
-    UI.tab_top_left:removeTab("Exchange")
+    UI.exchange_ticker_hdr:setBgColor(20, 22, 38)
+
+    UI.exchange_ticker = Geyser.MiniConsole:new(
+        {
+            name      = "UI.exchange_ticker",
+            x         = "0%",
+            y         = "-80",
+            width     = "100%",
+            height    = "80px",
+            fontSize  = text_size,
+            scrollBar = false,
+            color     = "black",
+        },
+        UI.tab_top_left.Exchangecenter
+    )
+    UI.exchange_ticker:setBgColor(8, 10, 18)
 
     --put chat console in chat tab
     UI.chat_window = Geyser.MiniConsole:new(
@@ -215,10 +393,10 @@ function ui_build_tab_content()
             fontSize  = text_size,
             color     = "black",
         },
-        UI.tab_bottom_left.Commcenter
+        UI.tab_bottom_left.Chatcenter
     )
 
-    -- ── Comm tab buttons ──────────────────────────────────────────────────
+    -- ── Chat tab buttons ──────────────────────────────────────────────────
     -- Filter button (cycles A/C/T/S); sits left of the timestamp button.
     UI.chat_filter_btn = Geyser.Label:new(
         {
@@ -228,7 +406,7 @@ function ui_build_tab_content()
             width  = "20",
             height = "16",
         },
-        UI.tab_bottom_left.Commcenter
+        UI.tab_bottom_left.Chatcenter
     )
     UI.chat_filter_btn:setStyleSheet(
         [[
@@ -261,7 +439,7 @@ function ui_build_tab_content()
             width  = "20",
             height = "16",
         },
-        UI.tab_bottom_left.Commcenter
+        UI.tab_bottom_left.Chatcenter
     )
     UI.chat_ts_btn:echo("<center><font color='#3a3a3a'>⏱</font></center>")
     UI.chat_ts_btn:setStyleSheet(UI.style.button_css)
@@ -359,46 +537,7 @@ function ui_build_tab_content()
     )
     UI.who_scroll_content:setStyleSheet("background-color:rgb(10,10,16); border:none;")
 
-    -- Disconnected overlay — covers col-bar + scroll area; shown when not connected.
-    UI.who_offline_notice = Geyser.Label:new(
-        {
-            name   = "UI.who_offline_notice",
-            x      = "0%",
-            y      = "21px",
-            width  = "100%",
-            height = "100%-21px",
-        },
-        UI.tab_top_left.Whocenter
-    )
-    UI.who_offline_notice:setStyleSheet("background-color:rgb(10,10,16); border:none;")
-    UI.who_offline_notice:echo(
-        "<div style='text-align:center;padding-top:80px;'>"
-        .. "<span style='font-size:22pt;font-family:Consolas,Monaco,monospace;color:rgba(100,30,30,200);'>⊘</span>"
-        .. "<br><br><span style='font-size:11pt;font-family:Consolas,Monaco,monospace;color:rgba(130,50,50,220);'>DISCONNECTED</span>"
-        .. "<br><br><span style='font-size:8pt;font-family:Consolas,Monaco,monospace;color:rgba(55,55,70,200);'>connect to see who's online</span>"
-        .. "</div>")
-    UI.who_offline_notice:hide()
-
-    -- Connecting overlay — shown between sysConnectionEvent and first gmcp.players.
-    UI.who_connecting_notice = Geyser.Label:new(
-        {
-            name   = "UI.who_connecting_notice",
-            x      = "0%",
-            y      = "21px",
-            width  = "100%",
-            height = "100%-21px",
-        },
-        UI.tab_top_left.Whocenter
-    )
-    UI.who_connecting_notice:setStyleSheet("background-color:rgb(10,10,16); border:none;")
-    UI.who_connecting_notice:echo(
-        "<div style='text-align:center;padding-top:80px;'>"
-        .. "<span style='font-size:22pt;font-family:Consolas,Monaco,monospace;color:rgba(30,90,110,200);'>⟳</span>"
-        .. "<br><br><span style='font-size:11pt;font-family:Consolas,Monaco,monospace;color:rgba(50,120,140,220);'>CONNECTING…</span>"
-        .. "<br><br><span style='font-size:8pt;font-family:Consolas,Monaco,monospace;color:rgba(55,55,70,200);'>waiting for player data…</span>"
-        .. "</div>")
-    UI.who_connecting_notice:hide()
-
+    -- "fedmap" is the Mudlet map widget name (must match the Mapper name); "Map" is the tab name.
     UI.mapper = Geyser.Mapper:new(
         {
             name   = "fedmap",
@@ -407,7 +546,7 @@ function ui_build_tab_content()
             width  = "100%",
             height = "100%",
         },
-        UI.tab_top_right.fedmapcenter
+        UI.tab_top_right.Mapcenter
     )
 
     -- Legend info button — bottom-right corner of the map.
@@ -419,7 +558,7 @@ function ui_build_tab_content()
             width  = "24",
             height = "24",
         },
-        UI.tab_top_right.fedmapcenter
+        UI.tab_top_right.Mapcenter
     )
     UI.map_legend_btn:setStyleSheet(UI.style.map_legend_btn_css)
     UI.map_legend_btn:echo("<center>ℹ</center>")
@@ -504,42 +643,58 @@ function ui_build_tab_content()
         UI.trading_container
     )
 
-    -- put futures container in futures tab
-    UI.futures_container = Geyser.Container:new(
+    -- Owned futures tab (from gmcp.char.futures): 18px header + 18px col-bar + scrollbox.
+    -- Tab visibility is managed by ui_futures_on_gmcp_char_futures() — appears only when
+    -- the player holds at least one futures contract; disappears when all are closed.
+    UI.futures_hdr = Geyser.Label:new(
         {
-            name   = "UI.futures_container",
+            name   = "UI.futures_hdr",
             x      = "0%",
-            y      = "0%",
+            y      = "0px",
             width  = "100%",
-            height = "100%",
+            height = "18px",
+        },
+        UI.tab_bottom_right.Futurescenter
+    )
+    UI.futures_hdr:setStyleSheet("background-color:rgba(10,12,22,240); border:none;")
+
+    UI.futures_col_bar = Geyser.Label:new(
+        {
+            name   = "UI.futures_col_bar",
+            x      = "0%",
+            y      = "18px",
+            width  = "100%",
+            height = "18px",
+        },
+        UI.tab_bottom_right.Futurescenter
+    )
+    UI.futures_col_bar:setStyleSheet(
+        "background-color:rgba(20,22,38,210); border:none; border-bottom:1px solid rgba(255,255,255,0.18);"
+    )
+
+    -- 36px = 18px header + 18px col-bar
+    UI.futures_scroll = Geyser.ScrollBox:new(
+        {
+            name   = "UI.futures_scroll",
+            x      = "0%",
+            y      = "36px",
+            width  = "100%",
+            height = "100%-36px",
         },
         UI.tab_bottom_right.Futurescenter
     )
 
-    -- Button bar at top
-    UI.futures_button_bar = Geyser.HBox:new(
+    local fut_own_cw = math.max(50, UI.futures_scroll:get_width() - 17)
+    UI.futures_content = Geyser.Label:new(
         {
-            name   = "UI.futures_button_bar",
-            x      = "0%",
-            y      = "0%",
-            width  = "100%",
-            height = "25px",
+            name   = "UI.futures_content",
+            x      = 0,
+            y      = 0,
+            width  = fut_own_cw,
+            height = 2000,
         },
-        UI.futures_container
+        UI.futures_scroll
     )
+    UI.futures_content:setStyleSheet("background-color:rgb(10,10,16); border:none;")
 
-    UI.futures_window = Geyser.MiniConsole:new(
-        {
-            name      = "UI.futures_window",
-            x         = "0%",
-            y         = "25px",
-            width     = "100%",
-            height    = "100%-25px",
-            autoWrap  = true,
-            scrollBar = true,
-            fontSize  = 12,
-            color     = "black",
-        },
-        UI.futures_container
-    )
 end

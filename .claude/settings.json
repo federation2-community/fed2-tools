@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /c/Users/Thomas -name \"*.lua\" 2>/dev/null | xargs grep -l \"TabWindow\" 2>/dev/null | head -20)",
+      "Read(//c/Users/Thomas/**)",
+      "Bash(find \"C:\\\\Program Files\" -name \"*Geyser*.lua\" -o -name \"*ScrollBox*.lua\" 2>/dev/null)",
+      "Read(//c/Program Files/**)",
+      "Bash(find ~\\\\OneDrive\\\\Documents\\\\GitHub -name \"geyser.lua\" -o -name \"*Geyser*.lua\" 2>/dev/null | head -10)",
+      "Read(//c/Users/Thomas/OneDrive/Documents/GitHub/fed2-tools/**)",
+      "Bash(find ~\\\\OneDrive\\\\Documents\\\\GitHub -type f -name \"*.lua\" | xargs grep -l \"class.*ScrollBox\\\\|ScrollBox.*=\" 2>/dev/null | head -10)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Program Files\\\\Mudlet\" -Recurse -Filter \"*ScrollBox*\" -ErrorAction SilentlyContinue)",
+      "Bash(Select-Object FullName)",
+      "PowerShell(Get-ChildItem -Path \"$env:LOCALAPPDATA\\\\Mudlet\" | Select-Object Name, FullName)",
+      "WebFetch(domain:www.mudlet.org)",
+      "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\Thomas\\\\OneDrive\\\\Documents\\\\GitHub\\\\Mudlet\\\\src\\\\mudlet-lua\\\\lua\\\\geyser\\\\\" -File)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\Thomas\\OneDrive\\Documents\\GitHub\\fed2-tools_reimagined\\src\\scripts\\MudletMux",
+      "C:\\Users\\Thomas\\OneDrive\\Documents\\GitHub\\Muxlet\\src\\scripts\\Muxlet",
+      "C:\\Users\\Thomas\\OneDrive\\Documents\\GitHub\\fed2-tools_new\\src\\scripts\\map",
+      "C:\\Users\\Thomas\\OneDrive\\Documents\\GitHub\\fed2-tools_new\\src\\scripts",
+      "C:\\Users\\Thomas\\OneDrive\\Documents\\GitHub\\fed2-tools_new\\src\\keys\\map"
+    ]
+  }
+}

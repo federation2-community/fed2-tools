@@ -23,6 +23,18 @@ f2t_settings_register("ui", "hide_movement_messages", {
     end
 })
 
+f2t_settings_register("ui", "exchange_ticker_mode", {
+    description = "Exchange spam display: 'ticker' = strip only (spam deleted), 'console' = main output only (ticker hidden), 'both' = ticker + main output",
+    default = "ticker",
+    choices = {"ticker", "console", "both"},
+    validator = function(value)
+        if value ~= "ticker" and value ~= "console" and value ~= "both" then
+            return false, "Must be 'ticker', 'console', or 'both'"
+        end
+        return true
+    end
+})
+
 -- Load saved state (default to enabled)
 local saved_enabled = f2t_settings_get("ui", "enabled")
 if saved_enabled == nil then

@@ -926,6 +926,7 @@ function ui_company()
     _init_shareholder_table()
 
     _show_section("overview")
+
 end
 
 function ui_company_on_connect()

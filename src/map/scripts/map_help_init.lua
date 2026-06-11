@@ -65,7 +65,8 @@ f2t_register_help("map", {
         "map explore Coffee                  # Explore Coffee (auto-detect system)",
         "map explore full                    # Full exploration of current area",
         "map explore brief Earth             # Brief exploration of Earth",
-        "map settings set planet_nav_default orbit  # Default to orbit",
+        "map settings set planet_nav_default orbit     # Default to orbit",
+        "map settings set planet_nav_default exchange  # Default to exchange",
         "map search exchange                 # Search for exchange in current area",
         "map search Earth landing            # Search for landing on Earth",
         "map search all park                 # Search all areas for park"
@@ -108,6 +109,7 @@ f2t_register_help("map settings", {
         "map settings                                  # List all settings",
         "map settings get planet_nav_default           # Check planet navigation default",
         "map settings set planet_nav_default orbit     # Default to orbit",
+        "map settings set planet_nav_default exchange  # Default to exchange",
         "map settings set enabled false                # Disable auto-mapping",
         "map settings set movement_keys false          # Disable arrow/numpad movement keys",
         "map settings clear planet_nav_default         # Reset to default"

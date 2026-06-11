@@ -197,11 +197,11 @@ local function _count_map_rooms(file_path)
     if not file then return nil end
     local content = file:read("*all")
     file:close()
-    local total = 0
-    for n in content:gmatch('"roomCount"%s*:%s*(%d+)') do
-        total = total + tonumber(n)
+    local ok, data = pcall(yajl.to_value, content)
+    if ok and data and data.roomCount then
+        return data.roomCount
     end
-    return total
+    return nil
 end
 
 local function _map_option_label(opt, map_dir)

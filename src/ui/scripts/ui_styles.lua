@@ -1,6 +1,13 @@
 UI.style = UI.style or {}
 
 setProfileStyleSheet([[
+QToolTip {
+    background-color: #2a2a3a;
+    color: #d0d0e0;
+    border: 1px solid #555566;
+    padding: 3px 5px;
+}
+
 QScrollArea {
     background: rgba(18,20,34,220);
 }

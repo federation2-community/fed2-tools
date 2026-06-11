@@ -224,12 +224,12 @@ function f2t_map_resolve_location(location)
 
             local area_id = f2t_map_get_area_id(search_area_name)
             if not area_id then
-                return nil, string.format("Area '%s' not found", search_area_name)
+                return nil, string.format("'%s' not found - area may not exist or hasn't been explored yet", area_name)
             end
 
             local area_rooms = getAreaRooms(area_id)
             if not area_rooms then
-                return nil, string.format("No rooms found in area '%s'", search_area_name)
+                return nil, string.format("No rooms found in '%s' - try 'map explore %s'", search_area_name, area_name)
             end
 
             local flag_key = string.format("fed2_flag_%s", flag)
@@ -264,8 +264,13 @@ function f2t_map_resolve_location(location)
             end
 
             if #matching_rooms == 0 then
-                local search_desc = flag == "orbit" and string.format("orbit for planet '%s'", area_name) or string.format("flag '%s'", flag)
-                return nil, string.format("No rooms with %s found in area '%s'", search_desc, search_area_name)
+                if flag == "orbit" then
+                    return nil, string.format(
+                        "No orbit mapped for '%s' - try 'map explore %s' to discover it", area_name, area_name)
+                else
+                    return nil, string.format(
+                        "No %s found in '%s' - try 'map explore %s' to discover one", flag, search_area_name, area_name)
+                end
             end
 
             target_id = matching_rooms[1]
@@ -287,17 +292,17 @@ function f2t_map_resolve_location(location)
 
         if planet_dest == "orbit" then
             if not system_name then
-                return nil, string.format("Cannot determine system for planet '%s'", single_arg)
+                return nil, string.format("Cannot determine system for planet '%s' - try 'map explore %s'", single_arg, single_arg)
             end
 
             local space_area_name = f2t_map_get_system_space_area_actual(system_name)
             if not space_area_name then
-                return nil, string.format("System space for planet '%s' not found", single_arg)
+                return nil, string.format("'%s' system space not in your map - fly there to add it", single_arg)
             end
 
             local space_area_id = f2t_map_get_area_id(space_area_name)
             if not space_area_id then
-                return nil, string.format("System space area '%s' not found", space_area_name)
+                return nil, string.format("'%s' system space not in your map - fly there to add it", single_arg)
             end
 
             local area_rooms = getAreaRooms(space_area_id)
@@ -323,7 +328,20 @@ function f2t_map_resolve_location(location)
                 f2t_debug_log("[map] Resolved planet (%s) -> orbit room %d", single_arg, target_id)
                 return target_id, nil
             else
-                return nil, string.format("No orbit found for planet '%s'", single_arg)
+                return nil, string.format("No orbit mapped for '%s' - try 'map explore %s' to discover it", single_arg, system_name)
+            end
+        elseif planet_dest == "exchange" then
+            local planet_area_id = f2t_map_get_area_id(single_arg)
+            if planet_area_id then
+                target_id = f2t_map_find_room_with_flag(planet_area_id, "exchange")
+                if target_id then
+                    f2t_debug_log("[map] Resolved planet (%s) -> exchange room %d", single_arg, target_id)
+                    return target_id, nil
+                else
+                    return nil, string.format("No exchange mapped on '%s' - try 'map explore %s' to discover one", single_arg, single_arg)
+                end
+            else
+                return nil, string.format("Planet '%s' is not in your map yet - explore it first to add it", single_arg)
             end
         else
             local planet_area_id = f2t_map_get_area_id(single_arg)
@@ -333,10 +351,10 @@ function f2t_map_resolve_location(location)
                     f2t_debug_log("[map] Resolved planet (%s) -> shuttlepad room %d", single_arg, target_id)
                     return target_id, nil
                 else
-                    return nil, string.format("No shuttlepad found on planet '%s'", single_arg)
+                    return nil, string.format("No shuttlepad mapped on '%s' - try 'map explore %s' to discover one", single_arg, single_arg)
                 end
             else
-                return nil, string.format("Planet '%s' not yet mapped", single_arg)
+                return nil, string.format("Planet '%s' is not in your map yet - explore it first to add it", single_arg)
             end
         end
     end
@@ -350,7 +368,7 @@ function f2t_map_resolve_location(location)
             f2t_debug_log("[map] Resolved system (%s) -> link room %d", single_arg, target_id)
             return target_id, nil
         else
-            return nil, string.format("No link found in '%s'", space_area)
+            return nil, string.format("No link room mapped in '%s' - try 'map explore %s' to discover it", space_area, single_arg)
         end
     end
 
@@ -387,6 +405,9 @@ function f2t_map_resolve_location(location)
 
     local area_rooms = getAreaRooms(search_area_id)
     if not area_rooms then
+        if KNOWN_FLAGS[single_arg] then
+            return nil, string.format("No %s found here - try 'map explore' to discover one", single_arg)
+        end
         return nil, string.format("No rooms found in area '%s'", search_area_name or "unknown")
     end
 
@@ -407,7 +428,23 @@ function f2t_map_resolve_location(location)
     end
 
     if #matching_rooms == 0 then
-        return nil, string.format("No rooms with flag '%s' found in area '%s'", single_arg, search_area_name or "unknown")
+        if string.find(single_arg, " ", 1, true) then
+            -- Multi-word that didn't match any pattern - unrecognized command
+            return nil, string.format(
+                "'%s' is not a recognized navigation command\nUse: nav <area> <flag>   valid flags: exchange, courier (ac), shuttlepad, bar, hospital, insure, repair, shipyard, weapons, link, orbit",
+                location)
+        elseif KNOWN_FLAGS[single_arg] then
+            -- Valid flag, but not found here - map is incomplete
+            local area_display = (search_area_name and search_area_name ~= "" and search_area_name ~= "Nil")
+                and ("'" .. search_area_name .. "'") or "this area"
+            return nil, string.format(
+                "No %s found in %s - try 'map explore' to discover one", single_arg, area_display)
+        else
+            -- Unknown word - not a planet, system, or known flag
+            return nil, string.format(
+                "'%s' not found - not a mapped planet, system, or navigation flag\nIf this is a real location, explore there manually first to add it to your map",
+                location)
+        end
     end
 
     target_id = matching_rooms[1]

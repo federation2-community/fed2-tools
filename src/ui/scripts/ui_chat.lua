@@ -75,11 +75,13 @@ local _FILTER = {
 
 -- ── Persistence ───────────────────────────────────────────────────────────
 
-local function _chat_dir()  return getMudletHomeDir() .. "/fed2-tools/chat" end
-local function _chat_path() return _chat_dir() .. "/history" end
+-- Stored in fed2-tools-persistent/<char>/ so it survives package reinstall and
+-- separates history per character.  f2t_get_char_persistent_dir() is defined in
+-- f2t_char.lua (shared) and returns the per-char subdirectory.
+local function _chat_path()  return f2t_get_char_persistent_dir() .. "/chat_history" end
 local function _ensure_dir()
-    lfs.mkdir(getMudletHomeDir() .. "/fed2-tools")
-    lfs.mkdir(_chat_dir())
+    lfs.mkdir(getMudletHomeDir() .. "/fed2-tools-persistent")
+    lfs.mkdir(f2t_get_char_persistent_dir())
 end
 
 function ui_chat_save()
@@ -101,7 +103,10 @@ function ui_chat_load()
     if ok and type(buf) == "table" then
         local cutoff = os.time() - (_MAX_DAYS * 86400)
         for _, r in ipairs(buf) do
-            if r.t and r.t >= cutoff then table.insert(UI.chat.history, r) end
+            if r.t and r.t >= cutoff and type(r.type) == "string" and type(r.msg) == "string" then
+                r.from = r.from or ""  -- from is "" for status/cycle; guard against nil in old saves
+                table.insert(UI.chat.history, r)
+            end
         end
     end
     UI.chat.loaded = true
@@ -152,6 +157,12 @@ end
 
 local function _render_record(r, is_cont, show_ts)
     if not UI.chat_window then return end
+
+    -- Cycle markers always render (structural game-day dividers)
+    if r.type == "cycle" then
+        UI.chat_window:hecho(r.line or "")
+        return
+    end
 
     -- Status lines only render when timestamps are on
     if r.type == "status" then
@@ -242,10 +253,11 @@ function ui_chat_replay()
         local is_cont = (not filtered)
             and prev
             and r.type ~= "status" and prev.type ~= "status"
+            and r.type ~= "cycle"  and prev.type ~= "cycle"
             and prev.from == r.from and prev.type == r.type
 
         _render_record(r, is_cont, show_ts)
-        if r.type ~= "status" then prev = r end
+        if r.type ~= "status" and r.type ~= "cycle" then prev = r end
     end
 
     if show_ts then
@@ -342,6 +354,29 @@ function ui_chat_on_disconnect()
     -- Mark all players offline in the DB and force-save (they're all gone)
     if ui_player_db_mark_all_offline then ui_player_db_mark_all_offline() end
     if ui_player_db_save_forced      then ui_player_db_save_forced()      end
+end
+
+-- ── Wipe ──────────────────────────────────────────────────────────────────
+
+function ui_chat_wipe()
+    UI.chat.history  = {}
+    UI.chat.last_key = nil
+    ui_chat_save()
+    ui_chat_replay()
+    cecho("\n<yellow>[chat]<reset> Chat history wiped.\n")
+end
+
+-- ── Character switch reload ───────────────────────────────────────────────
+-- Called by f2t_on_char_detected() when the logged-in character changes.
+-- Discards in-memory history and reloads from the new per-char path.
+
+function ui_chat_reload()
+    UI.chat.history  = {}
+    UI.chat.loaded   = false
+    UI.chat.last_key = nil
+    ui_chat_load()
+    ui_chat_replay()
+    f2t_debug_log("[chat] reloaded for char %s, %d records", F2T_CHAR_NAME or "?", #UI.chat.history)
 end
 
 -- ── Init ──────────────────────────────────────────────────────────────────

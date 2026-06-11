@@ -17,12 +17,12 @@ f2t_debug_log("[map] Mapper script registered with Mudlet")
 
 -- Register settings
 f2t_settings_register("map", "planet_nav_default", {
-    description = "Default destination when navigating to a planet (shuttlepad or orbit)",
+    description = "Default destination when navigating to a planet (shuttlepad, orbit, or exchange)",
     default = "shuttlepad",
-    choices = {"shuttlepad", "orbit"},
+    choices = {"shuttlepad", "orbit", "exchange"},
     validator = function(value)
-        if value ~= "shuttlepad" and value ~= "orbit" then
-            return false, "Must be 'shuttlepad' or 'orbit'"
+        if value ~= "shuttlepad" and value ~= "orbit" and value ~= "exchange" then
+            return false, "Must be 'shuttlepad', 'orbit', or 'exchange'"
         end
         return true
     end

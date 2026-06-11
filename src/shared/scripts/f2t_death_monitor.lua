@@ -12,7 +12,6 @@ F2T_DEATH_STATE = F2T_DEATH_STATE or {}
 -- This is critical because package reload kills old handlers but state persists
 F2T_DEATH_STATE.monitoring_active = false  -- Force re-registration of handlers
 F2T_DEATH_STATE.room_tracking_handler_id = nil
-F2T_DEATH_STATE.suicide_handler_id = nil
 F2T_DEATH_STATE.vitals_handler_id = nil
 F2T_DEATH_STATE.suicide_timeout_id = nil
 
@@ -30,6 +29,22 @@ F2T_DEATH_STATE.stamina_was_critical = false
 -- Monitoring Control
 -- ========================================
 
+-- Called by the suicide alias to flag the death cause before it happens.
+-- Clears automatically after 10s if no death follows.
+function f2t_death_detect_suicide()
+    F2T_DEATH_STATE.death_cause = "suicide"
+    if F2T_DEATH_STATE.suicide_timeout_id then
+        killTimer(F2T_DEATH_STATE.suicide_timeout_id)
+    end
+    F2T_DEATH_STATE.suicide_timeout_id = tempTimer(10, function()
+        if F2T_DEATH_STATE.death_cause == "suicide" and not F2T_DEATH_STATE.active then
+            F2T_DEATH_STATE.death_cause = nil
+        end
+        F2T_DEATH_STATE.suicide_timeout_id = nil
+    end)
+    f2t_debug_log("[death] Suicide command detected via alias")
+end
+
 function f2t_death_start_monitoring()
     if F2T_DEATH_STATE.monitoring_active then
         f2t_debug_log("[death] Monitoring already active")
@@ -40,24 +55,6 @@ function f2t_death_start_monitoring()
 
     -- Register handler to track previous room (GMCP updates before death text)
     f2t_death_register_room_tracking_handler()
-
-    -- Track suicide commands (set flag, cleared after 10s if no death follows)
-    F2T_DEATH_STATE.suicide_handler_id = registerAnonymousEventHandler("sysDataSendRequest", function(_, data)
-        if data and string.lower(string.gsub(data, "%s+$", "")) == "suicide" then
-            F2T_DEATH_STATE.death_cause = "suicide"
-            -- Clear after 10s in case the suicide didn't result in death
-            if F2T_DEATH_STATE.suicide_timeout_id then
-                killTimer(F2T_DEATH_STATE.suicide_timeout_id)
-            end
-            F2T_DEATH_STATE.suicide_timeout_id = tempTimer(10, function()
-                if F2T_DEATH_STATE.death_cause == "suicide" and not F2T_DEATH_STATE.active then
-                    F2T_DEATH_STATE.death_cause = nil
-                end
-                F2T_DEATH_STATE.suicide_timeout_id = nil
-            end)
-            f2t_debug_log("[death] Suicide command detected")
-        end
-    end)
 
     -- Track critical stamina (exactly 0 = starvation; negative = room damage, ignored)
     F2T_DEATH_STATE.vitals_handler_id = registerAnonymousEventHandler("gmcp.char.vitals", function()
@@ -90,11 +87,7 @@ function f2t_death_stop_monitoring()
     -- Unregister room tracking handler
     f2t_death_unregister_room_tracking_handler()
 
-    -- Unregister suicide and vitals handlers
-    if F2T_DEATH_STATE.suicide_handler_id then
-        killAnonymousEventHandler(F2T_DEATH_STATE.suicide_handler_id)
-        F2T_DEATH_STATE.suicide_handler_id = nil
-    end
+    -- Unregister vitals handler
     if F2T_DEATH_STATE.vitals_handler_id then
         killAnonymousEventHandler(F2T_DEATH_STATE.vitals_handler_id)
         F2T_DEATH_STATE.vitals_handler_id = nil

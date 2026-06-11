@@ -459,7 +459,9 @@ local _SB_CELL_CSS = [[
 -- content_label : permanent Geyser.Label inside the ScrollBox (never destroyed, only resized)
 -- content_w     : pixel width (ScrollBox width minus scrollbar, ~17px)
 -- row_h         : pixel height per row
-function ui_table_set_scrollbox(table_id, content_label, content_w, row_h)
+-- scroll_widget : optional ScrollBox widget; used to auto-compute min_height so the
+--                 content label always fills the visible scroll area (prevents background bleed)
+function ui_table_set_scrollbox(table_id, content_label, content_w, row_h, scroll_widget)
     if not UI.tables[table_id] then return end
     UI.tables[table_id].scrollbox = {
         content_label = content_label,
@@ -467,12 +469,16 @@ function ui_table_set_scrollbox(table_id, content_label, content_w, row_h)
         row_h         = row_h,
         rows          = {},
         epoch         = 0,
-        col_hdrs      = nil,   -- optional; set to {key → Label} to auto-refresh sort indicators
+        col_hdrs      = nil,        -- optional; set to {key → Label} to auto-refresh sort indicators
+        scroll_widget = scroll_widget or nil,
+        min_height    = nil,        -- lazily populated from scroll_widget:get_height()
     }
 end
 
 -- Update column header Label styles to reflect current sort state.
 -- col_hdrs : {column_key → Geyser.Label}
+-- Note: echo() can clear setClickCallback in some Mudlet builds, so callbacks are
+-- re-applied here on every header refresh to ensure they always work.
 function ui_table_update_scrollbox_header(table_id, col_hdrs)
     local tbl = UI.tables[table_id]
     if not tbl or not col_hdrs then return end
@@ -488,6 +494,10 @@ function ui_table_update_scrollbox_header(table_id, col_hdrs)
                 lbl:setStyleSheet(_SB_HDR_CSS)
                 lbl:echo(col.label)
             end
+            if col.sortable then
+                local tid, key = table_id, col.key
+                lbl:setClickCallback(function() ui_table_toggle_sort(tid, key) end)
+            end
         end
     end
 end
@@ -501,9 +511,17 @@ function ui_table_render_scrollbox(table_id)
     local cw    = sb.content_w
     local row_h = sb.row_h
 
+    -- Lazily compute min_height from the scroll widget so the content label always
+    -- fills the visible area — prevents lighter scroll-background from bleeding through.
+    if not sb.min_height and sb.scroll_widget then
+        local sh = sb.scroll_widget:get_height()
+        if sh > 30 then sb.min_height = sh end
+    end
+    local min_h = sb.min_height or 1000
+
     if not tbl.data or #tbl.data == 0 then
         for i = 1, #sb.rows do sb.rows[i]:hide() end
-        sb.content_label:resize(cw, math.max(200, 4))
+        sb.content_label:resize(cw, math.max(min_h, 4))
         if sb.col_hdrs then ui_table_update_scrollbox_header(table_id, sb.col_hdrs) end
         return
     end
@@ -573,7 +591,7 @@ function ui_table_render_scrollbox(table_id)
         sb.rows[i]:hide()
     end
 
-    sb.content_label:resize(cw, math.max(data_len * row_h + 4, 200))
+    sb.content_label:resize(cw, math.max(data_len * row_h + 4, min_h))
 
     if sb.col_hdrs then
         ui_table_update_scrollbox_header(table_id, sb.col_hdrs)

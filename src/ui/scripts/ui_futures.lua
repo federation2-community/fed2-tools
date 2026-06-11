@@ -1,76 +1,63 @@
--- =============================================================================
--- FUTURES TAB
--- Visible to Trader and Financier ranks.
+-- Futures: market table (hosted in Exchange tab) + owned futures tab.
 --
--- Market view (at exchange): reads gmcp.exchange live — no game commands needed.
---   P&L at liquidation = exchange price (for contract type) − futures price at purchase.
---     LONG uses exchange SELL price.  SHORT uses exchange BUY price.
---   BΔ (Base Δ)  = base − futures price (LONG) / futures price − base (SHORT).
---     Positive = futures has room to move favorably; each unit ≈ 1 tick (~5-10 min).
---   EΔ (Exch Δ) = exchange price − futures price (LONG) / futures price − exchange (SHORT).
---     Positive = currently profitable to liquidate now.
---   Exchange price converges toward BASE over time; POs can manipulate exchange
---   price (stockpile/production/consumption) to influence futures direction.
---   "?" in Exch/EΔ = price exists but exchange not actively buying/selling (not in GMCP).
+-- Market table (Exchange tab, Trader/Financier at exchange):
+--   Reads gmcp.exchange live — no game commands needed.
+--   P&L at liquidation = exchange price − futures price (LONG) or reverse (SHORT).
+--   BΔ (Base Δ) = base − futures (L) / futures − base (S). Positive = favorable ticks ahead.
+--   EΔ (Exch Δ) = exch − futures (L) / futures − exch (S). Positive = profitable now.
+--   Exchange price converges toward base ~1ig/ton per tick (~5-10 min).
 --
--- Portfolio view (outside exchange): di futures → held contracts with P&L,
---   margin health, and liquidate links when at the matching exchange.
---   (Portfolio is not available via GMCP — game limitation.)
---
--- Game mechanics (reference):
---   Cost: original contract value at purchase.
---   Margin: deposit held by broker, starts 4,000ig. Adjusted hourly.
---   P&L = margin − 4,000ig.   Margin call if margin < 2,000ig (costs 4k).
---   Auto-liquidated if losses exceed maximum.
---   Broker fee on liquidation: 5% of profit, min 250ig.
---   Trading Rating goal: 300. +1pt per 1k profit, −1pt per 1k loss, −4pts/call.
--- =============================================================================
+-- Owned futures tab (any location):
+--   Reads gmcp.char.futures in real-time — no di futures command needed.
+--   Tab appears when any futures are held; disappears when all are closed.
+--   P&L = margin − 4,000ig starting margin. Margin call if margin < min_margin.
+--   Game mechanics: Broker fee on liquidation: 5% of profit, min 250ig.
+--   Trading Rating: +1pt per 1k profit, −1pt per 1k loss, −4pts per margin call.
 
 UI = UI or {}
 
--- =============================================================================
--- HELPERS
--- =============================================================================
+-- ─── constants ───────────────────────────────────────────────────────────────
 
-local function strip_commas(s)
-    return s and s:gsub(",", "") or s
-end
+local _ROW_H = 18
+local _SF    = "font-size:11pt;font-family:Consolas,Monaco,monospace;"
+local _C_W   = "#d8d8d8"
+local _C_GR  = "#888888"
+local _C_G   = "#44cc44"
+local _C_Y   = "#cccc44"
+local _C_R   = "#cc4444"
+local _C_CY  = "#00cccc"
+local _C_MA  = "#993333"
+
+local _BG_NORMAL    = "background-color:transparent; border:none; padding:0;"
+local _BG_OWNED     = "background-color:rgba(25,25,50,160); border:none; padding:0;"
+local _BG_SUSPENDED = "background-color:rgba(60,12,12,140); border:none; padding:0;"
+
+local _COL_HDR_CSS = [[
+    QLabel {
+        background-color: transparent; border: none;
+        color: rgba(160,160,185,220);
+        font-size: 10pt; font-weight: bold;
+        font-family: "Consolas","Monaco",monospace;
+        padding: 0 4px;
+    }
+    QLabel::hover { color: white; }
+]]
+
+-- ─── math helpers ────────────────────────────────────────────────────────────
 
 local function fmt_ig(n)
     if not n then return "?" end
     n = tonumber(n) or 0
     local a = math.abs(n)
     if a >= 1000000 then return string.format("%.1fM", n / 1e6)
-    elseif a >= 1000  then return string.format("%.1fk", n / 1e3)
-    else                   return tostring(math.floor(n)) end
+    elseif a >= 1000 then return string.format("%.1fk", n / 1e3)
+    else                  return tostring(math.floor(n)) end
 end
 
 local function fmt_ig_signed(n)
     if not n then return "?" end
     n = tonumber(n) or 0
     return (n >= 0 and "+" or "") .. fmt_ig(n)
-end
-
--- BΔ: futures price distance from base in the favorable direction.
--- Positive = futures has room to move toward base; each unit ≈ 1 tick (~5-10 min).
--- LONG:  base - futures  (positive when futures below base → will rise)
--- SHORT: futures - base  (positive when futures above base → will fall)
-local function calc_b_delta(contract_type, futures_price, base_price)
-    if not base_price then return nil end
-    if contract_type == "long" then
-        return base_price - futures_price
-    else
-        return futures_price - base_price
-    end
-end
-
--- Colour for an ig/ton gap value.
-local function gap_color(gap)
-    if not gap then return "dim_grey" end
-    if gap >= 100  then return "green"
-    elseif gap >= 20  then return "yellow"
-    elseif gap >= -20 then return "dim_grey"
-    else                   return "red" end
 end
 
 local function fmt_gap_str(n)
@@ -81,10 +68,19 @@ local function fmt_gap_str(n)
     end
 end
 
--- Composite hold/liquidate score 1-10.
--- composite = (BΔ + EΔ) / 2, clamped to ±200ig range.
--- When EΔ unavailable, uses BΔ × 0.6 (discounted for missing info).
--- Both deltas are already sign-normalised (positive = good) for both Long and Short.
+local function calc_b_delta(contract_type, futures_price, base_price)
+    if not base_price then return nil end
+    return contract_type == "long" and (base_price - futures_price) or (futures_price - base_price)
+end
+
+local function gap_css(n)
+    if not n        then return _C_GR end
+    if n >= 100     then return _C_G
+    elseif n >= 20  then return _C_Y
+    elseif n >= -20 then return _C_GR
+    else                 return _C_R end
+end
+
 local function calc_composite_score(b_delta, e_delta)
     if not b_delta then return nil end
     local composite = e_delta and (b_delta + e_delta) / 2 or b_delta * 0.6
@@ -92,37 +88,99 @@ local function calc_composite_score(b_delta, e_delta)
     return math.max(1, math.min(10, math.floor(((clamped + 200) / 400) * 9 + 1.5)))
 end
 
+-- ─── span helpers ─────────────────────────────────────────────────────────────
+
+local function _sp(align, color, text)
+    return string.format(
+        "<p style='text-align:%s;margin:0;padding:0 3px;'><span style='%scolor:%s;'>%s</span></p>",
+        align, _SF, color, text)
+end
+
+local function sp_state(align, row, text, normal_color)
+    if row.suspended then
+        return _sp(align, _C_MA, text)
+    elseif row.owned then
+        return string.format(
+            "<p style='text-align:%s;margin:0;padding:0 3px;'><span style='%scolor:%s;text-decoration:line-through;'>%s</span></p>",
+            align, _SF, _C_GR, text)
+    else
+        return _sp(align, normal_color, text)
+    end
+end
+
+local function sp_l(c, t) return _sp("left",   c, t) end
+local function sp_r(c, t) return _sp("right",  c, t) end
+local function sp_c(c, t) return _sp("center", c, t) end
+
+local function _cell_bg(row)
+    if     row.suspended then return _BG_SUSPENDED
+    elseif row.owned     then return _BG_OWNED
+    else                      return _BG_NORMAL end
+end
+
+local function _plain_bg()  return _BG_NORMAL end
+
+-- ─── shared column header builder ────────────────────────────────────────────
+
+local function _build_col_hdrs(table_id, prefix, cols, col_bar)
+    if not col_bar then return end
+    local x_pct = 0
+    local hdrs  = {}
+    for _, col in ipairs(cols) do
+        local lbl = Geyser.Label:new({
+            name  = string.format("%s_hdr_%d", prefix, x_pct),
+            x     = x_pct .. "%", y = 0,
+            width = col.scrollbox_pct .. "%", height = "100%",
+        }, col_bar)
+        lbl:setStyleSheet(_COL_HDR_CSS)
+        lbl:echo(col.label)
+        if col.sortable then
+            local key = col.key
+            lbl:setClickCallback(function() ui_table_toggle_sort(table_id, key) end)
+        end
+        local tip = col.header_tooltip or (col.sortable and ("Sort by " .. col.label) or nil)
+        if tip then lbl:setToolTip(tip) end
+        hdrs[col.key] = lbl
+        x_pct = x_pct + col.scrollbox_pct
+    end
+    return hdrs
+end
+
+-- ─── scrollbox width/height sync ─────────────────────────────────────────────
+
+local function _sync_sb(scroll, content, table_id)
+    if not (scroll and content and UI.tables and UI.tables[table_id]) then return end
+    local sb = UI.tables[table_id].scrollbox
+    if not sb then return end
+    local sw = scroll:get_width()
+    if sw > 60 then
+        local cw = sw - 17
+        if sb.content_w ~= cw then
+            sb.content_w = cw
+            content:resize(cw, content:get_height())
+        end
+    end
+    local sh = scroll:get_height()
+    if sh > 30 then sb.min_height = sh end
+end
+
 -- =============================================================================
--- STATE
+-- MARKET TABLE  (lives in Exchange tab)
 -- =============================================================================
 
-UI.futures = UI.futures or {
-    portfolio        = {},
-    market           = {},
-    market_planet    = nil,
-    view             = "portfolio",
-    capturing        = false,
-    capture_buffer   = {},
-    capture_triggers = {},
-    capture_timer    = nil,
-}
+UI.futures_market = UI.futures_market or { data = {}, planet = nil }
 
--- =============================================================================
--- GMCP MARKET DATA
--- =============================================================================
-
--- Build the market table directly from gmcp.exchange.
--- Called when the user opens the market view or when gmcp.exchange updates.
 local function build_market_from_gmcp()
     local exchange = gmcp and gmcp.exchange
     if not exchange or not exchange.futures then return {} end
 
     local comms  = exchange.commodities or {}
     local market = {}
+    local planet = gmcp.room and gmcp.room.info and
+        (gmcp.room.info.area or gmcp.room.info.system) or ""
 
     for name_lower, contract in pairs(exchange.futures) do
-        local comm_name = nil
-        local exc_data  = nil
+        local comm_name, exc_data = nil, nil
         for cname, cdata in pairs(comms) do
             if cname:lower() == name_lower then
                 comm_name = cname
@@ -131,18 +189,11 @@ local function build_market_from_gmcp()
             end
         end
 
-        local base = exc_data and exc_data.base or nil
-        local fp   = contract.price
-
-        -- BΔ: futures distance from base in the favorable direction.
+        local base    = exc_data and exc_data.base or nil
+        local fp      = contract.price
         local b_delta = calc_b_delta(contract.type, fp, base)
 
-        -- Exch: the exchange price that determines P&L at liquidation.
-        -- Long uses sell price (what exchange charges = what you receive).
-        -- Short uses buy price (what exchange pays = what you receive).
-        -- exc_hidden = price exists but GMCP doesn't expose it (exchange not actively buying/selling).
-        local exc        = nil
-        local exc_hidden = false
+        local exc, exc_hidden = nil, false
         if exc_data then
             if contract.type == "long" then
                 local sell = exc_data.sell
@@ -153,14 +204,20 @@ local function build_market_from_gmcp()
             end
         end
 
-        -- EΔ: exchange price minus futures price (directional).
-        -- Positive = profitable to liquidate now.
         local e_delta = nil
         if exc then
-            if contract.type == "long" then
-                e_delta = exc - fp
-            else
-                e_delta = fp - exc
+            e_delta = contract.type == "long" and (exc - fp) or (fp - exc)
+        end
+
+        -- Mark already-owned contracts at this exchange
+        local owned = false
+        local cf    = gmcp.char and gmcp.char.futures
+        if type(cf) == "table" then
+            for _, f in ipairs(cf) do
+                if (f.commodity or ""):lower() == name_lower and
+                   (f.exchange  or ""):lower() == planet:lower() then
+                    owned = true; break
+                end
             end
         end
 
@@ -175,889 +232,490 @@ local function build_market_from_gmcp()
             e_delta    = e_delta,
             stock      = exc_data and (tonumber(exc_data.stock) or 0) or nil,
             suspended  = (contract.status == "suspended"),
+            owned      = owned,
         })
     end
-
     return market
 end
 
--- Called when gmcp.exchange fires. Auto-refreshes the market view if active.
-function ui_futures_on_gmcp_exchange()
-    if not UI.futures then return end
-    if UI.futures.view ~= "market" then return end
+function ui_futures_market_render()
+    if not UI.exchange_market_hdr then return end
+    _sync_sb(UI.exchange_market_scroll, UI.exchange_market_content, "futures_market")
 
-    local at_ex = gmcp and gmcp.room and gmcp.room.info and
-        f2t_has_value(gmcp.room.info.flags or {}, "exchange")
-    if not at_ex then return end
+    local planet = UI.futures_market.planet or "?"
+    UI.exchange_market_hdr:echo(string.format(
+        "<span style='%scolor:#cccc44;padding-left:4px;'>%s</span>" ..
+        "&nbsp;<span style='%scolor:#888888;'>live</span>",
+        _SF, planet, _SF))
 
-    UI.futures.market        = build_market_from_gmcp()
-    UI.futures.market_planet = gmcp.room.info.area or gmcp.room.info.system
-    ui_futures_render_market()
+    ui_table_set_data("futures_market", UI.futures_market.data)
 end
 
--- =============================================================================
--- PORTFOLIO CAPTURE  (timer-based — hides raw di futures output)
--- Portfolio data is not available via GMCP; must parse 'di futures' text.
--- =============================================================================
-
-local function futures_cap_end()
-    UI.futures.capturing = false
-    for _, id in ipairs(UI.futures.capture_triggers) do killTrigger(id) end
-    UI.futures.capture_triggers = {}
-    if UI.futures.capture_timer then
-        killTimer(UI.futures.capture_timer)
-        UI.futures.capture_timer = nil
-    end
+function ui_futures_market_on_gmcp_exchange()
+    if not UI.exchange_market_scroll then return end
+    UI.futures_market.data   = build_market_from_gmcp()
+    UI.futures_market.planet = gmcp and gmcp.room and gmcp.room.info and
+        (gmcp.room.info.area or gmcp.room.info.system)
+    ui_futures_market_render()
 end
 
-local function futures_cap_reset_timer(on_done)
-    if UI.futures.capture_timer then killTimer(UI.futures.capture_timer) end
-    UI.futures.capture_timer = tempTimer(0.6, function()
-        futures_cap_end()
-        if on_done then on_done() end
-    end)
-end
-
-local function futures_start_capture(on_done)
-    futures_cap_end()
-    UI.futures.capturing      = true
-    UI.futures.capture_buffer = {}
-
-    local function reset_t() futures_cap_reset_timer(on_done) end
-
-    local tid = tempRegexTrigger("^.*$", function()
-        if UI.futures.capturing then
-            table.insert(UI.futures.capture_buffer, line)
-            deleteLine()
-            reset_t()
-        end
-    end)
-    table.insert(UI.futures.capture_triggers, tid)
-    reset_t()
-end
-
--- =============================================================================
--- PARSE PORTFOLIO  (di futures outside exchange)
--- =============================================================================
-
-local function parse_portfolio()
-    UI.futures.portfolio = {}
-    local current = nil
-
-    for _, l in ipairs(UI.futures.capture_buffer) do
-        local planet, name = l:match("^(.+) Exchange %- (.+) Futures Contract")
-        if planet then
-            -- Strip ANSI escape codes and trim whitespace from the colored planet name
-            planet = planet:gsub("\27%[[%d;]*m", ""):match("^%s*(.-)%s*$") or planet
-            if current then table.insert(UI.futures.portfolio, current) end
-            current = { planet = planet, name = name }
-        elseif current then
-            local pos, val = l:match("^%s*(%a+) position.-Value: ([%d,]+)ig")
-            if pos and (pos == "Long" or pos == "Short") then
-                current.type  = pos:lower()
-                current.value = tonumber(strip_commas(val))
-            end
-            local cost, margin, min_m =
-                l:match("Cost: ([%d,]+)ig.-Margin: ([%d,]+)ig.-minimum ([%d,]+)ig")
-            if cost then
-                current.cost       = tonumber(strip_commas(cost))
-                current.margin     = tonumber(strip_commas(margin))
-                current.min_margin = tonumber(strip_commas(min_m))
-            end
-            local max_loss = l:match("Maximum loss: ([%d,]+)ig")
-            if max_loss then current.max_loss = tonumber(strip_commas(max_loss)) end
-        end
+function ui_futures_market_init()
+    if not UI.exchange_market_scroll then
+        f2t_debug_log("[futures] exchange_market_scroll missing — market table skipped")
+        return
     end
 
-    if current then table.insert(UI.futures.portfolio, current) end
-
-    -- Deduplicate by planet+name in case two di futures responses landed
-    -- in the same capture window (rapid double-click).
-    local seen, unique = {}, {}
-    for _, c in ipairs(UI.futures.portfolio) do
-        local key = (c.planet or "") .. "|" .. (c.name or "")
-        if not seen[key] then seen[key] = true; table.insert(unique, c) end
-    end
-    UI.futures.portfolio = unique
-
-    for _, c in ipairs(UI.futures.portfolio) do
-        local margin      = c.margin     or 4000
-        local min_m       = c.min_margin or 2000
-        local max_loss    = c.max_loss   or 15000
-        c.pl              = margin - 4000
-        local loss_so_far = 4000 - margin
-        if margin < min_m then
-            c.risk = "call"
-        elseif margin < min_m + 1000 then
-            c.risk = "warn"
-        elseif loss_so_far > max_loss * 0.7 then
-            c.risk = "danger"
-        else
-            c.risk = "ok"
-        end
-    end
-end
-
--- =============================================================================
--- TABLE SETUP
--- =============================================================================
-
-local function futures_init_tables()
-    -- ── Market table ──────────────────────────────────────────────────────────
-    -- Commodity | T | Fut | Base | BΔ | Exch | EΔ
-    --
-    -- BΔ (Base Δ):  base − futures (Long) or futures − base (Short).
-    --   Positive = futures has room to move favorably. Each unit ≈ 1 tick (~5-10 min).
-    -- Exch: exchange sell price (Long) or buy price (Short) — the liquidation price.
-    --   "?" = price exists but not visible in GMCP (exchange not actively buying/selling).
-    -- EΔ (Exch Δ): Exch − futures (Long) or futures − Exch (Short).
-    --   Positive = currently profitable to liquidate. Negative = currently at a loss.
-
-    local function restricted_cell(window, content, row)
-        if row.suspended then
-            window:cechoLink("<maroon>" .. content .. "<reset>", function() end,
-                "Trading suspended — price frozen until hour end. Cannot purchase.", true)
-        else
-            window:cechoLink("<dim_grey>" .. content .. "<reset>", function() end,
-                "Already held at this exchange — one contract per commodity per exchange.", true)
-        end
-    end
+    UI.futures_market = { data = {}, planet = nil }
 
     local market_cols = {
         {
             key            = "commodity",
             label          = "Commodity",
-            header_tooltip = "Click to buy. Maroon=trading suspended (price frozen). Grey=already owned at this exchange.",
-            width          = 9,
-            align          = "left",
-            header_align   = "left",
+            header_tooltip = "Click to buy. Maroon=suspended. Strikethrough=already owned here.",
+            scrollbox_pct  = 22,
             sortable       = true,
             sort_value     = function(r) return (r.commodity or ""):lower() end,
-            render         = function(v, row, window, col)
-                local w    = col.width
-                local text = (v or ""):sub(1, w)
-                local pad  = string.rep(" ", math.max(0, w - #text))
+            render_label   = function(v, row, cell, col)
+                cell:setStyleSheet(_cell_bg(row))
+                cell:echo(sp_state("left", row, tostring(v or ""), _C_W))
                 if row.suspended then
-                    window:cechoLink("<maroon>" .. text .. pad .. "<reset>", function() end,
-                        "Trading suspended — price frozen until hour end. Cannot purchase.", true)
+                    cell:setClickCallback(function() end)
+                    cell:setToolTip("Trading suspended — price frozen until hour end.")
                 elseif row.owned then
-                    window:cechoLink("<dim_grey>" .. text .. pad .. "<reset>", function() end,
-                        "Already held at this exchange — one contract per commodity per exchange.", true)
+                    cell:setClickCallback(function() end)
+                    cell:setToolTip("Already held at this exchange — one contract per commodity per exchange.")
                 else
-                    window:cechoLink("<white>" .. text .. pad .. "<reset>",
-                        function()
-                            send("buy futures " .. (v or ""):lower())
-                            table.insert(UI.futures.portfolio, {
-                                planet = UI.futures.market_planet,
-                                name   = v,
-                                type   = row.type,
-                            })
-                            tempTimer(1.0, function() ui_futures_show_market() end)
-                        end,
-                        string.format("Buy %s futures contract", v), true)
+                    cell:setClickCallback(function()
+                        send("buy futures " .. (v or ""):lower())
+                    end)
+                    cell:setToolTip(string.format("Buy %s futures contract", v))
                 end
             end,
         },
         {
             key            = "type",
             label          = "T",
-            header_tooltip = "L=Long (profit when futures price rises toward base). S=Short (profit when it falls).",
-            width          = 1,
-            align          = "center",
-            header_align   = "center",
+            header_tooltip = "L=Long (profit when price rises toward base). S=Short (profit when it falls).",
+            scrollbox_pct  = 4,
             sortable       = true,
             sort_value     = function(r) return r.type end,
-            render         = function(v, row, window, col)
+            render_label   = function(v, row, cell, col)
+                cell:setStyleSheet(_cell_bg(row))
                 local display = v == "long" and "L" or "S"
-                if row.suspended or row.owned then
-                    restricted_cell(window, display, row)
-                else
-                    local color = v == "long" and "<ansiCyan>" or "<yellow>"
-                    window:cecho(color .. display .. "<reset>")
-                end
+                local color   = v == "long" and _C_CY or _C_Y
+                cell:echo(sp_state("center", row, display, color))
+                cell:setClickCallback(function() end)
+                cell:setToolTip(v == "long"
+                    and "Long — profit when price rises toward base"
+                    or  "Short — profit when price falls toward base")
             end,
         },
         {
             key            = "price",
             label          = "Fut",
-            header_tooltip = "Futures price per ton — the price you lock in when buying this contract.",
-            width          = 4,
-            align          = "right",
-            header_align   = "right",
+            header_tooltip = "Futures price per ton — locked in at purchase.",
+            scrollbox_pct  = 10,
             sortable       = true,
             sort_value     = function(r) return r.price or 0 end,
-            render         = function(v, row, window, col)
+            render_label   = function(v, row, cell, col)
+                cell:setStyleSheet(_cell_bg(row))
                 local n = tonumber(v)
-                local s = n and string.format("%4d", n) or " ???"
-                if row.suspended or row.owned then
-                    restricted_cell(window, s, row)
-                else
-                    window:cecho("<white>" .. s .. "<reset>")
-                end
+                cell:echo(sp_state("right", row, n and tostring(math.floor(n)) or "?", _C_W))
+                cell:setClickCallback(function() end)
+                cell:setToolTip("Futures price per ton")
             end,
         },
         {
             key            = "base",
             label          = "Base",
-            header_tooltip = "Commodity base price — the target the futures price converges toward at ~1ig/ton per tick (every 5-10 min). The gap between Base and Fut determines which direction the futures price moves.",
-            width          = 4,
-            align          = "right",
-            header_align   = "right",
+            header_tooltip = "Commodity base price. Futures converge ~1ig/ton per tick (every 5-10 min).",
+            scrollbox_pct  = 10,
             sortable       = true,
             sort_value     = function(r) return r.base or 0 end,
-            render         = function(v, row, window, col)
+            render_label   = function(v, row, cell, col)
+                cell:setStyleSheet(_cell_bg(row))
                 local n = tonumber(v)
-                local s = n and string.format("%4d", n) or " n/a"
-                if row.suspended or row.owned then restricted_cell(window, s, row)
-                else window:cecho("<dim_grey>" .. s .. "<reset>") end
+                cell:echo(sp_state("right", row, n and tostring(math.floor(n)) or "n/a", _C_GR))
+                cell:setClickCallback(function() end)
+                cell:setToolTip("Commodity base price")
             end,
         },
         {
             key            = "b_delta",
             label          = "BΔ",
-            header_tooltip = "Base delta: futures distance from base (LONG=base-Fut, SHORT=Fut-base). Positive = futures has room to move favorably; each unit ~1 tick (~5-10 min). Green>=100 Yellow>=20 Grey~0 Red=moving wrong way.",
-            width          = 5,
-            align          = "right",
-            header_align   = "right",
+            header_tooltip = "Base delta (L=base−Fut, S=Fut−base). Positive=favorable ticks ahead. Green≥100 Yellow≥20 Red=wrong direction.",
+            scrollbox_pct  = 13,
             sortable       = true,
-            default_sort   = "desc",
             sort_value     = function(r) return r.b_delta or -9999 end,
-            render         = function(v, row, window, col)
+            render_label   = function(v, row, cell, col)
+                cell:setStyleSheet(_cell_bg(row))
                 local n = tonumber(v)
                 if not n then
-                    local s = "  n/a"
-                    if row.suspended or row.owned then restricted_cell(window, s, row)
-                    else window:cecho("<dim_grey>" .. s .. "<reset>") end
+                    cell:echo(sp_state("right", row, "n/a", _C_GR))
+                    cell:setClickCallback(function() end)
+                    cell:setToolTip("Base delta — base price unavailable")
                     return
                 end
-                local raw = fmt_gap_str(n)
-                local s   = string.rep(" ", math.max(0, 5 - #raw)) .. raw
-                if row.suspended or row.owned then
-                    restricted_cell(window, s, row)
-                else
-                    window:cecho(string.format("<%s>%s<reset>", gap_color(n), s))
-                end
+                cell:echo(sp_state("right", row, fmt_gap_str(n), gap_css(n)))
+                cell:setClickCallback(function() end)
+                cell:setToolTip(string.format("BΔ=%+d: each unit ≈ 1 favorable tick (~5-10 min)", n))
             end,
         },
         {
             key            = "exc",
             label          = "Exch",
-            header_tooltip = "Exchange price (ig/ton) at liquidation — sell price for Long, buy price for Short. n/a=not traded here. ?=price exists but not in GMCP (exchange not actively buying/selling).",
-            width          = 4,
-            align          = "right",
-            header_align   = "right",
+            header_tooltip = "Exchange liquidation price (sell for Long, buy for Short). ?=not in GMCP.",
+            scrollbox_pct  = 10,
             sortable       = true,
             sort_value     = function(r) return r.exc or -1 end,
-            render         = function(v, row, window, col)
+            render_label   = function(v, row, cell, col)
+                cell:setStyleSheet(_cell_bg(row))
                 local n = tonumber(v)
                 if not n then
-                    if row.suspended or row.owned then
-                        local s = row.exc_hidden and "   ?" or " n/a"
-                        restricted_cell(window, s, row)
-                    elseif row.exc_hidden then
-                        window:cechoLink("<dim_grey>   ?<reset>", function() end,
-                            "Price exists but not visible in GMCP — exchange not actively buying/selling.", true)
-                    else
-                        window:cecho("<dim_grey> n/a<reset>")
-                    end
+                    local s = row.exc_hidden and "?" or "n/a"
+                    cell:echo(sp_state("right", row, s, _C_GR))
+                    cell:setClickCallback(function() end)
+                    cell:setToolTip(row.exc_hidden
+                        and "Price exists but not visible in GMCP."
+                        or  "Not traded at this exchange")
                     return
                 end
-                local s = string.format("%4d", n)
-                if row.suspended or row.owned then
-                    restricted_cell(window, s, row)
-                else
-                    window:cecho("<white>" .. s .. "<reset>")
-                end
+                cell:echo(sp_state("right", row, tostring(math.floor(n)), _C_W))
+                cell:setClickCallback(function() end)
+                cell:setToolTip("Exchange price at liquidation")
             end,
         },
         {
             key            = "stock",
             label          = "Stk",
-            header_tooltip = "Exchange stock on hand. 0=none (exchange not selling/buying that side). High stock pushes price down; low stock pushes price up. No baseline available — use alongside BΔ and EΔ for context.",
-            width          = 5,
-            align          = "right",
-            header_align   = "right",
+            header_tooltip = "Exchange stock on hand. 0=depleted. High→price pressure down. Low→up.",
+            scrollbox_pct  = 11,
             sortable       = true,
             sort_value     = function(r) return r.stock or -1 end,
-            render         = function(v, row, window, col)
+            render_label   = function(v, row, cell, col)
+                cell:setStyleSheet(_cell_bg(row))
                 local n = tonumber(v)
-                local s = n and string.format("%5s", fmt_ig(n)) or "  n/a"
-                if row.suspended or row.owned then restricted_cell(window, s, row)
-                else window:cecho("<dim_grey>" .. s .. "<reset>") end
+                cell:echo(sp_state("right", row, n and fmt_ig(n) or "n/a", _C_GR))
+                cell:setClickCallback(function() end)
+                cell:setToolTip("Exchange stock on hand")
             end,
         },
         {
             key            = "e_delta",
             label          = "EΔ",
-            header_tooltip = "Exch delta: exchange price minus futures price (LONG=Exch-Fut, SHORT=Fut-Exch). Positive=profitable to liquidate now. Negative=currently at a loss. ?=exchange price not visible in GMCP.",
-            width          = 4,
-            align          = "right",
-            header_align   = "right",
+            header_tooltip = "Exch delta (L=Exch−Fut, S=Fut−Exch). Positive=profitable now. ?=not in GMCP.",
+            scrollbox_pct  = 10,
             sortable       = true,
             sort_value     = function(r) return r.e_delta or -9999 end,
-            render         = function(v, row, window, col)
+            render_label   = function(v, row, cell, col)
+                cell:setStyleSheet(_cell_bg(row))
                 local n = tonumber(v)
                 if not n then
-                    if row.suspended or row.owned then
-                        local s = row.exc_hidden and "   ?" or " n/a"
-                        restricted_cell(window, s, row)
-                    elseif row.exc_hidden then
-                        window:cechoLink("<dim_grey>   ?<reset>", function() end,
-                            "Exchange price not visible in GMCP — cannot calculate Exch delta.", true)
-                    else
-                        window:cecho("<dim_grey> n/a<reset>")
-                    end
+                    local s = row.exc_hidden and "?" or "n/a"
+                    cell:echo(sp_state("right", row, s, _C_GR))
+                    cell:setClickCallback(function() end)
+                    cell:setToolTip(row.exc_hidden and "Exch not in GMCP." or "No exchange price")
                     return
                 end
-                local raw = fmt_gap_str(n)
-                local s   = string.rep(" ", math.max(0, 4 - #raw)) .. raw
-                if row.suspended or row.owned then
-                    restricted_cell(window, s, row)
-                else
-                    window:cecho(string.format("<%s>%s<reset>", gap_color(n), s))
-                end
+                cell:echo(sp_state("right", row, fmt_gap_str(n), gap_css(n)))
+                cell:setClickCallback(function() end)
+                cell:setToolTip(string.format("EΔ=%+d: positive=profitable to liquidate now", n))
             end,
         },
         {
             key            = "score",
             label          = "S",
-            header_tooltip = "Overall rating 1-10: (BΔ+EΔ)/2 normalised over ±200ig. Green≥7=strong buy. Yellow 5-6=neutral. Red≤4=poor. When EΔ unknown, uses BΔ×0.6.",
-            width          = 2,
-            align          = "right",
-            header_align   = "right",
+            header_tooltip = "Score 1-10: (BΔ+EΔ)/2 normalised ±200ig. ≥7=strong. 5-6=neutral. ≤4=poor.",
+            scrollbox_pct  = 10,
             sortable       = true,
             default_sort   = "desc",
             sort_value     = function(r) return calc_composite_score(r.b_delta, r.e_delta) or 0 end,
-            render         = function(v, row, window, col)
+            render_label   = function(v, row, cell, col)
+                cell:setStyleSheet(_cell_bg(row))
                 local n = calc_composite_score(row.b_delta, row.e_delta)
                 if not n then
-                    if row.suspended or row.owned then restricted_cell(window, " ?", row)
-                    else window:cecho("<dim_grey> ?<reset>") end
+                    cell:echo(sp_state("right", row, "?", _C_GR))
+                    cell:setClickCallback(function() end)
+                    cell:setToolTip("Score unavailable — base price missing")
                     return
                 end
-                local color = n >= 7 and "green" or (n >= 5 and "yellow" or "red")
-                local s     = string.format("%2d", n)
-                if row.suspended or row.owned then restricted_cell(window, s, row)
-                else window:cecho(string.format("<%s>%s<reset>", color, s)) end
+                local color = n >= 7 and _C_G or (n >= 5 and _C_Y or _C_R)
+                cell:echo(sp_state("right", row, tostring(n), color))
+                cell:setClickCallback(function() end)
+                cell:setToolTip(string.format("Score %d/10: ≥7 strong · 5-6 neutral · ≤4 poor", n))
             end,
         },
     }
 
-    ui_table_create("futures_market", UI.futures_window, market_cols,
-        { column = " ", header = "-" })
+    local cw = math.max(50, UI.exchange_market_scroll:get_width() - 17)
+    ui_table_create("futures_market", nil, market_cols, nil)
+    ui_table_set_scrollbox("futures_market", UI.exchange_market_content, cw, _ROW_H, UI.exchange_market_scroll)
+    local hdrs = _build_col_hdrs("futures_market", "fut_mkt", market_cols, UI.exchange_market_col_bar)
+    if hdrs then UI.tables["futures_market"].scrollbox.col_hdrs = hdrs end
+end
 
-    -- ── Portfolio table ───────────────────────────────────────────────────────
-    local portfolio_cols = {
+-- =============================================================================
+-- OWNED FUTURES TAB  (from gmcp.char.futures, any location)
+-- =============================================================================
+
+local function _find_tab_window(name)
+    for _, win in pairs(Adjustable.TabWindow.all or {}) do
+        if win.tabs and f2t_has_value(win.tabs, name) then return win end
+    end
+    return nil
+end
+
+local function _build_owned_row(f, commods_lookup)
+    local margin   = tonumber(f.margin)    or 4000
+    local min_m    = tonumber(f.min_margin) or 2000
+    local max_loss = tonumber(f.max_loss)   or 15000
+    local pl       = margin - 4000
+
+    local risk
+    if margin < min_m then
+        risk = "call"
+    elseif margin < min_m + 1000 then
+        risk = "warn"
+    elseif (4000 - margin) > max_loss * 0.7 then
+        risk = "danger"
+    else
+        risk = "ok"
+    end
+
+    local commodity_raw = f.commodity or "?"
+    -- Resolve the proper display name from the commodities list (GMCP sends lowercase)
+    local commodity = (commods_lookup and commods_lookup[commodity_raw:lower()]) or commodity_raw
+
+    return {
+        exchange  = f.exchange  or "?",
+        commodity = commodity,
+        position  = f.position  or "?",
+        cost      = tonumber(f.cost)  or 0,
+        value     = tonumber(f.value) or 0,
+        pl        = pl,
+        margin    = margin,
+        min_m     = min_m,
+        max_loss  = max_loss,
+        risk      = risk,
+    }
+end
+
+function ui_futures_render()
+    if not UI.futures_hdr then return end
+    _sync_sb(UI.futures_scroll, UI.futures_content, "owned_futures")
+
+    local cf = gmcp and gmcp.char and gmcp.char.futures
+    if type(cf) ~= "table" or #cf == 0 then
+        UI.futures_hdr:echo(string.format(
+            "<span style='%scolor:%s;padding-left:4px;'>No contracts held.</span>", _SF, _C_GR))
+        ui_table_set_data("owned_futures", {})
+        return
+    end
+
+    -- Build a lowercase→display name lookup once per render (GMCP sends commodity names in lowercase)
+    local commods_lookup = {}
+    for _, c in ipairs(ui_commodities_load and ui_commodities_load() or {}) do
+        if c.name then commods_lookup[c.name:lower()] = c.name end
+    end
+
+    local rows   = {}
+    local total_pl = 0
+    for _, f in ipairs(cf) do
+        local row = _build_owned_row(f, commods_lookup)
+        table.insert(rows, row)
+        total_pl = total_pl + row.pl
+    end
+
+    local pl_color = total_pl > 0 and _C_G or (total_pl < 0 and _C_R or _C_GR)
+    UI.futures_hdr:echo(string.format(
+        "<span style='%scolor:%s;padding-left:4px;'>%d contract%s</span>" ..
+        "&nbsp;&nbsp;<span style='%scolor:#888;'>Total P&amp;L:</span>" ..
+        "&nbsp;<span style='%scolor:%s;'>%s</span>",
+        _SF, _C_GR, #rows, #rows ~= 1 and "s" or "",
+        _SF, _SF, pl_color, fmt_ig_signed(total_pl)))
+
+    ui_table_set_data("owned_futures", rows)
+end
+
+function ui_futures_on_gmcp_char_futures()
+    if not ui_built then return end
+    local cf      = gmcp and gmcp.char and gmcp.char.futures
+    local has_any = type(cf) == "table" and #cf > 0
+
+    if has_any then
+        if not _find_tab_window("Futures") then
+            UI.tab_bottom_right:addTab("Futures", 4)
+        end
+        ui_futures_render()
+    else
+        local w = _find_tab_window("Futures")
+        if w then w:removeTab("Futures") end
+    end
+end
+
+function ui_futures_on_connect()
+    -- Defer to let GMCP char data arrive first
+    tempTimer(0.5, function() ui_futures_on_gmcp_char_futures() end)
+end
+
+function ui_futures_on_disconnect()
+    local w = _find_tab_window("Futures")
+    if w then w:removeTab("Futures") end
+end
+
+-- ─── owned futures init ───────────────────────────────────────────────────────
+
+function ui_futures_init()
+    if not UI.futures_scroll then
+        f2t_debug_log("[futures] futures_scroll not available — owned futures skipped")
+        return
+    end
+
+    local owned_cols = {
         {
-            key          = "planet",
-            label        = "Planet",
-            width        = 8,
-            align        = "left",
-            header_align = "left",
-            sortable     = true,
-            sort_value   = function(r) return r.planet:lower() end,
-            format       = function(v) return "<ansiCyan>" .. v .. "<reset>" end,
-            link         = function(v) expandAlias("nav " .. v .. " exchange") end,
-            linkHint     = "Navigate to %s exchange",
-        },
-        {
-            key          = "name",
-            label        = "Commod",
-            width        = 10,
-            align        = "left",
-            sortable     = true,
-            sort_value   = function(r) return (r.name or ""):lower() end,
-            format       = function(v) return "<white>" .. (v or "?") .. "<reset>" end,
-        },
-        {
-            key          = "type",
-            label        = "T",
-            width        = 1,
-            align        = "center",
-            header_align = "center",
-            sortable     = true,
-            sort_value   = function(r) return r.type end,
-            format       = function(v)
-                if v == "long" then return "<ansiCyan>L<reset>"
-                else                return "<yellow>S<reset>" end
+            key           = "exchange",
+            label         = "Exchange",
+            scrollbox_pct = 22,
+            sortable      = true,
+            sort_value    = function(r) return (r.exchange or ""):lower() end,
+            render_label  = function(v, row, cell, col)
+                cell:setStyleSheet(_plain_bg())
+                cell:echo(sp_l(_C_CY, tostring(v or "?")))
+                cell:setClickCallback(function()
+                    expandAlias("nav " .. tostring(v or "") .. " exchange")
+                end)
+                cell:setToolTip("Navigate to " .. tostring(v or "?") .. " exchange")
             end,
         },
         {
-            key          = "pl",
-            label        = "P&L",
-            width        = 7,
-            align        = "right",
-            header_align = "right",
-            sortable     = true,
-            default_sort = "asc",
-            sort_value   = function(r) return r.pl or 0 end,
-            format       = function(v, row)
-                local n     = tonumber(v) or 0
-                local color = n > 0 and "green" or (n < 0 and "red" or "dim_grey")
-                return string.format("<%s>%s<reset>", color, fmt_ig_signed(n))
+            key           = "commodity",
+            label         = "Commodity",
+            scrollbox_pct = 22,
+            sortable      = true,
+            sort_value    = function(r) return (r.commodity or ""):lower() end,
+            render_label  = function(v, row, cell, col)
+                cell:setStyleSheet(_plain_bg())
+                cell:echo(sp_l(_C_W, tostring(v or "?")))
+                cell:setClickCallback(function() end)
+                cell:setToolTip("")
             end,
         },
         {
-            key          = "margin",
-            label        = "Margin",
-            width        = 5,
-            align        = "right",
-            header_align = "right",
-            sortable     = true,
-            sort_value   = function(r) return r.margin or 0 end,
-            render       = function(v, row, window, col)
-                local n     = tonumber(v) or 4000
-                local color = (row.risk == "call" or row.risk == "danger") and "red"
-                           or row.risk == "warn" and "yellow"
-                           or "dim_grey"
-                window:cecho(string.format("<%s>%5s<reset>", color, fmt_ig(n)))
+            key           = "position",
+            label         = "T",
+            header_tooltip = "L=Long  S=Short",
+            scrollbox_pct = 4,
+            sortable      = true,
+            sort_value    = function(r) return r.position end,
+            render_label  = function(v, row, cell, col)
+                cell:setStyleSheet(_plain_bg())
+                local is_long = (v == "long")
+                cell:echo(sp_c(is_long and _C_CY or _C_Y, is_long and "L" or "S"))
+                cell:setClickCallback(function() end)
+                cell:setToolTip(is_long and "Long contract" or "Short contract")
             end,
         },
         {
-            key    = "risk",
-            label  = "M",
-            header_tooltip = "Margin health. ✓=healthy  !=approaching minimum  ✗=margin call (below 2,000ig)",
-            width  = 1,
-            align  = "center",
-            render = function(v, row, window, col)
-                local tips = {
+            key           = "cost",
+            label         = "Cost",
+            scrollbox_pct = 12,
+            sortable      = true,
+            sort_value    = function(r) return r.cost or 0 end,
+            render_label  = function(v, row, cell, col)
+                cell:setStyleSheet(_plain_bg())
+                cell:echo(sp_r(_C_GR, fmt_ig(tonumber(v))))
+                cell:setClickCallback(function() end)
+                cell:setToolTip("Original contract cost")
+            end,
+        },
+        {
+            key           = "value",
+            label         = "Value",
+            scrollbox_pct = 12,
+            sortable      = true,
+            sort_value    = function(r) return r.value or 0 end,
+            render_label  = function(v, row, cell, col)
+                cell:setStyleSheet(_plain_bg())
+                local n    = tonumber(v) or 0
+                local cost = tonumber(row.cost) or 0
+                local color = n >= cost and _C_G or (n < cost and _C_R or _C_GR)
+                cell:echo(sp_r(color, fmt_ig(n)))
+                cell:setClickCallback(function() end)
+                cell:setToolTip("Current mark-to-market value")
+            end,
+        },
+        {
+            key           = "pl",
+            label         = "P&L",
+            header_tooltip = "Broker P&L = margin − 4,000ig starting margin",
+            scrollbox_pct = 12,
+            sortable      = true,
+            default_sort  = "asc",
+            sort_value    = function(r) return r.pl or 0 end,
+            render_label  = function(v, row, cell, col)
+                cell:setStyleSheet(_plain_bg())
+                local n = tonumber(v) or 0
+                local color = n > 0 and _C_G or (n < 0 and _C_R or _C_GR)
+                cell:echo(sp_r(color, fmt_ig_signed(n)))
+                cell:setClickCallback(function() end)
+                cell:setToolTip("P&L = margin − 4,000ig starting margin")
+            end,
+        },
+        {
+            key           = "margin",
+            label         = "Margin",
+            scrollbox_pct = 12,
+            sortable      = true,
+            sort_value    = function(r) return r.margin or 0 end,
+            render_label  = function(v, row, cell, col)
+                cell:setStyleSheet(_plain_bg())
+                local n = tonumber(v) or 4000
+                local color = (row.risk == "call" or row.risk == "danger") and _C_R
+                           or row.risk == "warn" and _C_Y
+                           or _C_GR
+                cell:echo(sp_r(color, fmt_ig(n)))
+                cell:setClickCallback(function() end)
+                cell:setToolTip("Broker margin. Margin call if < min_margin (charges 4,000ig, −4 Trading Rating pts)")
+            end,
+        },
+        {
+            key            = "risk",
+            label          = "M",
+            header_tooltip = "Margin health: ✓=healthy  !=near minimum  ✗=margin call/danger",
+            scrollbox_pct  = 4,
+            sortable       = false,
+            render_label   = function(v, row, cell, col)
+                cell:setStyleSheet(_plain_bg())
+                local icons = { ok = {"✓", _C_G}, warn = {"!", _C_Y}, call = {"✗", _C_R}, danger = {"✗", _C_R} }
+                local tips  = {
                     ok     = "Margin healthy",
-                    warn   = "Margin warning — approaching minimum (2,000ig)",
-                    call   = "Margin call — margin below 2,000ig (4,000ig charge pending)",
+                    warn   = "Approaching minimum margin",
+                    call   = "Margin call — below minimum margin (4,000ig charge pending)",
                     danger = "Danger — losses approaching maximum",
                 }
-                local icons = {
-                    ok     = "<green>✓<reset>",
-                    warn   = "<yellow>!<reset>",
-                    call   = "<red>✗<reset>",
-                    danger = "<red>✗<reset>",
-                }
-                window:cechoLink(icons[v] or "<dim_grey>?<reset>", function() end,
-                    tips[v] or "Unknown", true)
-            end,
-        },
-        {
-            key            = "planet",
-            label          = "[-]",
-            header_tooltip = "Liquidate contract (must be at matching exchange)",
-            width          = 3,
-            align          = "center",
-            render         = function(planet, row, window, col)
-                local room  = gmcp and gmcp.room and gmcp.room.info
-                local at_ex = room and (room.area == planet) and
-                    f2t_has_value(room.flags or {}, "exchange")
-                if at_ex then
-                    local comm = (row.name or ""):lower()
-                    window:cechoLink("<red>[-]<reset>", function()
-                        send("liquidate " .. comm)
-                        tempTimer(1.0, function() ui_futures_refresh() end)
-                    end, "Liquidate " .. (row.name or "") .. " contract", true)
-                else
-                    window:cecho("<dim_grey>---<reset>")
-                end
+                local d = icons[v] or {"?", _C_GR}
+                cell:echo(sp_c(d[2], d[1]))
+                cell:setClickCallback(function() end)
+                cell:setToolTip(tips[v] or "Unknown")
             end,
         },
     }
 
-    ui_table_create("futures_portfolio", UI.futures_window, portfolio_cols,
-        { column = " ", header = "-" })
-end
+    local cw = math.max(50, UI.futures_scroll:get_width() - 17)
+    ui_table_create("owned_futures", nil, owned_cols, nil)
+    ui_table_set_scrollbox("owned_futures", UI.futures_content, cw, _ROW_H, UI.futures_scroll)
+    local hdrs = _build_col_hdrs("owned_futures", "fut_own", owned_cols, UI.futures_col_bar)
+    if hdrs then UI.tables["owned_futures"].scrollbox.col_hdrs = hdrs end
 
--- =============================================================================
--- RENDER MARKET
--- =============================================================================
-
-function ui_futures_render_market()
-    if not UI.futures_window then return end
-
-    local market = UI.futures.market
-    local planet = UI.futures.market_planet or "?"
-
-    UI.futures_window:clear()
-    UI.futures_window:cecho(
-        string.format("<ansiYellow>%s<reset>  <dim_grey>live<reset>\n", planet)
-    )
-
-    if #market == 0 then
-        UI.futures_window:cecho("\n<dim_grey>No contracts available here.<reset>\n")
-        return
-    end
-
-    -- Cross-reference portfolio to mark contracts already owned at this exchange.
-    -- c.planet is the planet name stripped from "X Exchange - Y Futures Contract",
-    -- which always matches gmcp.room.info.area for the exchange the player is in.
-    local owned_set = {}
-    if #UI.futures.portfolio > 0 then
-        local ri  = gmcp and gmcp.room and gmcp.room.info or {}
-        local loc = (ri.area or UI.futures.market_planet or ""):lower()
-        for _, c in ipairs(UI.futures.portfolio) do
-            if (c.planet or ""):lower() == loc then
-                owned_set[(c.name or ""):lower()] = true
-            end
+    -- Futures stays in the tab bar so load() can restore its position without calling
+    -- activateTab (same as Who). Runtime add/remove still applies via
+    -- ui_futures_on_gmcp_char_futures. Fire a deferred check only for package reloads
+    -- mid-session when GMCP data is already present.
+    tempTimer(0.1, function()
+        if gmcp and gmcp.char and gmcp.char.futures then
+            ui_futures_on_gmcp_char_futures()
         end
-    end
-    for _, contract in ipairs(market) do
-        contract.owned = owned_set[(contract.commodity or ""):lower()] or false
-    end
+    end)
 
-    -- Render directly: bypasses ui_table_render's clearWindow which would erase the headers above.
-    local tbl = UI.tables["futures_market"]
-    if tbl then
-        tbl.data = market
-        ui_table_sort("futures_market")
-        ui_table_render_header("futures_market")
-        for _, row in ipairs(tbl.data) do
-            ui_table_render_row("futures_market", row)
-        end
-    end
-end
-
--- =============================================================================
--- RENDER PORTFOLIO
--- =============================================================================
-
-function ui_futures_render_portfolio()
-    if not UI.futures_window then return end
-
-    local portfolio = UI.futures.portfolio
-
-    UI.futures_window:clear()
-
-    if #portfolio == 0 then
-        UI.futures_window:cecho(
-            "\n<dim_grey>No contracts held. " ..
-            "At an exchange, click 📈 Market to see available contracts.<reset>\n"
-        )
-        return
-    end
-
-    local total_pl = 0
-    for _, c in ipairs(portfolio) do total_pl = total_pl + (c.pl or 0) end
-    local pl_color = total_pl > 0 and "green" or (total_pl < 0 and "red" or "dim_grey")
-    UI.futures_window:cecho(
-        string.format("<dim_grey>%d contract%s<reset>   Total P&L: <%s>%s<reset>\n\n",
-            #portfolio, #portfolio ~= 1 and "s" or "",
-            pl_color, fmt_ig_signed(total_pl))
-    )
-
-    -- Render directly: bypasses ui_table_render's clearWindow which would erase the summary above.
-    local tbl = UI.tables["futures_portfolio"]
-    if tbl then
-        tbl.data = portfolio
-        ui_table_sort("futures_portfolio")
-        ui_table_render_header("futures_portfolio")
-        for _, row in ipairs(tbl.data) do
-            ui_table_render_row("futures_portfolio", row)
-        end
-    end
-end
-
--- =============================================================================
--- SHOW / REFRESH ENTRY POINTS
--- =============================================================================
-
-function ui_futures_show_portfolio()
-    if UI.futures.capturing then return end
-
-    UI.futures.view = "portfolio"
-    local at_ex = gmcp and gmcp.room and gmcp.room.info and
-        f2t_has_value(gmcp.room.info.flags or {}, "exchange")
-
-    if at_ex then
-        -- di futures inside an exchange shows market data, not portfolio.
-        -- Show the last-captured portfolio with a stale notice, or a hint.
-        UI.futures_window:clear()
-        if #UI.futures.portfolio > 0 then
-            UI.futures_window:cecho(
-                "<yellow>⚠ Showing last-known contracts. " ..
-                "Step outside the exchange to refresh.<reset>\n"
-            )
-            local tbl = UI.tables["futures_portfolio"]
-            if tbl then
-                tbl.data = UI.futures.portfolio
-                ui_table_sort("futures_portfolio")
-                ui_table_render_header("futures_portfolio")
-                for _, row in ipairs(tbl.data) do
-                    ui_table_render_row("futures_portfolio", row)
-                end
-            end
-        else
-            UI.futures_window:cecho(
-                "\n<dim_grey>  Step outside the exchange to load your held contracts.<reset>\n"
-            )
-        end
-    else
-        futures_start_capture(function()
-            parse_portfolio()
-            ui_futures_render_portfolio()
-        end)
-        send("di futures", false)
-    end
-end
-
-function ui_futures_show_market()
-    local at_ex = gmcp and gmcp.room and gmcp.room.info and
-        f2t_has_value(gmcp.room.info.flags or {}, "exchange")
-
-    if not at_ex then
-        cecho("\n<red>[futures]<reset> Must be at a trading exchange to view the market.\n")
-        return
-    end
-
-    UI.futures.view          = "market"
-    UI.futures.market        = build_market_from_gmcp()
-    UI.futures.market_planet = gmcp.room.info.area or gmcp.room.info.system
-    ui_futures_render_market()
-end
-
-function ui_futures_refresh()
-    local at_ex = gmcp and gmcp.room and gmcp.room.info and
-        f2t_has_value(gmcp.room.info.flags or {}, "exchange")
-
-    if at_ex then
-        if UI.futures.view == "portfolio" then
-            ui_futures_render_portfolio()
-        else
-            ui_futures_show_market()
-        end
-    else
-        ui_futures_show_portfolio()
-    end
-end
-
--- =============================================================================
--- BUTTON STATE  (called on gmcp.room.info)
--- =============================================================================
-
-function ui_futures_update_buttons()
-    if not UI.futures_market_btn then return end
-
-    local at_ex = gmcp and gmcp.room and gmcp.room.info and
-        f2t_has_value(gmcp.room.info.flags or {}, "exchange")
-
-    if at_ex then
-        UI.futures_market_btn:setStyleSheet(UI.style.button_css)
-        UI.futures_market_btn:setClickCallback("ui_futures_show_market")
-        UI.futures_market_btn:setToolTip("View contracts available at this exchange (live GMCP data)")
-    else
-        UI.futures_market_btn:setStyleSheet(UI.style.disabled_button_css)
-        UI.futures_market_btn:setClickCallback(function() end)
-        UI.futures_market_btn:setToolTip("Enter a trading exchange to view available contracts")
-    end
-end
-
--- =============================================================================
--- INFO POPUP  (column reference guide)
--- =============================================================================
-
-function ui_futures_info_close()
-    if UI.futures_info_card then UI.futures_info_card:hide() end
-end
-
-function ui_futures_info_open()
-    if UI.futures_info_card then
-        UI.futures_info_card:show()
-        UI.futures_info_card:raiseAll()
-        return
-    end
-
-    local sw, sh = getMainWindowSize()
-    local W, H   = 400, 420
-    local cx     = math.floor((sw - W) / 2)
-    local cy     = math.floor((sh - H) / 2)
-
-    UI.futures_info_card = Adjustable.Container:new({
-        name          = "UI.futures_info_card",
-        x             = cx, y = cy,
-        width         = W,  height = H,
-        adjLabelstyle = [[
-            background-color: rgba(10, 12, 22, 252);
-            border: 2px solid rgba(80, 120, 200, 180);
-            border-radius: 6px;
-        ]],
-        autoSave = false,
-        autoLoad = false,
-    })
-    UI.futures_info_card:lockContainer("border")
-    UI.futures_info_card.locked = false
-
-    local _in  = UI.futures_info_card.Inside
-    local HDR_H = 36
-
-    local hdr = Geyser.Label:new(
-        { name = "ui_fi_hdr", x = 0, y = 0, width = "100%", height = HDR_H },
-        _in
-    )
-    hdr:setStyleSheet([[
-        background: qlineargradient(x1:0,y1:0,x2:0,y2:1,
-            stop:0 rgba(30,34,54,255), stop:1 rgba(16,18,32,255));
-        border: none; border-radius: 4px 4px 0 0;
-    ]])
-
-    local title = Geyser.Label:new(
-        { name = "ui_fi_title", x = 12, y = 8, width = "-38", height = 22 },
-        hdr
-    )
-    title:setStyleSheet([[
-        background: transparent; border: none;
-        color: rgba(160,185,235,255);
-        font-size: 12px; font-weight: bold;
-        font-family: "Consolas","Monaco",monospace;
-    ]])
-    title:echo("ℹ  Futures Reference")
-
-    local close_btn = Geyser.Label:new(
-        { name = "ui_fi_close", x = "-30", y = 7, width = 24, height = 22 },
-        hdr
-    )
-    close_btn:setStyleSheet([[
-        QLabel {
-            background-color: rgba(180,50,50,220);
-            border: 1px solid rgba(200,80,80,180);
-            border-radius: 3px;
-            color: white;
-            font-size: 14px; font-weight: bold;
-            qproperty-alignment: AlignCenter;
-        }
-        QLabel::hover { background-color: rgba(215,60,60,245); border-color: rgba(255,110,110,220); }
-    ]])
-    close_btn:echo("<center>✕</center>")
-    close_btn:setClickCallback(function() ui_futures_info_close() end)
-
-    local content = Geyser.Label:new(
-        { name = "ui_fi_content", x = 0, y = HDR_H, width = "100%", height = "100%-36px" },
-        _in
-    )
-    content:setStyleSheet([[
-        background: transparent; border: none;
-        color: #b8c4d8;
-        font-size: 11px;
-        font-family: "Consolas","Monaco",monospace;
-        padding: 10px 14px;
-    ]])
-    content:echo(table.concat({
-        "<span style='color:#8aaad8;font-weight:bold;'>Market View</span>",
-        "  <span style='color:#505870;'>(at a trading exchange)</span><br>",
-        "<br>",
-        "<span style='color:#c8d0e0;'>T</span>&nbsp;&nbsp;&nbsp;",
-        "L=Long <span style='color:#606880;'>(profit when futures price rises toward base)</span><br>",
-        "&nbsp;&nbsp;&nbsp;&nbsp;S=Short <span style='color:#606880;'>(profit when futures price falls toward base)</span><br>",
-        "<span style='color:#c8d0e0;'>Fut</span>&nbsp;&nbsp;",
-        "Futures price per ton — locked in at purchase.<br>",
-        "<span style='color:#c8d0e0;'>Base</span> Commodity base price. Futures converge ~1ig/ton<br>",
-        "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;per tick (every 5–10 min).<br>",
-        "<span style='color:#c8d0e0;'>B&Delta;</span>&nbsp;&nbsp;",
-        "Base delta (L=base&minus;Fut, S=Fut&minus;base).<br>",
-        "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style='color:#44cc44;'>Green&ge;100</span>",
-        "  <span style='color:#cccc44;'>Yellow&ge;20</span>",
-        "  <span style='color:#cc4444;'>Red=wrong direction</span><br>",
-        "<span style='color:#c8d0e0;'>Exch</span>&nbsp;",
-        "Exchange price at liquidation (sell for Long,<br>",
-        "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;buy for Short). ?=exists but not in GMCP.<br>",
-        "<span style='color:#c8d0e0;'>Stk</span>&nbsp;&nbsp;",
-        "Exchange stock on hand. 0=depleted (price hidden).<br>",
-        "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;High stock&rarr;price pressure down. Low&rarr;up.<br>",
-        "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;No per-commodity baseline &mdash; read alongside B&Delta;/E&Delta;.<br>",
-        "<span style='color:#c8d0e0;'>E&Delta;</span>&nbsp;&nbsp;",
-        "Exch delta (Exch&minus;Fut / Fut&minus;Exch).<br>",
-        "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Positive=profitable now. ?=Exch not visible.<br>",
-        "<span style='color:#c8d0e0;'>S</span>&nbsp;&nbsp;&nbsp;&nbsp;",
-        "Score 1&ndash;10: (B&Delta;+E&Delta;)/2 normalised &plusmn;200ig.<br>",
-        "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style='color:#44cc44;'>&ge;7 strong</span>  ",
-        "<span style='color:#cccc44;'>5&ndash;6 neutral</span>  ",
-        "<span style='color:#cc4444;'>&le;4 poor</span><br>",
-        "<span style='color:#505870;'>",
-        "Click name to buy. Maroon=suspended. Grey=already held here.</span><br>",
-        "<br>",
-        "<span style='color:#8aaad8;font-weight:bold;'>Portfolio View</span>",
-        "  <span style='color:#505870;'>(outside exchanges)</span><br>",
-        "<br>",
-        "<span style='color:#c8d0e0;'>Planet</span>  Navigate to exchange (click).<br>",
-        "<span style='color:#c8d0e0;'>P&amp;L</span>&nbsp;&nbsp;&nbsp;&nbsp;",
-        "margin minus 4,000ig starting margin.<br>",
-        "<span style='color:#c8d0e0;'>Margin</span>  Broker deposit. Margin call if &lt;2,000ig<br>",
-        "&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(charges 4,000ig, −4 Trading Rating pts).<br>",
-        "<span style='color:#c8d0e0;'>M ⚡</span>&nbsp;&nbsp;",
-        "<span style='color:#44cc44;'>✓</span> healthy  ",
-        "<span style='color:#cccc44;'>!</span> approaching min  ",
-        "<span style='color:#cc4444;'>✗</span> margin call<br>",
-        "<span style='color:#c8d0e0;'>[-]</span>&nbsp;&nbsp;&nbsp;&nbsp;Liquidate — only when at matching exchange.<br>",
-        "<span style='color:#505870;'>",
-        "Broker fee: 5% of profit (min 250ig) on liquidation.<br>",
-        "Trading Rating: +1pt per 1,000ig profit, −1pt per 1,000ig loss.</span>",
-    }, ""))
-
-    UI.futures_info_card:hide()
-    UI.futures_info_card:show()
-    UI.futures_info_card:raiseAll()
-end
-
--- =============================================================================
--- TAB SETUP  (called from ui_build)
--- =============================================================================
-
-function ui_futures()
-    UI.futures_portfolio_btn = Geyser.Label:new({
-        name    = "UI.futures_portfolio_btn",
-        message = "<center>📋 My Contracts</center>",
-    }, UI.futures_button_bar)
-    UI.futures_portfolio_btn:setStyleSheet(UI.style.button_css)
-    UI.futures_portfolio_btn:setClickCallback("ui_futures_show_portfolio")
-    UI.futures_portfolio_btn:setToolTip("Your held contracts and P&L (di futures)")
-
-    UI.futures_market_btn = Geyser.Label:new({
-        name    = "UI.futures_market_btn",
-        message = "<center>📈 Market</center>",
-    }, UI.futures_button_bar)
-    UI.futures_market_btn:setStyleSheet(UI.style.disabled_button_css)
-    UI.futures_market_btn:setClickCallback(function() end)
-    UI.futures_market_btn:setToolTip("Enter a trading exchange to view available contracts")
-
-    -- Info button — overlaps button bar right edge (same pattern as General/Comm filter buttons)
-    UI.futures_info_btn = Geyser.Label:new(
-        {
-            name   = "UI.futures_info_btn",
-            x      = "-22",
-            y      = "2",
-            width  = "20",
-            height = "16",
-        },
-        UI.futures_container
-    )
-    UI.futures_info_btn:setStyleSheet(
-        [[
-            QLabel{
-                background-color:rgba(28,28,32,200);
-                border-style:solid;
-                border-width:1px;
-                border-radius:3px;
-                border-color:rgba(100,100,110,180);
-                color:rgba(160,160,170,255);
-                font-size:10px;
-                font-weight:bold;
-            }
-            QLabel::hover{
-                background-color:rgba(60,60,70,220);
-                color:white;
-            }
-        ]]
-    )
-    UI.futures_info_btn:echo("<center>ℹ</center>")
-    UI.futures_info_btn:setToolTip("Column reference guide")
-    UI.futures_info_btn:setClickCallback(function() ui_futures_info_open() end)
-
-    UI.futures = {
-        portfolio        = {},
-        market           = {},
-        market_planet    = nil,
-        view             = "portfolio",
-        capturing        = false,
-        capture_buffer   = {},
-        capture_triggers = {},
-        capture_timer    = nil,
-    }
-
-    futures_init_tables()
-
-    ui_futures_render_portfolio()
+    f2t_debug_log("[futures] initialized")
 end

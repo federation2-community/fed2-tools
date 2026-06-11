@@ -17,7 +17,7 @@ function ui_build_movement()
             autoSave      = false,
             autoLoad      = false
         },
-        UI.tab_top_right.fedmapcenter
+        UI.tab_top_right.Mapcenter
     )
     UI.map_commands_container:connectToBorder("left")
     UI.map_commands_container:lockContainer("none")
@@ -211,6 +211,7 @@ function ui_build_movement()
         out    = { button = UI.button_out,   action = "ui_move_out"  },
         board  = { button = UI.button_board, action = "ui_board"     }
     }
+
 end
 
 function ui_press()

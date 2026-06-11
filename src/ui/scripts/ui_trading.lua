@@ -205,51 +205,58 @@ function ui_trading()
     UI.best_profit_button:setClickCallback("ui_find_best_profit")
 end
 
--- Responsible for formatting and displaying the commodity dropdown
+-- Counter for unique widget names — reusing the same name on recreate causes
+-- silent Qt conflicts where the new popup never becomes visible.
+UI._popup_gen = UI._popup_gen or 0
+
 function ui_show_trading_drop_down()
     if UI.commodity_popup then
         UI.commodity_popup:hide()
         UI.commodity_popup = nil
-
         return
     end
 
+    UI._popup_gen = UI._popup_gen + 1
+    local gen = UI._popup_gen
+
+    local commodity_list = ui_commodities_load()
+    local row_height     = 24
+    local popup_height   = math.min(#commodity_list * row_height, 400)
+
+    -- Top-level widget (no parent) renders above all Mudlet content, including
+    -- native MiniConsoles. This avoids the z-order conflict that occurs when the
+    -- popup is parented inside trading_container alongside the raised MiniConsole.
     UI.commodity_popup = Geyser.Container:new(
         {
-            name   = "UI.commodity_popup",
-            x      = "10%",
-            y      = 30,
-            width  = 220,
-            height = 400,
-        },
-        UI.trading_container
+            name   = "td_popup_" .. gen,
+            x      = UI.trading_drop_down_button:get_x(),
+            y      = UI.trading_drop_down_button:get_y() + UI.trading_drop_down_button:get_height(),
+            width  = math.max(UI.trading_drop_down_button:get_width(), 220),
+            height = popup_height,
+        }
     )
+    UI.commodity_popup:setStyleSheet([[
+        background-color: rgba(28, 28, 34, 250);
+        border: 1px solid rgba(100, 100, 110, 200);
+        border-radius: 3px;
+    ]])
 
     local commodityBox = Geyser.ScrollBox:new(
         {
-            name            = "commodityBox",
-            x               = 0,
-            y               = 0,
-            width           = "100%",
-            height          = "100%",
-            fontSize        = 10,
-            backgroundColor = "black",
+            name   = "td_scroll_" .. gen,
+            x      = 0,
+            y      = 0,
+            width  = "100%",
+            height = "100%",
         },
         UI.commodity_popup
     )
 
-    local row_height = 24
-    local y_offset   = 0
-    local commods    = {}
-
-    local commodity_list = ui_commodities_load()
-
+    local y_offset = 0
     for i, item in ipairs(commodity_list) do
-        local labelName = "commod" .. i
-
-        commods[i] = Geyser.Label:new(
+        local lbl = Geyser.Label:new(
             {
-                name    = labelName,
+                name    = "td_commod_" .. gen .. "_" .. i,
                 x       = 0,
                 y       = y_offset,
                 width   = "100%",
@@ -258,18 +265,13 @@ function ui_show_trading_drop_down()
             },
             commodityBox
         )
-
-        commods[i]:setStyleSheet(UI.style.button_css)
-
-        commods[i]:setClickCallback(
-            function()
-                UI.trading.selected_commodity = item.name
-                UI.trading_drop_down_button:echo("<center>" .. item.name .. " ▼</center>")
-                UI.commodity_popup:hide()
-                UI.commodity_popup = nil
-            end
-        )
-
+        lbl:setStyleSheet(UI.style.button_css)
+        lbl:setClickCallback(function()
+            UI.trading.selected_commodity = item.name
+            UI.trading_drop_down_button:echo("<center>" .. item.name .. " ▼</center>")
+            UI.commodity_popup:hide()
+            UI.commodity_popup = nil
+        end)
         y_offset = y_offset + row_height
     end
 

@@ -12,11 +12,13 @@ local _db_dirty = false   -- only write to disk when data actually changed
 
 -- ── Persistence paths ─────────────────────────────────────────────────────────
 
-local function _db_dir()  return getMudletHomeDir() .. "/fed2-tools" end
-local function _db_path() return _db_dir() .. "/player_db" end
+-- Stored in fed2-tools-persistent/<char>/ so it survives package reinstall and
+-- separates player data per character.
+local function _db_path()  return f2t_get_char_persistent_dir() .. "/player_db" end
 
 local function _ensure_dir()
-    lfs.mkdir(_db_dir())
+    lfs.mkdir(getMudletHomeDir() .. "/fed2-tools-persistent")
+    lfs.mkdir(f2t_get_char_persistent_dir())
 end
 
 function ui_player_db_load()
@@ -131,6 +133,14 @@ function ui_player_db_get_offline()
         return (a.last_seen or 0) > (b.last_seen or 0)
     end)
     return result
+end
+
+-- Called by f2t_on_char_detected() when the logged-in character changes.
+function ui_player_db_reload()
+    UI.player_db = {}
+    _db_dirty    = false
+    ui_player_db_load()
+    f2t_debug_log("[player_db] reloaded for char %s", F2T_CHAR_NAME or "?")
 end
 
 -- Human-readable "last seen" string from a timestamp.

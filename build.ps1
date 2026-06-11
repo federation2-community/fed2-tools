@@ -660,7 +660,8 @@ function Invoke-Build {
     } else {
         $lastTag = & git describe --tags --match "v*" --abbrev=0 2>$null
         $baseVersion = if ($lastTag) { $lastTag -replace '^v', '' } else { "0.0.0" }
-        $effectiveVersion = "$baseVersion-dev"
+        $buildTime = (Get-Date -Format "HHmmss")
+        $effectiveVersion = "$baseVersion-dev$buildTime"
     }
 
     # Always inject F2T_VERSION so the update checker always has a usable version.

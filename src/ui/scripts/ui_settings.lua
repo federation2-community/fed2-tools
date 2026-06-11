@@ -36,7 +36,7 @@ local _WIDGET_W   = 130  -- default widget area width
 local _WIDGET_H   = 26   -- widget height
 local _PAD_L      = 10   -- left-side text padding
 local _PAD_R      = 6    -- right padding after reset icon
-local _RESET_W    = 20   -- width of the reset-to-default icon
+local _RESET_W    = _WIDGET_H   -- square: same as widget height
 local _TAB_CHAR_W = 8
 local _TAB_PAD    = 24
 local _FOOTER_PAD = 16
@@ -58,6 +58,9 @@ local _SIDE_EFFECTS = {
     end,
     ["ui.enabled"] = function(value)
         expandAlias("ui " .. (value and "on" or "off"))
+    end,
+    ["ui.exchange_ticker_mode"] = function(_value)
+        if ui_exchange_apply_ticker_mode then ui_exchange_apply_ticker_mode() end
     end,
 }
 
@@ -273,19 +276,23 @@ local function _make_textentry(parent, wx, wy, uid, comp, name, cfg, widget_w)
         color: white;
     }]]
 
+    -- Geyser.CommandLine ignores setStyleSheet (Mudlet limitation), so we wrap it
+    -- in a Label that provides the visible border.
+    local frame = Geyser.Label:new({
+        name=uid.."_frame", x=wx, y=wy, width=input_w, height=_WIDGET_H
+    }, parent)
+    frame:setStyleSheet("background:rgb(12,12,18); border:1px solid rgba(120,120,140,0.65); border-radius:2px;")
+
     local input_name = uid .. "_input"
     local input = Geyser.CommandLine:new({
-        name=input_name, x=wx, y=wy, width=input_w, height=_WIDGET_H
-    }, parent)
-
-    -- Style: darker than even-rows so it stands out, with visible border
+        name=input_name, x=1, y=1, width=input_w-2, height=_WIDGET_H-2
+    }, frame)
     input:setStyleSheet([[
         background-color: rgb(12, 12, 18);
         color: #c8c8d0;
         font-size: 12px;
         font-family: "Consolas", "Monaco", monospace;
-        border: 1px solid rgba(255, 255, 255, 0.46);
-        border-radius: 3px;
+        border: none;
         padding-left: 6px;
         padding-right: 4px;
     ]])
@@ -321,7 +328,7 @@ local function _make_reset_icon(parent, rx, ry, uid, comp, name, refresh_fn)
       QLabel{
           background: transparent;
           color: rgba(180,180,200,0.5);
-          font-size: 12px;
+          font-size: 15px;
           font-family: "Consolas","Monaco",monospace;
           border: 1px solid rgba(180,180,200,0.2);
           border-radius: 3px;
@@ -334,10 +341,10 @@ local function _make_reset_icon(parent, rx, ry, uid, comp, name, refresh_fn)
     ]]
 
     local icon = Geyser.Label:new({
-        name=uid.."_reset", x=rx, y=ry, width=_RESET_W, height=_WIDGET_H
+        name=uid.."_reset", x=rx, y=ry, width=_RESET_W, height=_RESET_W
     }, parent)
     icon:setStyleSheet(css_reset)
-    icon:echo("<center>↺</center>")
+    icon:echo("<center>↻</center>")
     icon:setOnEnter(function()
         _show_tooltip("Reset to default", parent:get_x() + rx, parent:get_y() + ry)
     end)

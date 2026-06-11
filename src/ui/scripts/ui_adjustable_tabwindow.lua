@@ -8,6 +8,19 @@ Adjustable = Adjustable or {}
 Adjustable.TabWindow = Adjustable.TabWindow or Geyser.Container:new({name = "AdjustableTabWindowClass"})
 local tab_pos = nil
 
+-- Shared background CSS for disconnect/connecting overlay labels.
+Adjustable.TabWindow.OVERLAY_CSS = "background-color:rgb(10,10,16); border:none;"
+
+local function _ovl_html(icon, icon_col, title, title_col, sub)
+    return string.format(
+        "<div style='text-align:center;padding-top:80px;'>"
+        .. "<span style='font-size:22pt;font-family:Consolas,Monaco,monospace;color:%s;'>%s</span>"
+        .. "<br><br><span style='font-size:11pt;font-family:Consolas,Monaco,monospace;color:%s;'>%s</span>"
+        .. "<br><br><span style='font-size:8pt;font-family:Consolas,Monaco,monospace;color:rgba(55,55,70,200);'>%s</span>"
+        .. "</div>",
+        icon_col, icon, title_col, title, sub)
+end
+
 function Adjustable.TabWindow:createBaseContainers()
     self.tabBar = self.tabBar or Geyser.Label:new({        
         name = self.name.."tabBar",
@@ -136,9 +149,12 @@ function Adjustable.TabWindow:createTabs()
         self[v].minimizeLabel:setClickCallback(function() self:onMinimizeClick(v) end)
         self[v].minimizeLabel:echo("<center>🗗</center>")
         self[v].minLabel:setClickCallback(function() self:onMinimizeClick(v) end)
-        self[v.."center"]:hide()        
+        self[v.."center"]:hide()
         -- put ToolTip on Label if TabText is to long to display
         setTabToolTip(self[v])
+        -- Propagate overlay config from constructor on the first pass.
+        -- Stored on the tab object so it travels with the tab when dragged between windows.
+        self[v].overlayConfig = self[v].overlayConfig or (self.tabOverlays and self.tabOverlays[v])
     end
 end
 
@@ -536,6 +552,10 @@ function Adjustable.TabWindow:onMinimizeClick(tab)
     self:restoreTab(tab, value)
 end
 
+function Adjustable.TabWindow:raiseAll()
+    Geyser.Container.raiseAll(self)
+end
+
 -- activates the tab tab (doesn't deactivate the previous tab)
 -- @see Adjustable.TabWindow:deactivateTab()
 function Adjustable.TabWindow:activateTab(tab)
@@ -572,9 +592,91 @@ function Adjustable.TabWindow:clearNotification(tab)
     end
 end
 
+-- ── Tab overlay system ────────────────────────────────────────────────────────
+-- Overlays are opt-in per tab via the tabOverlays constructor parameter.
+-- Text/geometry is declared at construction time; overlay labels are created
+-- lazily (after content widgets) so they sit on top in Qt's Z-order stack and
+-- paint correctly over all sibling widgets including native Qt types.
+-- Tab switching (deactivateTab hiding the center label, activateTab showing it)
+-- propagates through Qt's parent-child hierarchy and handles all content
+-- visibility automatically — no explicit widget management is needed here.
+
+-- Create the DISCONNECTED and CONNECTING overlay labels for a tab.
+-- Called lazily on the first showTabOverlay() call for the tab.
+function Adjustable.TabWindow:_createTabOverlayLabels(tabname)
+    local cfg = self[tabname].overlayConfig
+    if not cfg then return end
+    local geo = cfg.geometry or {}
+    local lx, ly = geo.x or "0%", geo.y or "0%"
+    local lw, lh = geo.width or "100%", geo.height or "100%"
+    local center = self[tabname.."center"]
+
+    local off_lbl = Geyser.Label:new({
+        name   = "tab_ovl_off_" .. tabname,
+        x = lx, y = ly, width = lw, height = lh,
+    }, center)
+    off_lbl:setStyleSheet(Adjustable.TabWindow.OVERLAY_CSS)
+    off_lbl:echo(_ovl_html("⊘", "rgba(100,30,30,200)", "DISCONNECTED", "rgba(130,50,50,220)", cfg.offline_sub or ""))
+    off_lbl:hide()
+
+    local conn_lbl = Geyser.Label:new({
+        name   = "tab_ovl_conn_" .. tabname,
+        x = lx, y = ly, width = lw, height = lh,
+    }, center)
+    conn_lbl:setStyleSheet(Adjustable.TabWindow.OVERLAY_CSS)
+    conn_lbl:echo(_ovl_html("⟳", "rgba(30,90,110,200)", "CONNECTING…", "rgba(50,120,140,220)", cfg.connecting_sub or ""))
+    conn_lbl:hide()
+
+    self[tabname].overlayOff    = off_lbl
+    self[tabname].overlayConn   = conn_lbl
+    self[tabname].overlayActive = false
+end
+
+-- Show the offline or connecting overlay for one tab.  state: "offline" | "connecting"
+-- Creates overlay labels on the first call (lazily, after content, so they sit on top
+-- in Qt's Z-order stack and cover all sibling widgets).
+function Adjustable.TabWindow:showTabOverlay(tabname, state)
+    local tab = self[tabname]
+    if not (tab and tab.overlayConfig) then return end
+    if not tab.overlayOff then
+        self:_createTabOverlayLabels(tabname)
+    end
+    tab.overlayActive = true
+    if state == "connecting" then
+        tab.overlayOff:hide()
+        tab.overlayConn:show()
+    else
+        tab.overlayConn:hide()
+        tab.overlayOff:show()
+    end
+end
+
+-- Hide the overlay for one tab and reveal its content.
+function Adjustable.TabWindow:hideTabOverlay(tabname)
+    local tab = self[tabname]
+    if not (tab and tab.overlayOff) then return end
+    tab.overlayActive = false
+    tab.overlayOff:hide()
+    tab.overlayConn:hide()
+end
+
+-- Show overlays across all TabWindow instances (class-level batch).
+function Adjustable.TabWindow.showAllWindowOverlays(state)
+    for tabname, tw in pairs(Adjustable.TabWindow.allTabs) do
+        tw:showTabOverlay(tabname, state)
+    end
+end
+
+-- Hide overlays across all TabWindow instances (class-level batch).
+function Adjustable.TabWindow.hideAllWindowOverlays()
+    for tabname, tw in pairs(Adjustable.TabWindow.allTabs) do
+        tw:hideTabOverlay(tabname)
+    end
+end
+
 -- deactivates and hides the current active tab
 function Adjustable.TabWindow:deactivateTab()
-    if self.current and self[self.current] then  
+    if self.current and self[self.current] then
         self[self.current].adjLabelstyle = self.inactiveTabStyle
         self[self.current].adjLabel:setStyleSheet(self.inactiveTabStyle)
         self[self.current.."center"]:hide()
@@ -609,6 +711,7 @@ function Adjustable.TabWindow:onClick(tab, event)
     if not self[tab].floating then
         self:activateTab(tab)
         self[tab].adjLabel:raise(false)
+        Adjustable.TabWindow:save()
     end
 end
 
@@ -861,7 +964,14 @@ function Adjustable.TabWindow:removeTab(which)
         self.header:remove(self[tabname])
         self.header:organize()
         table.remove(self.tabs, index)
-        self:activateTab(self.tabs[1])
+        -- Only switch focus if the removed tab was the active one. Removing an
+        -- inactive tab (e.g. Futures on login) must not steal focus away from the
+        -- tab the user was actually looking at.
+        if tabname == self.current then
+            self:activateTab(self.tabs[1])
+        else
+            self:activateTab(self.current)
+        end
         if self.temporary then
             -- destroy empty tempTabWindow
             if table.is_empty(self.tabs) then
@@ -1312,6 +1422,7 @@ function Adjustable.TabWindow:new(cons, container)
     me.type = "adjustabletabwindow"
     me.defaultDir = me.defaultDir or getMudletHomeDir().."/AdjustableTabWindow/"
     me.tabs = me.tabs or {}
+    me.tabOverlays = me.tabOverlays or {}
     me.tabTxtColor = me.tabTxtColor or "white"
     me.tabPadding = me.tabPadding or 12
     me.color1 = me.color1 or "rgb(0,0,100)"

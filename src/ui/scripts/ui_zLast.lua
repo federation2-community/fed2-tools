@@ -1,3 +1,17 @@
+-- Find which permanent TabWindow currently has 'name' in its tabs list.
+-- Returns nil if the tab is not in any permanent window (e.g. floating or removed).
+local function find_tab_window(name)
+    for _, win in pairs(Adjustable.TabWindow.all or {}) do
+        if win.tabs and f2t_has_value(win.tabs, name) then
+            return win
+        end
+    end
+    return nil
+end
+
+-- Last window Exchange was visible in; used to restore it to the same place.
+local exchange_home = nil
+
 function ui_fuel_status()
     -- Update Buy Fuel button state
     if UI.button_buy_fuel then
@@ -45,9 +59,37 @@ function ui_on_gmcp_room_info()
     end
 
     if f2t_has_value(gmcp.room.info.flags, "exchange") then
-        UI.tab_top_left:addTab("Exchange", 1)
+        -- Add Exchange only if it isn't already visible somewhere.
+        local cur_win   = find_tab_window("Exchange")
+        local tab_obj   = Adjustable.TabWindow.allTabs and Adjustable.TabWindow.allTabs["Exchange"]
+        local floating  = tab_obj and tab_obj["Exchange"] and tab_obj["Exchange"].floating
+        if not cur_win and not floating then
+            -- Re-add to the last window it was in, or fall back to tab_top_left.
+            local home = exchange_home
+                         and Adjustable.TabWindow.all[exchange_home.name]
+                         or UI.tab_top_left
+            home:addTab("Exchange", 1)
+        end
     else
-        UI.tab_top_left:removeTab("Exchange")
+        local cur_win = find_tab_window("Exchange")
+        if cur_win then
+            exchange_home = cur_win
+            cur_win:removeTab("Exchange")
+        else
+            -- Exchange is floating (independent window); restore it to a tab bar
+            -- so removeTab can clean it up properly.
+            local original_win = Adjustable.TabWindow.allTabs and Adjustable.TabWindow.allTabs["Exchange"]
+            local tab_obj      = original_win and original_win["Exchange"]
+            if tab_obj and tab_obj.floating then
+                exchange_home = original_win
+                original_win:restoreTab("Exchange")
+                -- restoreTab uses tempTimer(0) internally, so we wait one tick too.
+                tempTimer(0, function()
+                    local w = find_tab_window("Exchange")
+                    if w then w:removeTab("Exchange") end
+                end)
+            end
+        end
     end
 
     -- Detect shuttlepad or orbit and add board to valid exits
@@ -65,47 +107,50 @@ function ui_on_gmcp_room_info()
 
     ui_fuel_status()
     ui_update_local_players()
-    ui_futures_update_buttons()
+    ui_exchange_on_room_info()
 end
 
 function ui_update_for_rank()
+    -- No rank data yet (package just loaded, not connected) — leave tabs wherever they are.
+    -- Without this guard, the two ui_update_for_rank() calls inside ui_build() remove every
+    -- rank-gated tab then immediately re-add them all to tab_bottom_right, defeating load().
+    if not (gmcp and gmcp.char and gmcp.char.vitals and gmcp.char.vitals.rank) then return end
+
+    -- allTabs[name] always points to the original construction window and is never
+    -- updated when tabs move, so it cannot be used to find a tab's current location.
+    -- find_tab_window() at the top of this file searches all windows' .tabs lists instead.
+
     if f2t_is_rank_or_above("Commander") then
-        if not f2t_has_value(UI.tab_bottom_right.tabs, "Hauling") then
+        if not find_tab_window("Hauling") then
             UI.tab_bottom_right:addTab("Hauling", 1)
         end
-
         UI.button_status:show()
     else
-        UI.tab_bottom_right:removeTab("Hauling")
+        local w = find_tab_window("Hauling")
+        if w then w:removeTab("Hauling") end
         UI.button_status:hide()
     end
 
-    -- Trading: only rank 4+
     if f2t_is_rank_or_above("Merchant") then
-        if not f2t_has_value(UI.tab_bottom_right.tabs, "Trading") then
+        if not find_tab_window("Trading") then
             UI.tab_bottom_right:addTab("Trading", 2)
         end
     else
-        UI.tab_bottom_right:removeTab("Trading")
+        local w = find_tab_window("Trading")
+        if w then w:removeTab("Trading") end
     end
 
-    -- Company: Industrialist and above
     if f2t_is_rank_or_above("Industrialist") then
-        if not f2t_has_value(UI.tab_bottom_right.tabs, "Company") then
+        if not find_tab_window("Company") then
             UI.tab_bottom_right:addTab("Company", 3)
         end
     else
-        UI.tab_bottom_right:removeTab("Company")
+        local w = find_tab_window("Company")
+        if w then w:removeTab("Company") end
     end
 
-    -- Futures: Trader and Financier only
-    if f2t_is_rank_exactly("Trader") or f2t_is_rank_exactly("Financier") then
-        if not f2t_has_value(UI.tab_bottom_right.tabs, "Futures") then
-            UI.tab_bottom_right:addTab("Futures", 4)
-        end
-    else
-        UI.tab_bottom_right:removeTab("Futures")
-    end
+    -- Market panel visibility in Exchange tab depends on rank.
+    ui_exchange_market_update_visibility()
 end
 
 function ui_remote_access_status()
@@ -148,15 +193,31 @@ end
 
 local _GEAR_SIZE = 26
 
+-- Single gmcp.char handler — order matters: char detection must run first so
+-- F2T_CHAR_NAME, per-char dirs, and settings are ready before the UI updates.
+function ui_on_gmcp_char()
+    f2t_on_char_detected()
+    ui_update_header()
+    ui_chat_comhistory_on_login()
+end
+
 function ui_on_connect()
+    ui_tab_overlay_activate_all()  -- clear all disconnected overlays; content is live
+    f2t_char_reset()
+    ui_chat_comhistory_reset()
     ui_chat_on_connect()
     ui_company_on_connect()
     ui_who_on_connect()
+    ui_exchange_on_connect()
+    ui_futures_on_connect()
 end
 
 function ui_on_disconnect()
+    ui_tab_overlay_disconnect_all()  -- show disconnected overlay on every overlay-enabled tab
     ui_who_on_disconnect()    -- freeze who list first so no stale GMCP fires after
     ui_chat_on_disconnect()
+    ui_exchange_on_disconnect()
+    ui_futures_on_disconnect()
 end
 
 function ui_build_gear_icon()
@@ -247,12 +308,17 @@ function ui_build()
     ui_hauling()
     ui_trading()
     ui_company()
-    ui_futures()
+    ui_exchange_init()
+    ui_futures_init()
     ui_update_for_rank()
     ui_update_header()
     ui_who_init()
     ui_chat_init()
     ui_load_tab_layout()
+    -- Show the disconnected overlay on every overlay-configured tab.
+    -- Called last so overlay labels are created after all tab content,
+    -- which places them on top in Qt's Z-order stack.
+    ui_tab_overlay_disconnect_all()
 
     ui_built = true
     f2t_debug_log("[ui] ui_build finished")
@@ -261,6 +327,8 @@ end
 
 function ui_register_trigger()
     f2t_ui_register_trigger("chatInbound")
+    f2t_ui_register_trigger("comhistoryCapture")
+    f2t_ui_register_trigger("comhistoryLine")
     f2t_ui_register_trigger("exchange")
     f2t_ui_register_trigger("findBestProfitHide")
     f2t_ui_register_trigger("galaxySystemEnd")
@@ -288,14 +356,15 @@ function ui_register_event()
     f2t_ui_register_event("AdjustableContainerRepositionFinish", "ui_on_container_reposition")
     f2t_ui_register_event("AdjustableContainerRepositionFinish", "ui_settings_on_reposition")
     f2t_ui_register_event("sysWindowResizeEvent"               , "ui_on_window_resize")
-    f2t_ui_register_event("gmcp.char"                          , "ui_update_header")
+    f2t_ui_register_event("gmcp.char"                          , "ui_on_gmcp_char")
     f2t_ui_register_event("gmcp.room.info"                     , "ui_on_gmcp_room_info")
     f2t_ui_register_event("gmcp.char.vitals.tools"             , "ui_remote_access_status")
     f2t_ui_register_event("sysConnectionEvent"                 , "ui_on_connect")
     f2t_ui_register_event("sysDisconnectionEvent"              , "ui_on_disconnect")
     f2t_ui_register_event("gmcp.players"                       , "ui_who_from_gmcp")
     f2t_ui_register_event("gmcp.char.company"                  , "ui_on_company_gmcp")
-    f2t_ui_register_event("gmcp.exchange"                      , "ui_futures_on_gmcp_exchange")
+    f2t_ui_register_event("gmcp.exchange"                      , "ui_exchange_on_gmcp_exchange")
+    f2t_ui_register_event("gmcp.char.futures"                  , "ui_futures_on_gmcp_char_futures")
 
     ui_evented = true
     f2t_debug_log("[ui] registered events")

@@ -201,7 +201,7 @@
                         -4,
                         0
                     ],
-                    "environment": 257,
+                    "environment": 262,
                     "exits": [
                         {
                             "exitId": 8,
@@ -242,7 +242,7 @@
                             255,
                             255
                         ],
-                        "text": "S"
+                        "text": "🚀"
                     },
                     "userData": {
                         "fed2_area": "Earth",
@@ -1321,7 +1321,7 @@
                             255,
                             255
                         ],
-                        "text": "O"
+                        "text": "E"
                     },
                     "userData": {
                         "fed2_area": "Sol Space",
@@ -1421,7 +1421,7 @@
                             255,
                             255
                         ],
-                        "text": "O"
+                        "text": "P"
                     },
                     "userData": {
                         "fed2_area": "Sol Space",
@@ -1641,7 +1641,7 @@
                             255,
                             255
                         ],
-                        "text": "O"
+                        "text": "T"
                     },
                     "userData": {
                         "fed2_area": "Sol Space",
@@ -1742,7 +1742,7 @@
                         -8,
                         0
                     ],
-                    "environment": 262,
+                    "environment": 259,
                     "exits": [
                         {
                             "exitId": 47,
@@ -1770,7 +1770,7 @@
                             255,
                             255
                         ],
-                        "text": "L"
+                        "text": "⟡"
                     },
                     "userData": {
                         "fed2_area": "Sol Space",
@@ -1812,7 +1812,7 @@
                             255,
                             255
                         ],
-                        "text": "O"
+                        "text": "M"
                     },
                     "userData": {
                         "fed2_area": "Sol Space",
@@ -1904,7 +1904,7 @@
                             255,
                             255
                         ],
-                        "text": "O"
+                        "text": "R"
                     },
                     "userData": {
                         "fed2_area": "Sol Space",
@@ -2118,7 +2118,7 @@
                             255,
                             255
                         ],
-                        "text": "O"
+                        "text": "C"
                     },
                     "userData": {
                         "fed2_area": "Sol Space",
@@ -2234,7 +2234,7 @@
                             255,
                             255
                         ],
-                        "text": "O"
+                        "text": "M"
                     },
                     "userData": {
                         "fed2_area": "Sol Space",
@@ -2350,7 +2350,7 @@
                             255,
                             255
                         ],
-                        "text": "O"
+                        "text": "S"
                     },
                     "userData": {
                         "fed2_area": "Sol Space",
@@ -2948,7 +2948,7 @@
                             255,
                             255
                         ],
-                        "text": "O"
+                        "text": "S"
                     },
                     "userData": {
                         "fed2_area": "Sol Space",
@@ -3371,7 +3371,7 @@
                             255,
                             255
                         ],
-                        "text": "O"
+                        "text": "M"
                     },
                     "userData": {
                         "fed2_area": "Sol Space",
@@ -3626,7 +3626,7 @@
                             255,
                             255
                         ],
-                        "text": "O"
+                        "text": "V"
                     },
                     "userData": {
                         "fed2_area": "Sol Space",
@@ -3852,7 +3852,7 @@
                             255,
                             255
                         ],
-                        "text": "O"
+                        "text": "M"
                     },
                     "userData": {
                         "fed2_area": "Sol Space",
@@ -4034,7 +4034,7 @@
                             255,
                             255
                         ],
-                        "text": "O"
+                        "text": "P"
                     },
                     "userData": {
                         "fed2_area": "Sol Space",
@@ -4204,7 +4204,7 @@
                             255,
                             255
                         ],
-                        "text": "O"
+                        "text": "P"
                     },
                     "userData": {
                         "fed2_area": "Sol Space",
@@ -4424,7 +4424,7 @@
                             255,
                             255
                         ],
-                        "text": "O"
+                        "text": "S"
                     },
                     "userData": {
                         "fed2_area": "Sol Space",
@@ -4500,7 +4500,7 @@
                             255,
                             255
                         ],
-                        "text": "O"
+                        "text": "B"
                     },
                     "userData": {
                         "fed2_area": "Sol Space",
@@ -4592,7 +4592,7 @@
                             255,
                             255
                         ],
-                        "text": "O"
+                        "text": "D"
                     },
                     "userData": {
                         "fed2_area": "Sol Space",
@@ -4767,7 +4767,7 @@
                             255,
                             255
                         ],
-                        "text": "O"
+                        "text": "H"
                     },
                     "userData": {
                         "fed2_area": "Sol Space",
@@ -4839,7 +4839,7 @@
                             255,
                             255
                         ],
-                        "text": "O"
+                        "text": "T"
                     },
                     "userData": {
                         "fed2_area": "Sol Space",
@@ -4858,7 +4858,7 @@
                         -17,
                         0
                     ],
-                    "environment": 264,
+                    "environment": 268,
                     "exits": [
                         {
                             "exitId": 110,
@@ -4889,6 +4889,14 @@
                     "id": 130,
                     "locked": true,
                     "name": "Solar surface",
+                    "symbol": {
+                        "color24RGB": [
+                            255,
+                            255,
+                            255
+                        ],
+                        "text": "🔒"
+                    },
                     "userData": {
                         "fed2_area": "Sol Space",
                         "fed2_exits": "ne:1045,s:1172,e:1109,nw:1043,w:1107,n:1044",
@@ -4915,7 +4923,7 @@
                         -2,
                         0
                     ],
-                    "environment": 257,
+                    "environment": 262,
                     "exits": [
                         {
                             "exitId": 198,
@@ -4943,7 +4951,7 @@
                             255,
                             255
                         ],
-                        "text": "S"
+                        "text": "🚀"
                     },
                     "userData": {
                         "fed2_area": "Phobos",
@@ -5121,7 +5129,7 @@
                             255,
                             255
                         ],
-                        "text": "E"
+                        "text": "$"
                     },
                     "userData": {
                         "fed2_area": "Phobos",
@@ -5245,7 +5253,7 @@
                         -11,
                         0
                     ],
-                    "environment": 257,
+                    "environment": 262,
                     "exits": [
                         {
                             "exitId": 229,
@@ -5281,7 +5289,7 @@
                             255,
                             255
                         ],
-                        "text": "S"
+                        "text": "🚀"
                     },
                     "userData": {
                         "fed2_area": "Titan",
@@ -5572,7 +5580,7 @@
                             255,
                             255
                         ],
-                        "text": "E"
+                        "text": "$"
                     },
                     "userData": {
                         "fed2_area": "Titan",
@@ -5692,7 +5700,7 @@
                         -6,
                         0
                     ],
-                    "environment": -1,
+                    "environment": 272,
                     "exits": [
                     ],
                     "hash": "Sol.Magrathea.397",
@@ -5721,7 +5729,7 @@
                         -13,
                         0
                     ],
-                    "environment": 257,
+                    "environment": 262,
                     "exits": [
                         {
                             "exitId": 210,
@@ -5769,7 +5777,7 @@
                             255,
                             255
                         ],
-                        "text": "S"
+                        "text": "🚀"
                     },
                     "userData": {
                         "fed2_area": "Rhea",
@@ -6236,7 +6244,7 @@
                         -12,
                         0
                     ],
-                    "environment": 257,
+                    "environment": 262,
                     "exits": [
                         {
                             "exitId": 137,
@@ -6268,7 +6276,7 @@
                             255,
                             255
                         ],
-                        "text": "S"
+                        "text": "🚀"
                     },
                     "userData": {
                         "fed2_area": "Castillo",
@@ -6734,7 +6742,7 @@
                         -12,
                         0
                     ],
-                    "environment": 257,
+                    "environment": 262,
                     "exits": [
                         {
                             "exitId": 162,
@@ -6762,7 +6770,7 @@
                             255,
                             255
                         ],
-                        "text": "S"
+                        "text": "🚀"
                     },
                     "userData": {
                         "fed2_area": "Mars",
@@ -7240,7 +7248,7 @@
                         -16,
                         0
                     ],
-                    "environment": 257,
+                    "environment": 262,
                     "exits": [
                         {
                             "exitId": 221,
@@ -7272,7 +7280,7 @@
                             255,
                             255
                         ],
-                        "text": "S"
+                        "text": "🚀"
                     },
                     "userData": {
                         "fed2_area": "Sumatra",
@@ -7644,7 +7652,7 @@
                         -9,
                         0
                     ],
-                    "environment": 257,
+                    "environment": 262,
                     "exits": [
                         {
                             "exitId": 181,
@@ -7688,7 +7696,7 @@
                             255,
                             255
                         ],
-                        "text": "S"
+                        "text": "🚀"
                     },
                     "userData": {
                         "fed2_area": "Selena",
@@ -8080,7 +8088,7 @@
                         -19,
                         0
                     ],
-                    "environment": 257,
+                    "environment": 262,
                     "exits": [
                         {
                             "exitId": 155,
@@ -8104,7 +8112,7 @@
                             255,
                             255
                         ],
-                        "text": "S"
+                        "text": "🚀"
                     },
                     "userData": {
                         "fed2_area": "Magellan",
@@ -8300,7 +8308,7 @@
                         -9,
                         0
                     ],
-                    "environment": 257,
+                    "environment": 262,
                     "exits": [
                         {
                             "exitId": 240,
@@ -8325,7 +8333,7 @@
                             255,
                             255
                         ],
-                        "text": "S"
+                        "text": "🚀"
                     },
                     "userData": {
                         "fed2_area": "Venus",
@@ -8489,7 +8497,7 @@
                             255,
                             255
                         ],
-                        "text": "E"
+                        "text": "$"
                     },
                     "userData": {
                         "fed2_area": "Venus",
@@ -8684,11 +8692,15 @@
                         -10,
                         0
                     ],
-                    "environment": 257,
+                    "environment": 262,
                     "exits": [
                         {
                             "exitId": 173,
                             "name": "east"
+                        },
+                        {
+                            "exitId": 173,
+                            "name": "out"
                         },
                         {
                             "exitId": 97,
@@ -8698,24 +8710,21 @@
                     "hash": "Sol.Mercury.646",
                     "id": 98,
                     "name": "Shuttle landing bay",
-                    "stubExits": [
-                        {
-                            "name": "out"
-                        }
-                    ],
                     "symbol": {
                         "color24RGB": [
                             255,
                             255,
                             255
                         ],
-                        "text": "S"
+                        "text": "🚀"
                     },
                     "userData": {
                         "fed2_area": "Mercury",
+                        "fed2_cartel": "Sol",
                         "fed2_exits": "e:647,out:647",
                         "fed2_flag_shuttlepad": "true",
                         "fed2_num": "646",
+                        "fed2_planet": "Mercury",
                         "fed2_system": "Sol",
                         "system.fallback_symbol_color": "#ffffff"
                     }
@@ -8996,7 +9005,7 @@
                         -7,
                         0
                     ],
-                    "environment": 257,
+                    "environment": 262,
                     "exits": [
                         {
                             "exitId": 191,
@@ -9016,7 +9025,7 @@
                             255,
                             255
                         ],
-                        "text": "S"
+                        "text": "🚀"
                     },
                     "userData": {
                         "fed2_area": "Paradise",
@@ -9134,7 +9143,7 @@
                         -3,
                         0
                     ],
-                    "environment": 257,
+                    "environment": 262,
                     "exits": [
                         {
                             "exitId": 194,
@@ -9159,7 +9168,7 @@
                             255,
                             255
                         ],
-                        "text": "S"
+                        "text": "🚀"
                     },
                     "userData": {
                         "fed2_area": "Pearl",
@@ -9333,7 +9342,7 @@
                         -6,
                         0
                     ],
-                    "environment": 257,
+                    "environment": 262,
                     "exits": [
                         {
                             "exitId": 218,
@@ -9364,7 +9373,7 @@
                             255,
                             255
                         ],
-                        "text": "S"
+                        "text": "🚀"
                     },
                     "userData": {
                         "fed2_area": "Silk",
@@ -9449,7 +9458,7 @@
                         -5,
                         0
                     ],
-                    "environment": 257,
+                    "environment": 262,
                     "exits": [
                         {
                             "exitId": 131,
@@ -9474,7 +9483,7 @@
                             255,
                             255
                         ],
-                        "text": "S"
+                        "text": "🚀"
                     },
                     "userData": {
                         "fed2_area": "Brass",
@@ -9670,7 +9679,7 @@
                         -6,
                         0
                     ],
-                    "environment": 257,
+                    "environment": 262,
                     "exits": [
                         {
                             "exitId": 147,
@@ -9694,7 +9703,7 @@
                             255,
                             255
                         ],
-                        "text": "S"
+                        "text": "🚀"
                     },
                     "userData": {
                         "fed2_area": "Doris",
@@ -9840,7 +9849,7 @@
                             255,
                             255
                         ],
-                        "text": "E"
+                        "text": "$"
                     },
                     "userData": {
                         "fed2_area": "Doris",
@@ -9896,7 +9905,7 @@
                         -2,
                         0
                     ],
-                    "environment": -1,
+                    "environment": 272,
                     "exits": [
                     ],
                     "hash": "Sol.Hunt.143",
@@ -9925,7 +9934,7 @@
                         -32,
                         0
                     ],
-                    "environment": 257,
+                    "environment": 262,
                     "exits": [
                         {
                             "exitId": 152,
@@ -9950,7 +9959,7 @@
                             255,
                             255
                         ],
-                        "text": "S"
+                        "text": "🚀"
                     },
                     "userData": {
                         "fed2_area": "The Lattice",
@@ -10241,7 +10250,7 @@
     "defaultAreaName": "Default Area",
     "formatVersion": 1,
     "labelCount": 0,
-    "mapSymbolFontDetails": "Bitstream Vera Sans Mono,12,-1,5,50,0,0,0,0,0",
+    "mapSymbolFontDetails": "Bitstream Vera Sans Mono,12,-1,5,400,0,0,0,0,0,0,0,0,0,0,4296",
     "mapSymbolFontFudgeFactor": 1,
     "onlyMapSymbolFontToBeUsed": false,
     "playerRoomColors": [
@@ -10263,6 +10272,8 @@
     "playerRoomInnerDiameterPercentage": 70,
     "playerRoomOuterDiameterPercentage": 120,
     "playerRoomStyle": 0,
-    "playersRoomId": {},
+    "playersRoomId": {
+        "maprestyle": 98
+    },
     "roomCount": 249
 }

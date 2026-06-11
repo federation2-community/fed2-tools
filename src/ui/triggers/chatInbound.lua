@@ -68,6 +68,6 @@ end
 -- Single-line message: strip the trailing quote captured by (.+)$
 msg = msg:gsub('"$', '')
 
-ui_tab_notify("Comm")
+ui_tab_notify("Chat")
 
 ui_chat_add(mtype, name, msg)

@@ -119,6 +119,6 @@ The following files contain inline CSS that should eventually migrate to `ui_sty
 - `ui_players.lua` — `_COL_HDR_CSS`, `_COL_HDR_ACTIVE_CSS`, `_CSS_CLOSE`, `_CSS_NAV`,
   `_CSS_GAL`, `_CSS_ICON`, contact-card `string.format` style blocks
 - `ui_table_system.lua` — `_SB_HDR_CSS`, `_SB_HDR_ACTIVE_CSS`, `_SB_CELL_CSS`
-- `ui_tabs.lua` — filter-button inline CSS (duplicated across General/Comm/Who buttons)
+- `ui_tabs.lua` — filter-button inline CSS (duplicated across General/Chat/Who buttons)
 
 Do not add more inline CSS to these files. Migrate to `UI.style.*` when touching.

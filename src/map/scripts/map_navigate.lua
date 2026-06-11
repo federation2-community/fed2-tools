@@ -16,9 +16,6 @@ function f2t_map_navigate(destination)
 
     if not target_id then
         cecho(string.format("\n<red>[map]<reset> %s\n", error_msg or "Could not find destination"))
-        if string.match(error_msg or "", "not yet mapped") or string.match(error_msg or "", "unmapped room") then
-            cecho("\n<dim_grey>Visit the location first to add it to the map<reset>\n")
-        end
         return false
     end
 

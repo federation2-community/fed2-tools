@@ -53,7 +53,7 @@ Automatically creates and maintains a navigable map using GMCP room data. Featur
 **Settings:**
 - `map settings` - List all settings
 - `map settings set enabled true/false` - Enable/disable mapping
-- `map settings set planet_nav_default shuttlepad/orbit` - Default planet destination
+- `map settings set planet_nav_default shuttlepad/orbit/exchange` - Default planet destination
 
 **Saved Destinations:**
 - `map dest` - List all
@@ -1283,7 +1283,7 @@ See `src/shared/CLAUDE.md` for settings system documentation.
 
 **Registered Settings:**
 - `enabled` (boolean, default: true) - Enable/disable auto-mapping
-- `planet_nav_default` (string, default: "shuttlepad") - Default for `nav <planet>`
+- `planet_nav_default` (string, default: "shuttlepad") - Default for `nav <planet>` (shuttlepad, orbit, or exchange)
 - `speedwalk_timeout` (number, default: 3, range: 1-10) - Timeout in seconds to wait for movement (detects stuck speedwalk)
 - `speedwalk_max_retries` (number, default: 3, range: 1-10) - Maximum retry attempts before stopping speedwalk
 - `map_manual_confirm` (boolean, default: true) - Require confirmation for destructive manual mapping operations

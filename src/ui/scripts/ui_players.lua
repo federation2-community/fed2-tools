@@ -189,10 +189,8 @@ function ui_who_from_gmcp()
             UI.who.count, UI.who.staff_count, offline_count))
     end
 
-    -- Dismiss connecting overlay and ensure the list is visible (idempotent on repeat calls)
-    if UI.who_connecting_notice then UI.who_connecting_notice:hide() end
-    if UI.who_col_bar           then UI.who_col_bar:show() end
-    if UI.who_scroll            then UI.who_scroll:show() end
+    -- Dismiss connecting overlays and reveal content.
+    ui_tab_overlay_activate_all()
 
     ui_who_set_table_data()
 
@@ -219,21 +217,15 @@ function ui_who_on_connect()
     UI.who.connected = true
     -- Clear stale row labels before the scroll is revealed
     ui_table_set_data("who_list", {})
-    if UI.who_offline_notice    then UI.who_offline_notice:hide() end
-    if UI.who_connecting_notice then UI.who_connecting_notice:show() end
-    -- Col bar and scroll stay hidden until gmcp.players fires and we have real data
-    if UI.who_header            then UI.who_header:echo("  👥  Connecting…") end
+    if UI.who_header then UI.who_header:echo("  👥  Connecting…") end
+    ui_tab_overlay_connect_all()
 end
 
 function ui_who_on_disconnect()
     UI.who.connected = false
 
     if UI.who_header then UI.who_header:echo("  👥  Disconnected") end
-
-    -- Show disconnected overlay, hide column header and scroll area
-    if UI.who_offline_notice then UI.who_offline_notice:show() end
-    if UI.who_col_bar        then UI.who_col_bar:hide() end
-    if UI.who_scroll         then UI.who_scroll:hide() end
+    ui_tab_overlay_disconnect_all()
 
     -- Close all open player cards — data is stale
     local to_close = {}
@@ -1097,15 +1089,12 @@ function ui_who_init()
     UI.who.connected = (gmcp and gmcp.players and type(gmcp.players.online) == "table") or false
     UI.who._show_all = false
 
-    -- Set initial visibility to match connection state
-    if not UI.who.connected then
-        if UI.who_offline_notice    then UI.who_offline_notice:show() end
-        if UI.who_connecting_notice then UI.who_connecting_notice:hide() end
-        if UI.who_col_bar           then UI.who_col_bar:hide() end
-        if UI.who_scroll            then UI.who_scroll:hide() end
+    -- Overlay system sets the correct initial state at registration time (offline
+    -- overlays visible, native widgets hidden).  Only act on the connected case.
+    if UI.who.connected then
+        -- Package reload mid-session: hide overlays, reveal content immediately.
+        ui_tab_overlay_activate_all()
     end
-    -- If already connected (package reload mid-session): col bar and scroll stay
-    -- visible; gmcp.players will fire shortly and populate the list.
 
     -- Column definitions — scrollbox_pct sets pixel width proportion,
     -- render_label fills the pre-created cell Label (echo / setClickCallback / etc.)
@@ -1178,7 +1167,7 @@ function ui_who_init()
     }
 
     ui_table_create("who_list", nil, cols, nil)
-    ui_table_set_scrollbox("who_list", UI.who_scroll_content, UI.who_content_w, WHO_ROW_H)
+    ui_table_set_scrollbox("who_list", UI.who_scroll_content, UI.who_content_w, WHO_ROW_H, UI.who_scroll)
 
     -- Build fixed column-header Labels in the bar above the scroll
     if UI.who_col_bar then

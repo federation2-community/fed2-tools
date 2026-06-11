@@ -14,11 +14,13 @@ f2t_register_help("ui", {
         {cmd = "ui status", desc = "Show detailed UI status"},
         {cmd = "ui settings", desc = "List all UI settings"},
         {cmd = "ui settings set hide_movement_messages <true|false>", desc = "Hide player/ship movement messages from main console (default: true)"},
+        {cmd = "ui reset tabs", desc = "Reset tab layout to factory defaults (clears any dragged/rearranged tabs)"},
     },
     examples = {
         "ui off    # Hide UI for clean gameplay",
         "ui on     # Restore UI",
         "ui settings set hide_movement_messages false  # Show movements in main console too",
+        "ui reset tabs  # Restore default tab positions after accidental rearrangement",
     }
 })
 

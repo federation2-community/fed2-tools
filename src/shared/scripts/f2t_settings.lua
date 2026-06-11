@@ -35,6 +35,14 @@ function f2t_save_settings()
     end
 end
 
+-- Redirect to per-character settings file and reload.
+-- Called by f2t_on_char_detected() after F2T_CHAR_NAME is set.
+function f2t_reload_settings_for_char()
+    F2T_SETTINGS_FILE = f2t_get_char_persistent_dir() .. "/settings.json"
+    f2t_load_settings()
+    f2t_debug_log("[settings] redirected to char %s", F2T_CHAR_NAME or "unknown")
+end
+
 -- Load settings from disk
 function f2t_load_settings()
     if not io.exists(F2T_SETTINGS_FILE) then
