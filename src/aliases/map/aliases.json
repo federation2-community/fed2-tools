@@ -1,0 +1,4 @@
+[
+  {"name": "map", "regex": "^map(?:\\s+(.+))?$"},
+  {"name": "nav", "regex": "^(?:nav|go|goto)(?:\\s+(.+))?$"}
+]

@@ -1,0 +1,10 @@
+[
+  {"name": "numpad_north",     "keys": "keypad+up"},
+  {"name": "numpad_northeast", "keys": "keypad+pageup"},
+  {"name": "numpad_east",      "keys": "keypad+right"},
+  {"name": "numpad_southeast", "keys": "keypad+pagedown"},
+  {"name": "numpad_south",     "keys": "keypad+down"},
+  {"name": "numpad_southwest", "keys": "keypad+end"},
+  {"name": "numpad_west",      "keys": "keypad+left"},
+  {"name": "numpad_northwest", "keys": "keypad+home"}
+]

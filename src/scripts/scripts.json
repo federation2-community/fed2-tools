@@ -1,0 +1,12 @@
+[
+  {"name": "debug"},
+  {"name": "settings_compat"},
+  {"name": "string_utils"},
+  {"name": "arg_parser"},
+  {"name": "table_utils"},
+  {"name": "tools"},
+  {"name": "help"},
+  {"name": "table_renderer"},
+  {"name": "workspace"},
+  {"name": "init"}
+]

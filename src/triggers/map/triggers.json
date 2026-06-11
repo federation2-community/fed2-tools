@@ -1,0 +1,69 @@
+[
+  {
+    "name": "cartel_capture_end",
+    "patterns": [{"pattern": "^   Cartel", "type": "regex"}]
+  },
+  {
+    "name": "cartel_capture_member",
+    "patterns": [{"pattern": "^      (.+)$", "type": "regex"}]
+  },
+  {
+    "name": "cartel_capture_other",
+    "patterns": [
+      {"pattern": "^[A-Z].+Cartel", "type": "regex"},
+      {"pattern": "^   [A-Z]", "type": "regex"},
+      {"pattern": "^      .+ \\([a-z]+/\\d+\\)$", "type": "regex"}
+    ]
+  },
+  {
+    "name": "cartel_capture_start",
+    "patterns": [{"pattern": "^   Members:$", "type": "regex"}]
+  },
+  {
+    "name": "di_system_capture_details",
+    "patterns": [{"pattern": "^  .+$", "type": "regex"}]
+  },
+  {
+    "name": "di_system_capture_planet",
+    "patterns": [{"pattern": "^([^,]+, .+ system, .+ cartel)$", "type": "regex"}]
+  },
+  {
+    "name": "di_system_capture_start",
+    "patterns": [{"pattern": "^System information for the (.+) system:$", "type": "regex"}]
+  },
+  {
+    "name": "explore_system_closed",
+    "patterns": [{"pattern": "^I'm afraid the (.+) system is closed to visitors at the moment\\.$", "type": "regex"}]
+  },
+  {
+    "name": "galaxy_capture_line",
+    "patterns": [{"pattern": "^   (\\S.*)$", "type": "regex"}]
+  },
+  {
+    "name": "galaxy_capture_start",
+    "patterns": [{"pattern": "^Cartels operating in this galaxy:$", "type": "regex"}]
+  },
+  {
+    "name": "jump_capture_line",
+    "patterns": [{"pattern": "^\\s+(\\S.*)$", "type": "regex"}]
+  },
+  {
+    "name": "jump_capture_start",
+    "patterns": [
+      {"pattern": "Inter-Cartel destinations available:", "type": "substring"},
+      {"pattern": "Local destinations available:", "type": "substring"}
+    ]
+  },
+  {
+    "name": "special_exit_invalid_command",
+    "patterns": [{"pattern": "^I'm sorry I don't understand you\\. Can you put that a different way\\?$", "type": "regex"}]
+  },
+  {
+    "name": "speedwalk_customs_intercept",
+    "patterns": [{"pattern": "Your routine is suddenly interrupted by the appearance", "type": "substring"}]
+  },
+  {
+    "name": "speedwalk_out_of_fuel",
+    "patterns": [{"pattern": "^You have run out of fuel, and are unable to move\\.$", "type": "regex"}]
+  }
+]
