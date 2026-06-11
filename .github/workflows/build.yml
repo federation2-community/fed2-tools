@@ -109,6 +109,23 @@ jobs:
           name: fed2-tools-${{ steps.version.outputs.version }}
           path: build/fed2-tools.mpackage
 
+      - name: Generate prerelease notes
+        if: steps.version.outputs.is_release == 'false'
+        id: prerelease_notes
+        run: |
+          PREV_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -1)
+          if [[ -n "$PREV_TAG" ]]; then
+            CHANGELOG=$(git log "${PREV_TAG}..HEAD" --pretty=format:'- %s' | head -50)
+            SINCE="since ${PREV_TAG}"
+          else
+            CHANGELOG=$(git log --pretty=format:'- %s' -50)
+            SINCE="(all commits)"
+          fi
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "since=$SINCE" >> $GITHUB_OUTPUT
+
       - name: Update prerelease
         if: steps.version.outputs.is_release == 'false'
         uses: softprops/action-gh-release@v2
@@ -119,6 +136,9 @@ jobs:
             Development build for v${{ steps.version.outputs.version }}.
 
             **Commit:** ${{ github.sha }}
+
+            **Changes ${{ steps.prerelease_notes.outputs.since }}:**
+            ${{ steps.prerelease_notes.outputs.changelog }}
 
             Install URL: `https://github.com/${{ github.repository }}/releases/download/${{ steps.version.outputs.version }}/fed2-tools.mpackage`
 

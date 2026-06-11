@@ -77,6 +77,13 @@ end)
 -- ── Workspace startup ─────────────────────────────────────────────────────────
 
 local function startWorkspace()
+    -- fed2-tools owns Muxlet version management; disable Muxlet's own update
+    -- checker so it cannot self-upgrade to an MPR version that bypasses the
+    -- version pin in F2T_REQUIRED_MUXLET.
+    if Mux.settings then
+        Mux.settings.set("mux", "update_check_enabled", false)
+    end
+
     if f2t_settings_flush_registrations then
         f2t_settings_flush_registrations()
     end
@@ -109,18 +116,35 @@ local function installMuxlet()
         return
     end
 
-    local handlerId
-    handlerId = registerAnonymousEventHandler("sysInstallPackage", function(_, name)
-        if name ~= MUXLET_PKG then return end
-        killAnonymousEventHandler(handlerId)
-        cecho("\n<green>[fed2-tools]<reset> Muxlet ready.\n")
-        tempTimer(0.5, startWorkspace)
-    end)
+    local ver = F2T_REQUIRED_MUXLET and (" " .. F2T_REQUIRED_MUXLET) or ""
 
-    local action = table.contains(getPackages(), MUXLET_PKG) and "Upgrading" or "Installing"
-    local ver    = F2T_REQUIRED_MUXLET and (" " .. F2T_REQUIRED_MUXLET) or ""
-    cecho(string.format("\n<cyan>[fed2-tools]<reset> %s Muxlet%s...\n", action, ver))
-    installPackage(MUXLET_URL)
+    local function doInstall()
+        local handlerId
+        handlerId = registerAnonymousEventHandler("sysInstallPackage", function(_, name)
+            if name ~= MUXLET_PKG then return end
+            killAnonymousEventHandler(handlerId)
+            cecho("\n<green>[fed2-tools]<reset> Muxlet ready — starting fed2-tools.\n")
+            -- Small delay so new Muxlet's own init timer (if any) can fire first.
+            tempTimer(0.5, startWorkspace)
+        end)
+        cecho(string.format("\n<cyan>[fed2-tools]<reset> Installing Muxlet%s...\n", ver))
+        installPackage(MUXLET_URL)
+    end
+
+    if table.contains(getPackages(), MUXLET_PKG) then
+        -- Uninstall the wrong version first; install the required version only
+        -- after the uninstall completes so there is never a partial state.
+        local uninstallId
+        uninstallId = registerAnonymousEventHandler("sysUninstallPackage", function(_, name)
+            if name ~= MUXLET_PKG then return end
+            killAnonymousEventHandler(uninstallId)
+            tempTimer(0.5, doInstall)
+        end)
+        cecho(string.format("\n<cyan>[fed2-tools]<reset> Removing existing Muxlet (need%s)...\n", ver))
+        uninstallPackage(MUXLET_PKG)
+    else
+        doInstall()
+    end
 end
 
 -- ── Dev reload watcher ────────────────────────────────────────────────────────

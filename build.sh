@@ -12,12 +12,16 @@
 # The Muxlet version is controlled solely by "muxlet_version" in mfile.
 # To test against a different Muxlet build, change muxlet_version in mfile.
 #
+# When --profile is given, the Mudlet profile's connection files (url, port,
+# login) are written in Mudlet's binary format so the profile connects to Fed2
+# without any manual configuration. Pass --username to pre-fill the login field.
+#
 # Usage:
-#   ./build.sh [--profile PROFILE] [--mudlet-config PATH]
+#   ./build.sh [--profile PROFILE] [--username NAME] [--mudlet-config PATH]
 #
 # Examples:
 #   ./build.sh
-#   ./build.sh --profile fed2-dev
+#   ./build.sh --profile fed2-dev --username jackrungh
 
 set -euo pipefail
 
@@ -26,14 +30,18 @@ MFILE="$SCRIPT_DIR/mfile"
 INIT_LUA="$SCRIPT_DIR/src/scripts/init.lua"
 SRC_PACKAGE="$SCRIPT_DIR/build/fed2-tools.mpackage"
 
-PROFILE=""
+PROFILE="fed2-dev"
+USERNAME=""
 MUDLET_CONFIG=""
+GAME_HOST="play.federation2.com"
+GAME_PORT="30003"
 
 # ── Parse arguments ───────────────────────────────────────────────────────────
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --profile)       PROFILE="$2";       shift 2 ;;
+        --username)      USERNAME="$2";      shift 2 ;;
         --mudlet-config) MUDLET_CONFIG="$2"; shift 2 ;;
         *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
@@ -123,6 +131,19 @@ fi
 echo ""
 echo "=== Deploying to profile: $PROFILE ==="
 
+# Write a value in Mudlet's binary profile format:
+#   4-byte big-endian byte-length + UTF-16 BE string body.
+write_mudlet_string() {
+    local path="$1"
+    local value="$2"
+    python3 -c "
+import sys, struct
+v = sys.argv[1]
+b = v.encode('utf-16-be') if v else b''
+sys.stdout.buffer.write(struct.pack('>I', len(b)) + b)
+" "$value" > "$path"
+}
+
 find_mudlet_config() {
     local xdg_path="${XDG_CONFIG_HOME:-$HOME/.config}/mudlet"
     [[ -d "$xdg_path/profiles" ]] && { echo "$xdg_path"; return; }
@@ -160,6 +181,14 @@ else
     echo "Profile       : $PROFILE"
 fi
 
+write_mudlet_string "$PROFILE_DIR/url"         "$GAME_HOST"
+write_mudlet_string "$PROFILE_DIR/port"        "$GAME_PORT"
+write_mudlet_string "$PROFILE_DIR/description" ""
+if [[ -n "$USERNAME" ]]; then
+    write_mudlet_string "$PROFILE_DIR/login" "$USERNAME"
+fi
+echo "Connection    : $GAME_HOST:$GAME_PORT${USERNAME:+ ($USERNAME)}"
+
 if [[ ! -f "$SRC_PACKAGE" ]]; then
     echo "ERROR: build/fed2-tools.mpackage not found after build step." >&2
     exit 1
@@ -179,7 +208,12 @@ if [[ $FIRST_TIME -eq 1 ]]; then
     echo "FIRST-TIME SETUP:"
     echo "  1. Open Mudlet"
     echo "  2. Select profile: '$PROFILE'"
-    echo "  3. Toolbox -> Package Manager -> Install from file:"
+    if [[ -n "$USERNAME" ]]; then
+        echo "  3. Enter password (username '$USERNAME' pre-filled), connect"
+    else
+        echo "  3. Enter username + password, connect"
+    fi
+    echo "  4. Toolbox -> Package Manager -> Install from file:"
     echo "     $DEST_PACKAGE"
     echo ""
     echo "After this one-time install, fed2-tools reloads automatically on each build."
