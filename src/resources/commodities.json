@@ -1,0 +1,104 @@
+{
+  "groups": [
+    {
+      "name": "Agricultural",
+      "shortName": "agri",
+      "commodities": [
+        {"name": "Cereals", "basePrice": 270},
+        {"name": "Fruit", "basePrice": 420},
+        {"name": "Furs", "basePrice": 650},
+        {"name": "Hides", "basePrice": 400},
+        {"name": "Livestock", "basePrice": 210},
+        {"name": "Meats", "basePrice": 410},
+        {"name": "Soya", "basePrice": 230},
+        {"name": "Spices", "basePrice": 650},
+        {"name": "Textiles", "basePrice": 300},
+        {"name": "Woods", "basePrice": 700}
+      ]
+    },
+    {
+      "name": "Resource",
+      "commodities": [
+        {"name": "Alloys", "basePrice": 180},
+        {"name": "Clays", "basePrice": 520},
+        {"name": "Crystals", "basePrice": 650},
+        {"name": "Gold", "basePrice": 600},
+        {"name": "Monopoles", "shortName": "monos", "basePrice": 720},
+        {"name": "Nickel", "basePrice": 370},
+        {"name": "Petrochemicals", "shortName": "petros", "basePrice": 400},
+        {"name": "Radioactives", "shortName": "rads", "basePrice": 540},
+        {"name": "Semiconductors", "shortName": "semis", "basePrice": 350},
+        {"name": "Xmetals", "basePrice": 480}
+      ]
+    },
+    {
+      "name": "Industrial",
+      "shortName": "ind",
+      "commodities": [
+        {"name": "Explosives", "basePrice": 470},
+        {"name": "Generators", "shortName": "gens", "basePrice": 670},
+        {"name": "LanzariK", "basePrice": 700},
+        {"name": "LubOils", "shortName": "lubs", "basePrice": 560},
+        {"name": "Mechparts", "shortName": "mechs", "basePrice": 420},
+        {"name": "Munitions", "basePrice": 250},
+        {"name": "Nitros", "basePrice": 230},
+        {"name": "Pharmaceuticals", "shortName": "pharms", "basePrice": 630},
+        {"name": "Polymers", "basePrice": 200},
+        {"name": "Propellants", "shortName": "props", "basePrice": 260},
+        {"name": "RNA", "basePrice": 380}
+      ]
+    },
+    {
+      "name": "Technological",
+      "shortName": "tech",
+      "commodities": [
+        {"name": "AntiMatter", "shortName": "anti", "basePrice": 480},
+        {"name": "Controllers", "basePrice": 710},
+        {"name": "Droids", "basePrice": 700},
+        {"name": "Electros", "basePrice": 250},
+        {"name": "GAsChips", "basePrice": 450},
+        {"name": "Lasers", "basePrice": 470},
+        {"name": "NanoFabrics", "shortName": "nanfab", "basePrice": 850},
+        {"name": "Nanos", "basePrice": 550},
+        {"name": "Powerpacks", "shortName": "packs", "basePrice": 680},
+        {"name": "Synths", "basePrice": 560},
+        {"name": "Tools", "basePrice": 350},
+        {"name": "TQuarks", "basePrice": 835},
+        {"name": "Vidicasters", "shortName": "vids", "basePrice": 380},
+        {"name": "Weapons", "basePrice": 420}
+      ]
+    },
+    {
+      "name": "Biological",
+      "commodities": [
+        {"name": "BioChips", "basePrice": 650},
+        {"name": "BioComponents", "shortName": "biocomp", "basePrice": 760},
+        {"name": "Clinics", "basePrice": 450},
+        {"name": "Laboratories", "shortName": "labs", "basePrice": 470},
+        {"name": "MicroScalpels", "shortName": "scalpels", "basePrice": 320},
+        {"name": "Probes", "basePrice": 510},
+        {"name": "Proteins", "basePrice": 260},
+        {"name": "Sensors", "basePrice": 470},
+        {"name": "ToxicMunchers", "shortName": "toxics", "basePrice": 470},
+        {"name": "Tracers", "basePrice": 600}
+      ]
+    },
+    {
+      "name": "Leisure",
+      "commodities": [
+        {"name": "Artifacts", "shortName": "arts", "basePrice": 730},
+        {"name": "Firewalls", "basePrice": 690},
+        {"name": "Games", "basePrice": 210},
+        {"name": "Holos", "basePrice": 260},
+        {"name": "Hypnotapes", "shortName": "hypnos", "basePrice": 430},
+        {"name": "Katydidics", "shortName": "kats", "basePrice": 610},
+        {"name": "Libraries", "shortName": "libs", "basePrice": 680},
+        {"name": "Musiks", "basePrice": 470},
+        {"name": "Sensamps", "basePrice": 520},
+        {"name": "Simulations", "shortName": "sims", "basePrice": 310},
+        {"name": "Studios", "basePrice": 390},
+        {"name": "Univators", "shortName": "unis", "basePrice": 570}
+      ]
+    }
+  ]
+}
