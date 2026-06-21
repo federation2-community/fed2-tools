@@ -119,7 +119,7 @@ local function applyMapImportToPane(target)
     optLbl:echo("SELECT MAP DATABASE")
     y = y + 20
 
-    local mapDir   = getMudletHomeDir() .. "/fed2-tools/shared/"
+    local mapDir   = getMudletHomeDir() .. "/fed2-tools/"
     local selected = 1
     local done     = false
     local optBtns  = {}

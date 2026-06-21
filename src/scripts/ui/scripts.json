@@ -1,7 +1,4 @@
 [
   {"name": "workspace"},
-  {"name": "map"},
-  {"name": "map_movement"},
-  {"name": "map_import"},
-  {"name": "popups"}
+  {"name": "map_movement"}
 ]

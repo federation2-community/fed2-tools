@@ -5,21 +5,25 @@
 --
 -- In V2, settings are profile-global (owned by Mux.settings).  This module
 -- does NOT redirect settings per-character.  Components that need character-
--- specific data (e.g. destinations) should store it under:
+-- specific data (e.g. destinations, the player DB) should store it under:
 --   f2t_get_char_persistent_dir() / <component> / <file>
+--
+-- Persistence root is "<package>_persistent", matching Muxlet's own
+-- "Muxlet_persistent" convention (underscore separator).  Defined once here as
+-- the single source of truth so it can't drift across call sites.
 --
 -- When the character changes, fires raiseEvent("f2tCharacterChanged", newName, oldName).
 
 F2T_CHAR_NAME = nil
 
 local loginDone = false
+local PERSISTENT_BASE = getMudletHomeDir() .. "/fed2-tools_persistent"
 
 function f2t_get_char_persistent_dir()
-    local base = getMudletHomeDir() .. "/fed2-tools-persistent"
     if F2T_CHAR_NAME and F2T_CHAR_NAME ~= "" then
-        return base .. "/" .. F2T_CHAR_NAME:lower()
+        return PERSISTENT_BASE .. "/" .. F2T_CHAR_NAME:lower()
     end
-    return base
+    return PERSISTENT_BASE
 end
 
 registerAnonymousEventHandler("gmcp.char.vitals", function()
@@ -31,7 +35,7 @@ registerAnonymousEventHandler("gmcp.char.vitals", function()
     F2T_CHAR_NAME = name
     loginDone     = true
 
-    lfs.mkdir(getMudletHomeDir() .. "/fed2-tools-persistent")
+    lfs.mkdir(PERSISTENT_BASE)
     lfs.mkdir(f2t_get_char_persistent_dir())
 
     if prev ~= name then

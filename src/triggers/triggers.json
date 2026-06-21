@@ -1,0 +1,10 @@
+[
+  {
+    "name": "emergency_refuel",
+    "patterns": [{"pattern": "^You have run out of fuel, and are unable to move\\.$", "type": "regex"}]
+  },
+  {
+    "name": "death",
+    "patterns": [{"pattern": "Darkness closes in. Farewell!", "type": "substring"}]
+  }
+]

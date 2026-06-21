@@ -68,3 +68,94 @@ function f2t_handle_help(command, arg)
     if not f2t_is_help_request(arg) then return false end
     return f2t_show_registered_help(command)
 end
+
+-- fed2-tools — system (f2t) help registration
+--
+-- Ported from the archive's shared_help_init.lua, which was never carried over
+-- when the shared layer was rebuilt — that omission is why `f2t` showed no help.
+-- Registers help for the top-level dispatcher and its subcommands.
+--
+-- Updated for the new project:
+--   * Component list reflects what actually ships (po added; it bore help in the
+--     archive but was missing from the f2t listing).
+--   * `f2t settings` now manages the "f2t" namespace (update-check settings), not
+--     the retired "shared" namespace, so the stale stamina/food examples are
+--     replaced. Component settings live under `<component> settings` or the
+--     Muxlet settings UI.
+
+f2t_register_help("f2t", {
+    description = "Federation 2 Tools Package - System commands and component overview",
+    usage = {
+        {cmd = "System Commands:", desc = ""},
+        {cmd = "f2t", desc = "Show this help"},
+        {cmd = "f2t status", desc = "Show component states"},
+        {cmd = "f2t version", desc = "Show package version"},
+        {cmd = "f2t debug on/off", desc = "Toggle debug logging"},
+        {cmd = "f2t settings", desc = "Manage system settings"},
+        {cmd = "", desc = ""},
+        {cmd = "Components:", desc = ""},
+        {cmd = "map help", desc = "Auto-mapping, navigation, destinations"},
+        {cmd = "nav help", desc = "Navigation command formats"},
+        {cmd = "factory help", desc = "Factory status display"},
+        {cmd = "refuel help", desc = "Automatic ship refueling"},
+        {cmd = "bb help", desc = "Bulk buy commodities"},
+        {cmd = "bs help", desc = "Bulk sell commodities"},
+        {cmd = "price help", desc = "Commodity price analysis"},
+        {cmd = "po help", desc = "Planet owner economy tools"},
+        {cmd = "haul help", desc = "Automated commodity trading"}
+    },
+    examples = {
+        "f2t status              # Check which components are enabled",
+        "f2t version             # Show current package version",
+        "f2t debug on            # Enable debug logging",
+        "f2t settings            # View system settings",
+        "map help                # Get help for map component"
+    }
+})
+
+f2t_register_help("f2t settings", {
+    description = "Manage fed2-tools system (f2t) settings",
+    usage = {
+        {cmd = "f2t settings", desc = "List all system settings"},
+        {cmd = "f2t settings get <name>", desc = "Get a specific setting"},
+        {cmd = "f2t settings set <name> <value>", desc = "Set a setting"},
+        {cmd = "f2t settings clear <name>", desc = "Reset setting to default"},
+        {cmd = "", desc = ""},
+        {cmd = "Component settings:", desc = "use <component> settings, e.g. 'factory settings'"},
+        {cmd = "", desc = "or open the Muxlet settings UI (grouped under Fed2-Tools)"}
+    },
+    examples = {
+        "f2t settings                            # List system settings",
+        "f2t settings set update_check_enabled false  # Stop checking for updates",
+        "f2t settings clear update_check_enabled # Reset to default",
+        "",
+        "factory settings                        # Factory component settings",
+        "price settings set results_count 10     # Commodities component settings"
+    }
+})
+
+f2t_register_help("f2t debug", {
+    description = "Control debug logging for fed2-tools components",
+    usage = {
+        {cmd = "f2t debug", desc = "Show current debug state"},
+        {cmd = "f2t debug on", desc = "Enable debug logging (persists)"},
+        {cmd = "f2t debug off", desc = "Disable debug logging (persists)"}
+    },
+    examples = {
+        "f2t debug on     # Enable debug messages",
+        "f2t debug off    # Disable debug messages",
+        "f2t debug        # Show current state"
+    }
+})
+
+f2t_register_help("f2t status", {
+    description = "Show fed2-tools component status",
+    usage = {
+        {cmd = "f2t status", desc = "Display all component states"}
+    },
+    examples = {
+        "f2t status       # Show which components are enabled/disabled"
+    }
+})
+
+f2t_debug_log("[f2t] Registered help for system commands")
