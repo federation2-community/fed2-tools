@@ -1,0 +1,25 @@
+[
+  {
+    "name": "capture_line",
+    "patterns": [
+      {"pattern": "Production Facility #", "type": "substring"},
+      {"pattern": "^\\s{2,}.+", "type": "regex"}
+    ]
+  },
+  {
+    "name": "flush_success",
+    "patterns": [{"pattern": "^The storage facilities at factory #(\\d+) have been cleared\\.$", "type": "regex"}]
+  },
+  {
+    "name": "no_factory",
+    "patterns": [{"pattern": "^You don't have a factory with that number!$", "type": "regex"}]
+  },
+  {
+    "name": "no_company",
+    "patterns": [{"pattern": "^You don't have a company or business, let alone factories!$", "type": "regex"}]
+  },
+  {
+    "name": "game_shutdown_warning",
+    "patterns": [{"pattern": "^Federation II will be closing down for a short while in six minutes time\\.$", "type": "regex"}]
+  }
+]

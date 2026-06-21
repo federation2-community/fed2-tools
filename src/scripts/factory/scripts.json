@@ -1,0 +1,8 @@
+[
+  {"name": "init"},
+  {"name": "parser"},
+  {"name": "formatter"},
+  {"name": "capture_timer"},
+  {"name": "flush"},
+  {"name": "help"}
+]
