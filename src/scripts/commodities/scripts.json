@@ -1,0 +1,12 @@
+[
+  {"name": "init"},
+  {"name": "commodity_resolver"},
+  {"name": "price_parser"},
+  {"name": "price_analyzer"},
+  {"name": "price_display"},
+  {"name": "price_capture_timer"},
+  {"name": "price_control"},
+  {"name": "price_all"},
+  {"name": "bulk_buy"},
+  {"name": "bulk_sell"}
+]

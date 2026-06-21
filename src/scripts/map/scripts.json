@@ -40,5 +40,5 @@
   {"name": "core"},
   {"name": "events"},
   {"name": "map_info"},
-  {"name": "help_init"}
+  {"name": "help"}
 ]

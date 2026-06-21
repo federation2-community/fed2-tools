@@ -1,0 +1,101 @@
+[
+  {
+    "name": "buy_error_insufficient_funds",
+    "patterns": [
+      {
+        "pattern": "^You can't afford the [\\d,]+ig it would cost to buy 75 tons of .+\\.$",
+        "type": "regex"
+      }
+    ]
+  },
+  {
+    "name": "buy_error_invalid",
+    "patterns": [
+      {
+        "pattern": "^You haven't said what you want to buy\\.$",
+        "type": "regex"
+      }
+    ]
+  },
+  {
+    "name": "buy_error_not_selling",
+    "patterns": [
+      {
+        "pattern": "^This exchange isn't currently selling .+\\.$",
+        "type": "regex"
+      }
+    ]
+  },
+  {
+    "name": "buy_success",
+    "patterns": [
+      {
+        "pattern": "^75 tons of .+ have been purchased at a cost of \\d+ig and loaded onto your spaceship\\.$",
+        "type": "regex"
+      }
+    ]
+  },
+  {
+    "name": "price_capture",
+    "patterns": [
+      {
+        "pattern": "^(.+):\\s+(.+)\\s+is\\s+(buying|selling|not currently trading)",
+        "type": "regex"
+      }
+    ]
+  },
+  {
+    "name": "price_output_continuation",
+    "patterns": [
+      {
+        "pattern": "^requested spot market prices\\.$",
+        "type": "regex"
+      }
+    ]
+  },
+  {
+    "name": "price_output_start",
+    "patterns": [
+      {
+        "pattern": "Your comm unit lights up as your brokers",
+        "type": "substring"
+      }
+    ]
+  },
+  {
+    "name": "sell_error_invalid",
+    "patterns": [
+      {
+        "pattern": "^I'm afraid you can't sell that at the moment\\.$",
+        "type": "regex"
+      }
+    ]
+  },
+  {
+    "name": "sell_error_no_cargo",
+    "patterns": [
+      {
+        "pattern": "^You don't have any imported .+ to sell\\.$",
+        "type": "regex"
+      }
+    ]
+  },
+  {
+    "name": "sell_error_not_buying",
+    "patterns": [
+      {
+        "pattern": "^This exchange isn't currently buying .+\\.$",
+        "type": "regex"
+      }
+    ]
+  },
+  {
+    "name": "sell_success",
+    "patterns": [
+      {
+        "pattern": "^75 tons of (.+) sold to the exchange for (\\d+)ig$",
+        "type": "regex"
+      }
+    ]
+  }
+]
