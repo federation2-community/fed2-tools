@@ -1,4 +1,5 @@
 [
+  {"name": "table_system"},
   {"name": "workspace"},
   {"name": "map_movement"}
 ]

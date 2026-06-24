@@ -101,8 +101,19 @@ local function installMuxlet()
 
     local function doInstall()
         cecho(string.format("\n<cyan>[fed2-tools]<reset> Installing Muxlet%s...\n", ver))
+
+        -- muxletReady is a session-start event; it does not fire when a package
+        -- is installed mid-session.  Listen for sysInstall so the welcome dialog
+        -- appears immediately after a fresh Muxlet install without requiring the
+        -- user to exit and re-enter the session.
+        local afterId
+        afterId = registerAnonymousEventHandler("sysInstall", function(_, name)
+            if name ~= MUXLET_PKG then return end
+            killAnonymousEventHandler(afterId)
+            tempTimer(0.5, f2tInit)
+        end)
+
         installPackage(MUXLET_URL)
-        -- muxletReady fires after install completes and Muxlet initializes.
     end
 
     if table.contains(getPackages(), MUXLET_PKG) then
@@ -176,7 +187,7 @@ end
 -- because it provides its own onboarding via f2tShowModeSelect().  It also
 -- prevents Muxlet's auto_start timer from double-starting by owning fullStart().
 
-registerAnonymousEventHandler("muxletReady", function()
+function f2tInit()
     if not muxletSatisfied() then return end
 
     -- fed2-tools owns the Muxlet version pin; prevent Muxlet auto-upgrading.
@@ -187,25 +198,50 @@ registerAnonymousEventHandler("muxletReady", function()
 
     if f2t_settings_flush_registrations then f2t_settings_flush_registrations() end
     if f2tRegisterMapContent            then f2tRegisterMapContent()            end
+    if f2tRegisterWho                   then f2tRegisterWho()                   end
     if f2tRegisterWorkspace             then f2tRegisterWorkspace()             end
     if f2tRegisterMapperCss             then f2tRegisterMapperCss()             end
 
     local d         = Mux.settings._data
     local autostart = d and d["f2t"] and d["f2t"]["mux_autostart"]
 
+    -- Defer UI actions until after login so Muxlet setup doesn't disrupt
+    -- the login prompts. gmcp.char.vitals is the first reliable post-login signal.
     if autostart == nil then
-        -- First run: let the user choose their startup mode.
-        if f2tShowModeSelect then f2tShowModeSelect() end
+        local _modeId
+        _modeId = registerAnonymousEventHandler("gmcp.char.vitals", function()
+            killAnonymousEventHandler(_modeId)
+            if f2tShowModeSelect then f2tShowModeSelect() end
+        end)
     elseif autostart == true then
-        Mux.fullStart()
+        local _startId
+        _startId = registerAnonymousEventHandler("gmcp.char.vitals", function()
+            killAnonymousEventHandler(_startId)
+            Mux.fullStart()
+        end)
     end
     -- autostart == false: Minimal mode — Muxlet is available but not started.
-end)
+end
+
+registerAnonymousEventHandler("muxletReady", f2tInit)
 
 -- ── Boot ──────────────────────────────────────────────────────────────────────
 
 startDevReloadWatcher()
 
 if not muxletSatisfied() or isMuxletPrerelease() then
-    installMuxlet()
+    local reason
+    if isMuxletPrerelease() then
+        reason = "prerelease tag — reinstall forced each session"
+    else
+        local installed = Mux and Mux._version
+        reason = string.format("version mismatch or not installed (installed=%s, required=%s)",
+            tostring(installed), tostring(F2T_REQUIRED_MUXLET))
+    end
+    cecho(string.format("\n<cyan>[fed2-tools]<reset> Muxlet reinstall queued (%s) — waiting for login.\n", reason))
+    local _waitId
+    _waitId = registerAnonymousEventHandler("gmcp.char.vitals", function()
+        killAnonymousEventHandler(_waitId)
+        installMuxlet()
+    end)
 end

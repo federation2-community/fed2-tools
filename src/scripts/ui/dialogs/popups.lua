@@ -191,7 +191,12 @@ end
 
 -- ── Public entry point ────────────────────────────────────────────────────────
 
+local _shown = false
+
 function f2tShowModeSelect()
+    if _shown then return end
+    _shown = true
+
     if not (Mux and Mux.createDialog and Mux.registerContent and Mux._applyContent) then
         cecho(
             "\n<cyan>[fed2-tools]<reset> <white>Welcome!<reset>"

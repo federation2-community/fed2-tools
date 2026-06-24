@@ -1,0 +1,10 @@
+[
+  {
+    "name": "galaxy_nav_line",
+    "patterns": [{"pattern": "^(.+)$", "type": "regex"}]
+  },
+  {
+    "name": "galaxy_nav_end",
+    "patterns": [{"pattern": "^$", "type": "regex"}]
+  }
+]

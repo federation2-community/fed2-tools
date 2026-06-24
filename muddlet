@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# muddlet — Build the fed2-tools package.
+# muddlet — Build the fed2-tools package and deploy it to a Mudlet profile.
 #
 # Derives version from git tags, reads muxlet_version from mfile, patches
 # mfile and init.lua temporarily, runs muddle, then restores everything so
@@ -10,13 +10,22 @@
 # The GitHub release URL always uses the v-prefixed tag (e.g. v1.0.6)
 # regardless of whether this fed2-tools build is a dev or release build.
 #
-# When --profile is given, the Mudlet profile's connection files (url, port,
-# login) are written in Mudlet's binary format so the profile connects to Fed2
-# without any manual configuration. Pass --username to pre-fill the login field.
+# When --profile is given, the built package is deployed to the Mudlet profile
+# and connection files (url, port, login) are written in Mudlet's binary format.
+# Pass --username to pre-fill the login field.
 #
-# --fresh wipes the profile directory (keeping connection files) and writes a
-# bootstrap XML so fed2-tools installs automatically on the next Mudlet load —
-# no Package Manager step required. Close the profile in Mudlet first.
+# New profile workflow (no --fresh):
+#   Run muddlet to create the profile folder and drop the .mpackage in it.
+#   Open Mudlet — it initialises the profile with its default packages.
+#   Install fed2-tools once via Package Manager using the .mpackage in the
+#   profile folder. After that, every muddlet run auto-reloads via the stamp
+#   watcher — no further manual steps needed.
+#
+# --fresh removes the fed2-tools and Muxlet package directories and their
+#   persistent data from an existing profile, leaving current/, default
+#   packages, and all other profile data intact. The fed2-tools stamp watcher
+#   (compiled into current/) detects the updated stamp and reinstalls on the
+#   next Mudlet load. Close Mudlet before running --fresh.
 #
 # Usage:
 #   ./muddlet [--profile PROFILE] [--username NAME] [--mudlet-config PATH]
@@ -146,50 +155,19 @@ wait_for_profile_close() {
     fi
 }
 
-# Remove all entries in DIR except the named files passed as additional args.
+# Remove only fed2-tools and Muxlet content from the profile.
+# Leaves current/, default packages, maps, and all other profile data intact.
+# The existing fed2-tools stamp watcher handles reinstallation on next load.
 wipe_profile() {
-    local dir="$1"; shift
-    local -a keep=("$@")
-    local find_args=("$dir" -maxdepth 1 -mindepth 1)
-    for k in "${keep[@]}"; do find_args+=("!" "-name" "$k"); done
-    find_args+=("-print0")
-    while IFS= read -r -d '' entry; do
-        echo "Removed       : $(basename "$entry")"
-        rm -rf "$entry"
-    done < <(find "${find_args[@]}")
-}
-
-# Write a minimal Mudlet profile XML containing a bootstrap script that
-# auto-installs PKG_NAME.mpackage from the profile directory on first load.
-write_bootstrap_xml() {
-    local xml_path="$1"
-    local pkg_name="$2"
-    sed "s/__PKG__/$pkg_name/g" > "$xml_path" << 'BOOTSTRAP_XML_EOF'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE MudletPackage>
-<MudletPackage version="1.001">
-  <ScriptPackage>
-    <Script isActive="yes" isFolder="no">
-      <name>__PKG__ dev autoinstall</name>
-      <packageName></packageName>
-      <script>
-local _pkgPath = getMudletHomeDir() .. "/__PKG__.mpackage"
-tempTimer(0, function()
-  local _f = io.open(_pkgPath, "r")
-  if _f then
-    _f:close()
-    if not table.contains(getPackages(), "__PKG__") then
-      installPackage(_pkgPath)
-    end
-  end
-end)
-</script>
-      <eventHandlerList />
-    </Script>
-  </ScriptPackage>
-</MudletPackage>
-BOOTSTRAP_XML_EOF
-    echo "Bootstrap XML : $xml_path"
+    local dir="$1"
+    local -a targets=("fed2-tools" "fed2-tools_persistent" "Muxlet" "Muxlet_persistent" "log")
+    for target in "${targets[@]}"; do
+        local path="$dir/$target"
+        if [[ -e "$path" ]]; then
+            echo "Removed       : $target"
+            rm -rf "$path"
+        fi
+    done
 }
 
 echo ""
@@ -235,22 +213,21 @@ fi
 echo "Mudlet config : $MUDLET_CONFIG"
 
 PROFILE_DIR="$MUDLET_CONFIG/profiles/$PROFILE"
-FIRST_TIME=0
+NEW_PROFILE=0
 
 if [[ ! -d "$PROFILE_DIR" ]]; then
     mkdir -p "$PROFILE_DIR"
     echo "Created profile: $PROFILE"
-    FIRST_TIME=1
+    NEW_PROFILE=1
 else
     echo "Profile       : $PROFILE"
     if [[ $FRESH -eq 1 ]]; then
         echo ""
         echo "=== Fresh wipe: $PROFILE ==="
         wait_for_profile_close "$PROFILE"
-        wipe_profile "$PROFILE_DIR" url port login description
+        wipe_profile "$PROFILE_DIR"
         echo "=== Wipe complete ==="
         echo ""
-        FIRST_TIME=1
     fi
 fi
 
@@ -275,25 +252,19 @@ STAMP_PATH="$PROFILE_DIR/fed2-tools-rebuild.stamp"
 date +%s > "$STAMP_PATH"
 echo "Stamp written : $STAMP_PATH"
 
-if [[ $FIRST_TIME -eq 1 ]]; then
-    mkdir -p "$PROFILE_DIR/current"
-    write_bootstrap_xml "$PROFILE_DIR/current/bootstrap.xml" "fed2-tools"
-fi
-
 echo ""
 
-if [[ $FIRST_TIME -eq 1 ]]; then
+if [[ $NEW_PROFILE -eq 1 ]]; then
     echo "FIRST-TIME SETUP:"
-    echo "  1. Open Mudlet"
-    echo "  2. Select profile: '$PROFILE'"
+    echo "  1. Open Mudlet and select profile: '$PROFILE'"
     if [[ -n "$USERNAME" ]]; then
-        echo "  3. Enter password (username '$USERNAME' pre-filled), connect"
+        echo "  2. Enter password (username '$USERNAME' pre-filled) and connect"
     else
-        echo "  3. Enter username + password, connect"
+        echo "  2. Enter username + password and connect"
     fi
+    echo "  3. Open Package Manager and install fed2-tools.mpackage from the profile folder"
     echo ""
-    echo "  fed2-tools installs automatically on connect. No Package Manager step needed."
-    echo "  After the first connect, fed2-tools auto-reloads on every build."
+    echo "  After the first install, fed2-tools auto-reloads on every build."
     echo ""
 fi
 
