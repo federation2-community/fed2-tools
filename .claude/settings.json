@@ -25,7 +25,9 @@
       "Read(//c/Users/Thomas/.config/mudlet/profiles/**)",
       "PowerShell(git -C \"C:\\\\Users\\\\Thomas\\\\OneDrive\\\\Documents\\\\GitHub\\\\fed2-tools\" log --oneline --follow muddlet)",
       "PowerShell(Get-ChildItem \"${env:LOCALAPPDATA}\\\\Mudlet\" -Recurse -Name -ErrorAction SilentlyContinue | Select-Object -First 40)",
-      "Read(//c/Program Files/**)"
+      "Read(//c/Program Files/**)",
+      "Bash(dir)",
+      "Bash(dir src *)"
     ]
   }
 }

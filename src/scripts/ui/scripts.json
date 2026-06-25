@@ -1,5 +1,5 @@
 [
   {"name": "table_system"},
-  {"name": "workspace"},
-  {"name": "map_movement"}
+  {"name": "map_movement"},
+  {"name": "map_settings"}
 ]

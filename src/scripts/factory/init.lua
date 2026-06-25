@@ -18,13 +18,15 @@
 -- the legacy auto-flush behaviour.
 
 f2t_settings_register("factory", "enabled", {
-    tab         = "Fed2-Tools/Factory",
+    tab         = "Fed2-Tools/Misc",
+    order       = 5,
+    label       = "Factory commands",
     description = "Enable factory status/flush commands and the pre-reset auto-flush",
     default     = true,
 })
 
 f2t_settings_register("factory", "auto_flush_before_reset", {
-    tab         = "Fed2-Tools/Factory",
+    label       = "Auto-flush before reset",
     description = "Automatically flush all factories before the daily game reset",
     default     = false,
 })

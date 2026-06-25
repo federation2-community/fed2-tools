@@ -2,13 +2,11 @@
 # muddlet — Build the fed2-tools package and deploy it to a Mudlet profile.
 #
 # Derives version from git tags, reads muxlet_version from mfile, patches
-# mfile and init.lua temporarily, runs muddle, then restores everything so
+# mfile and init.lua temporarily, runs muddler, then restores everything so
 # committed values stay clean.
 #
 # The Muxlet version is controlled solely by "muxlet_version" in mfile.
 # To target a different Muxlet build, change muxlet_version in mfile.
-# The GitHub release URL always uses the v-prefixed tag (e.g. v1.0.6)
-# regardless of whether this fed2-tools build is a dev or release build.
 #
 # When --profile is given, the built package is deployed to the Mudlet profile
 # and connection files (url, port, login) are written in Mudlet's binary format.
@@ -21,11 +19,11 @@
 #   profile folder. After that, every muddlet run auto-reloads via the stamp
 #   watcher — no further manual steps needed.
 #
-# --fresh removes the fed2-tools and Muxlet package directories and their
-#   persistent data from an existing profile, leaving current/, default
-#   packages, and all other profile data intact. The fed2-tools stamp watcher
-#   (compiled into current/) detects the updated stamp and reinstalls on the
-#   next Mudlet load. Close Mudlet before running --fresh.
+# --fresh writes a fresh flag file alongside the stamp file. The in-session
+#   stamp watcher picks up both files and calls f2t reload fresh, which wipes
+#   Muxlet_persistent and fed2-tools_persistent, uninstalls Muxlet from the
+#   profile XML, then reinstalls fed2-tools so init.lua downloads a clean
+#   Muxlet. Mudlet does not need to be closed.
 #
 # Usage:
 #   ./muddlet [--profile PROFILE] [--username NAME] [--mudlet-config PATH]
@@ -117,7 +115,7 @@ sed -i.bak \
     "$INIT_LUA"
 echo "init.lua      : injected F2T_REQUIRED_MUXLET=$MUXLET_VERSION, MUXLET_URL"
 
-# ── Run muddle ────────────────────────────────────────────────────────────────
+# ── Run muddler ───────────────────────────────────────────────────────────────
 
 restore_all() {
     echo "$ORIGINAL_MFILE" > "$MFILE"
@@ -140,35 +138,6 @@ if [[ -z "$PROFILE" ]]; then
     echo ""
     exit 0
 fi
-
-# Pause if Mudlet is running — any profile could be open.
-wait_for_profile_close() {
-    local profile_name="$1"
-    local running
-    running=$(powershell.exe -NoProfile -Command \
-        "if (Get-Process mudlet -ErrorAction SilentlyContinue) { 'yes' } else { 'no' }" \
-        2>/dev/null | tr -d '\r\n') || true
-    if [[ "$running" == "yes" ]]; then
-        echo ""
-        echo "  Mudlet is running. Close the '$profile_name' profile, then press Enter."
-        read -r _
-    fi
-}
-
-# Remove only fed2-tools and Muxlet content from the profile.
-# Leaves current/, default packages, maps, and all other profile data intact.
-# The existing fed2-tools stamp watcher handles reinstallation on next load.
-wipe_profile() {
-    local dir="$1"
-    local -a targets=("fed2-tools" "fed2-tools_persistent" "Muxlet" "Muxlet_persistent" "log")
-    for target in "${targets[@]}"; do
-        local path="$dir/$target"
-        if [[ -e "$path" ]]; then
-            echo "Removed       : $target"
-            rm -rf "$path"
-        fi
-    done
-}
 
 echo ""
 echo "=== Deploying to profile: $PROFILE ==="
@@ -221,14 +190,6 @@ if [[ ! -d "$PROFILE_DIR" ]]; then
     NEW_PROFILE=1
 else
     echo "Profile       : $PROFILE"
-    if [[ $FRESH -eq 1 ]]; then
-        echo ""
-        echo "=== Fresh wipe: $PROFILE ==="
-        wait_for_profile_close "$PROFILE"
-        wipe_profile "$PROFILE_DIR"
-        echo "=== Wipe complete ==="
-        echo ""
-    fi
 fi
 
 write_mudlet_string "$PROFILE_DIR/url"         "$GAME_HOST"
@@ -251,6 +212,12 @@ echo "Deployed      : $DEST_PACKAGE"
 STAMP_PATH="$PROFILE_DIR/fed2-tools-rebuild.stamp"
 date +%s > "$STAMP_PATH"
 echo "Stamp written : $STAMP_PATH"
+
+if [[ $FRESH -eq 1 ]]; then
+    FRESH_PATH="$PROFILE_DIR/fed2-tools-fresh.stamp"
+    date +%s > "$FRESH_PATH"
+    echo "Fresh flag    : $FRESH_PATH"
+fi
 
 echo ""
 

@@ -895,12 +895,21 @@ elseif subcommand == "export" then
 elseif subcommand == "import" then
     local rest = args:match("^import%s*(.*)") or ""
     if f2t_handle_help("map import", rest) then return end
-    if rest ~= "" then
+    if rest == "" then
+        f2t_map_import()
+    elseif rest:lower() == "db" then
+        -- Open the bundled-resource picker directly, regardless of the
+        -- first-run gate (useful for re-importing or testing).
+        if f2tShowMapImportDialog then
+            f2tShowMapImportDialog("manual")
+        else
+            cecho("\n<yellow>[map]<reset> Map database picker unavailable (UI not loaded).\n")
+        end
+    else
         cecho(string.format("\n<red>[map]<reset> Unknown import option: %s\n", rest))
         f2t_show_help_hint("map import")
         return
     end
-    f2t_map_import()
 
 else
     cecho(string.format("\n<red>[map]<reset> Unknown command: %s\n", subcommand))

@@ -6,7 +6,9 @@
 -- (the toggle widget constrains the value).
 
 f2t_settings_register("death", "enabled", {
-    tab         = "Fed2-Tools/Death Monitor",
+    tab         = "Fed2-Tools/Misc",
+    order       = 1,
+    label       = "Death recovery",
     description = "Automatic death recovery: capture death location, re-insure, lock the killing room",
     default     = true,
 })

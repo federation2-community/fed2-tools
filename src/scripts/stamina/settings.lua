@@ -8,14 +8,16 @@
 -- threshold = 0 disables stamina monitoring; 1-99 enables auto-eat at that %.
 
 f2t_settings_register("stamina", "threshold", {
-    tab         = "Fed2-Tools/Stamina Monitor",
+    tab         = "Fed2-Tools/Misc",
+    order       = 3,
+    label       = "Auto-eat threshold (%)",
     description = "Stamina % that triggers food buying (0 = disabled, 1-99 = trigger at this %)",
     default     = 25,
     min = 0, max = 99,
 })
 
 f2t_settings_register("stamina", "food_source", {
-    tab         = "Fed2-Tools/Stamina Monitor",
+    label       = "Food source",
     description = "Food source location: Fed2 room hash (system.planet.num) or a saved destination name",
     default     = "Sol.Earth.454",
 })

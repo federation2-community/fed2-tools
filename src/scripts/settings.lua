@@ -46,6 +46,8 @@ function f2t_settings_register(component, key, config)
     if Mux and Mux.settings and Mux.settings.register then
         Mux.settings.register(component, key, {
             tab         = config.tab,
+            order       = config.order,
+            label       = config.label,
             description = config.description,
             default     = config.default,
             choices     = config.choices,
@@ -63,6 +65,8 @@ function f2t_settings_flush_registrations()
     for _, reg in ipairs(_pending) do
         Mux.settings.register(reg.component, reg.key, {
             tab         = reg.config.tab,
+            order       = reg.config.order,
+            label       = reg.config.label,
             description = reg.config.description,
             default     = reg.config.default,
             choices     = reg.config.choices,
@@ -128,12 +132,14 @@ end
 -- ── Core fed2-tools settings (f2t namespace) ──────────────────────────────────
 
 f2t_settings_register("f2t", "update_check_enabled", {
-    tab         = "Fed2-Tools",
+    tab         = "Fed2-Tools/General",
+    label       = "Auto-update check",
     description = "Check for fed2-tools updates automatically on session start",
     default     = true,
 })
 
 f2t_settings_register("f2t", "update_check_remind_skip", {
+    label       = "Reminder delay (sessions)",
     description = "Sessions remaining before update reminder re-appears",
     default     = 0,
     min         = 0, max = 99,

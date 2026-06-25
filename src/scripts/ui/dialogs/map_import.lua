@@ -57,39 +57,44 @@ local _CSS_STATUS_ERR  = "background:transparent; color:rgba(210,120,115,255); f
 -- ── Import logic ──────────────────────────────────────────────────────────────
 
 local function _doImport(filePath, statusLbl, importBtn)
-    local f = io.open(filePath, "r")
-    if not f then
-        statusLbl:setStyleSheet(_CSS_STATUS_ERR)
-        statusLbl:echo("Map file not found — was the package installed via MPR?")
-        return false
-    end
-    f:close()
-
-    deleteMap()
-    F2T_MAP_CURRENT_ROOM_ID = nil
-
-    local ok, errMsg = loadJsonMap(filePath)
+    -- f2t_map_import_file (map/import_export.lua) is the single source of truth
+    -- for loading a map file into the profile: wipe, load, refresh, sync.
+    local ok, result = f2t_map_import_file(filePath)
     if ok then
-        updateMap()
-        local roomCount = 0
-        for _ in pairs(getRooms()) do roomCount = roomCount + 1 end
-        tempTimer(0.5, function()
-            if F2T_MAP_ENABLED and f2t_map_sync then f2t_map_sync() end
-        end)
         statusLbl:setStyleSheet(_CSS_STATUS_OK)
-        statusLbl:echo(string.format("Map imported — %d rooms loaded", roomCount))
+        statusLbl:echo(string.format("Map imported — %d rooms loaded", result))
         importBtn:setStyleSheet(_CSS_BTN_DONE)
         importBtn:echo("<center>Map Imported</center>")
-        cecho(string.format("\n<green>[fed2-tools]<reset> Map imported — %d rooms\n", roomCount))
+        cecho(string.format("\n<green>[fed2-tools]<reset> Map imported — %d rooms\n", result))
         return true
     else
         statusLbl:setStyleSheet(_CSS_STATUS_ERR)
-        statusLbl:echo(string.format("Import failed: %s", errMsg or "unknown error"))
+        statusLbl:echo(string.format("Import failed: %s", result or "unknown error"))
         return false
     end
 end
 
 -- ── Content apply function ────────────────────────────────────────────────────
+--
+-- _pendingReason is set synchronously by f2tShowMapImportDialog() before
+-- _applyContent runs, so apply can tailor its framing.  Values:
+--   "firstrun" (default) — first map load on this profile
+--   "upgrade"            — a newer bundled map database shipped
+--   "manual"             — user opened the picker from the settings menu/command
+
+local _pendingReason = "firstrun"
+
+local _INTRO_BY_REASON = {
+    firstrun =
+        "<font color='#c6d2ee'>Install a map database to jumpstart navigation.<br>" ..
+        "You can skip this and build your map by exploring the galaxy.</font>",
+    upgrade =
+        "<font color='#c6d2ee'>This version ships an updated map database.<br>" ..
+        "Re-importing is recommended — it replaces your current map.</font>",
+    manual =
+        "<font color='#c6d2ee'>Choose a bundled map database to import.<br>" ..
+        "Importing replaces your current map.</font>",
+}
 
 local function applyMapImportToPane(target)
     target.contentBg:echo("")
@@ -104,9 +109,7 @@ local function applyMapImportToPane(target)
     -- Intro text
     local intro = Geyser.Label:new({ name=pfx.."intro", x=IX, y=y, width=IW, height=46 }, c)
     intro:setStyleSheet("background:transparent; color:rgba(198,210,238,255); font-size:10px; padding:4px 14px;")
-    intro:echo(
-        "<font color='#c6d2ee'>Install a map database to jumpstart navigation.<br>" ..
-        "You can skip this and build your map by exploring the galaxy.</font>")
+    intro:echo(_INTRO_BY_REASON[_pendingReason] or _INTRO_BY_REASON.firstrun)
     y = y + 52
 
     local div1 = Geyser.Label:new({ name=pfx.."div1", x=0, y=y, width="100%", height=1 }, c)
@@ -218,10 +221,15 @@ end
 
 -- ── Public entry point ────────────────────────────────────────────────────────
 
-function f2tShowMapImportDialog()
+-- reason: "firstrun" (default) | "upgrade" | "manual" — controls framing.
+-- Returns true if the dialog was actually created/shown, false otherwise, so
+-- callers (import_check.lua) can avoid burning the "seen" flag on a failed show.
+function f2tShowMapImportDialog(reason)
+    _pendingReason = reason or "firstrun"
+
     if not (Mux and Mux.createDialog and Mux.registerContent and Mux._applyContent) then
-        cecho("\n<yellow>[fed2-tools]<reset> Map import: run  <cyan>map import<reset>  to load a map database.\n")
-        return
+        cecho("\n<yellow>[fed2-tools]<reset> Map import: run  <cyan>map import db<reset>  to load a map database.\n")
+        return false
     end
 
     if not Mux._content or not Mux._content["f2t_map_import"] then
@@ -235,12 +243,17 @@ function f2tShowMapImportDialog()
     local DIALOG_W = 480
     local DIALOG_H = 360
 
+    local title = (_pendingReason == "upgrade")
+        and "Map Database Update Recommended"
+        or  "Import Map Database"
+
     local dialog = Mux.createDialog({
-        title  = "Import Map Database",
+        title  = title,
         width  = DIALOG_W,
         height = DIALOG_H,
     })
     Mux._applyContent(dialog, "f2t_map_import")
     dialog:show()
     dialog:raise()
+    return true
 end

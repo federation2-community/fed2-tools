@@ -51,7 +51,7 @@ function f2tBuildMapMovement(parent, gid)
     local shell = Geyser.Container:new({
         name   = pfx .. "shell",
         x      = "0%",
-        y      = "80%",
+        y      = "81%",
         width  = "30%",
         height = "21%",
     }, parent)
@@ -59,8 +59,8 @@ function f2tBuildMapMovement(parent, gid)
     -- ── Board button ──────────────────────────────────────────────────────────
     local boardBtn = Geyser.Label:new({
         name   = pfx .. "board",
-        x      = "0%",
-        y      = "0%",
+        x      = "3%",
+        y      = "1%",
         width  = "17%",
         height = "17%",
     }, shell)

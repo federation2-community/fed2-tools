@@ -177,13 +177,14 @@ f2t_register_help("map export", {
 })
 
 f2t_register_help("map import", {
-    description = "Import a map from a JSON file",
+    description = "Import a map from a JSON file or a bundled map database",
     usage = {
         {cmd="map import", desc="Select file and show summary"},
+        {cmd="map import db", desc="Open the bundled map database picker"},
         {cmd="map confirm", desc="Confirm and execute the import"},
         {cmd="map cancel", desc="Cancel the import"},
     },
-    examples = {"map import", "map confirm", "map cancel"},
+    examples = {"map import", "map import db", "map confirm", "map cancel"},
 })
 
 f2t_register_help("map special", {

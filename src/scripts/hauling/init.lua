@@ -117,20 +117,21 @@ F2T_HAULING_STATE = {
 
 f2t_settings_register("hauling", "margin_threshold", {
     tab         = "Fed2-Tools/Hauling",
+    label       = "Margin threshold (%)",
     description = "Minimum profit margin % to continue trading a commodity",
     default     = 40,
     min = 0, max = 100,
 })
 
 f2t_settings_register("hauling", "cycle_pause", {
-    tab         = "Fed2-Tools/Hauling",
+    label       = "Cycle pause (s)",
     description = "Seconds to pause after completing all 5 commodities (0 = no pause)",
     default     = 60,
     min = 0, max = 300,
 })
 
 f2t_settings_register("hauling", "use_safe_room", {
-    tab         = "Fed2-Tools/Hauling",
+    label       = "Use safe room",
     description = "Return to safe room on completion, failure, or cycle pause",
     default     = false,
 })
@@ -139,40 +140,40 @@ f2t_settings_register("hauling", "use_safe_room", {
 -- "shared" namespace alongside stamina settings; moved here so it gets the
 -- Hauling tab and carries no orphan-namespace baggage.
 f2t_settings_register("hauling", "safe_room", {
-    tab         = "Fed2-Tools/Hauling",
+    label       = "Safe room",
     description = "Safe room location automation returns to on failure, completion, or pause",
     default     = "Sol.Earth.454",
 })
 
 f2t_settings_register("hauling", "excluded_commodities", {
-    tab         = "Fed2-Tools/Hauling",
+    label       = "Excluded commodities",
     description = "Comma-separated list of commodities to exclude from trading",
     default     = "",
 })
 
 f2t_settings_register("hauling", "po_mode", {
-    tab         = "Fed2-Tools/Hauling",
+    label       = "PO mode",
     description = "PO hauling mode: 'both' (deficit + excess) or 'deficit' (deficit only)",
     default     = "both",
     choices     = {"both", "deficit"},
 })
 
 f2t_settings_register("hauling", "po_deficit_threshold", {
-    tab         = "Fed2-Tools/Hauling",
+    label       = "PO deficit threshold",
     description = "Stock level at or below which deficit hauling triggers",
     default     = -525,
     min = -525, max = -75,
 })
 
 f2t_settings_register("hauling", "po_excess_threshold", {
-    tab         = "Fed2-Tools/Hauling",
+    label       = "PO excess threshold",
     description = "Stock level at or above which excess selling triggers",
     default     = 20000,
     min = 750, max = 20000,
 })
 
 f2t_settings_register("hauling", "po_max_sell_attempts", {
-    tab         = "Fed2-Tools/Hauling",
+    label       = "Max sell attempts",
     description = "Maximum sell locations to try before jettisoning cargo",
     default     = 3,
     min = 1, max = 10,

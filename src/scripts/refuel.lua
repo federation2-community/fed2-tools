@@ -6,13 +6,15 @@
 -- GMCP-driven top-up and the emergency out-of-fuel trigger.
 
 f2t_settings_register("refuel", "enabled", {
-    tab         = "Fed2-Tools/Refuel",
+    tab         = "Fed2-Tools/Misc",
+    order       = 2,
+    label       = "Auto refuel",
     description = "Enable automatic refueling at shuttlepads and emergency refueling",
     default     = true,
 })
 
 f2t_settings_register("refuel", "threshold", {
-    tab         = "Fed2-Tools/Refuel",
+    label       = "Refuel threshold (%)",
     description = "Auto-refuel when fuel is at or below this % while at a shuttlepad (0 = never auto-refuel)",
     default     = 50,
     min = 0, max = 99,

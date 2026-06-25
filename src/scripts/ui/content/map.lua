@@ -6,6 +6,11 @@
 -- f2tRegisterMapContent() is called from init.lua's muxletReady handler.
 
 local function buildContentDef()
+    -- Token-based guard: each apply mints a new token table.  The deferred timer
+    -- checks this token before building; remove() clears it so a timer that fires
+    -- after removal is a no-op (prevents orphaned mapper on rapid apply→remove).
+    local activeToken = nil
+
     return {
         name        = "Fed2 Map",
         description = "Federation 2 mapper",
@@ -16,45 +21,83 @@ local function buildContentDef()
             target.contentBg:echo("")
             target.contentBg:setStyleSheet("background-color: rgba(0,0,0,0); border: none;")
 
+            -- Snapshot map emptiness BEFORE mounting the mapper.  Auto-mapping
+            -- fires when the widget first renders, so checking after would give a
+            -- false "has rooms" reading on a genuinely fresh profile.
+            local preRooms   = getRooms()
+            local mapIsEmpty = not preRooms or not next(preRooms)
+
             -- Use _gid (never recycled) for the widget name so that closing a
             -- pane and creating a new one with the same user-facing id does not
-            -- alias the old, now-hidden mapper widget and show blank content.
+            -- alias the old mapper widget and show blank content.
             local mapperName = target._gid .. "_fed2mapper"
-            local capturedTarget = target
+            local gid        = target._gid
+
+            -- target.content points to the framework's slot container right now
+            -- (during apply).  After this function returns, the framework restores
+            -- target.content to the real pane container, so any deferred callback
+            -- must capture the slot reference here before returning.
+            local slotContent = target.content
+
+            local myToken = {}
+            activeToken = myToken
+
             tempTimer(0.1, function()
-                local existing = Geyser.windowList[mapperName]
-                if existing then
-                    existing:show()
-                    existing:raise()
-                else
+                if activeToken ~= myToken then return end
+                activeToken = nil
+
+                -- Build the mapper + overlays under pcall so that a failure here
+                -- can never swallow the import-check scheduling below — that gap
+                -- is what previously kept the first-run import dialog from firing.
+                local ok, err = pcall(function()
                     Geyser.Mapper:new({
                         name   = mapperName,
                         x      = "0%",
                         y      = "0%",
                         width  = "100%",
                         height = "100%",
-                    }, capturedTarget.content)
-                end
+                    }, slotContent)
 
-                -- Movement button overlay lives on top of the mapper.
-                local mvName = capturedTarget._gid .. "_mv_shell"
-                if not Geyser.windowList[mvName] then
+                    -- Movement button overlay lives on top of the mapper.
                     if f2tBuildMapMovement then
-                        local mvShell = f2tBuildMapMovement(capturedTarget.content, capturedTarget._gid)
+                        local mvShell = f2tBuildMapMovement(slotContent, gid)
                         if mvShell then mvShell:raise() end
                     end
-                else
-                    Geyser.windowList[mvName]:show()
-                    Geyser.windowList[mvName]:raise()
+
+                    -- Settings gear (manual import/export) — top of the overlay stack.
+                    if f2tBuildMapSettings then
+                        local setShell = f2tBuildMapSettings(slotContent, gid)
+                        if setShell then setShell:raise() end
+                    end
+                end)
+                if not ok then
+                    f2t_debug_log("[map content] overlay build error: %s", tostring(err))
                 end
 
-                -- Trigger map import dialog if the map DB is empty or an upgrade
-                -- flagged a new database.  Deferred further so any onboarding
-                -- dialog that just closed has a chance to finish animating out.
+                -- Offer the map import dialog on first load / after an upgrade,
+                -- OR whenever the map is empty regardless of version-seen flag.
+                -- Deferred so any onboarding dialog that just closed animates out.
                 tempTimer(0.5, function()
-                    if f2tCheckMapImport then f2tCheckMapImport() end
+                    if mapIsEmpty then
+                        if f2tShowMapImportDialog then
+                            f2tShowMapImportDialog("firstrun")
+                        else
+                            f2t_debug_log("[map content] f2tShowMapImportDialog missing — cannot offer import")
+                        end
+                    elseif f2tCheckMapImport then
+                        f2tCheckMapImport()
+                    else
+                        f2t_debug_log("[map content] f2tCheckMapImport missing — cannot offer import")
+                    end
                 end)
             end)
+        end,
+
+        -- Geyser.Container:delete() does not call closeMapWidget() on mapper
+        -- children — the native Qt widget must be closed explicitly.
+        remove = function(_target)
+            activeToken = nil
+            closeMapWidget()
         end,
 
     }

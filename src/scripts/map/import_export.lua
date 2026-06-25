@@ -48,27 +48,50 @@ local function get_map_file_info(file_path)
     return room_count, area_count, nil
 end
 
-local function f2t_map_import_execute(data)
-    local file_path = data.file_path
+-- Silently import a map from a known file path. No file dialog, no
+-- confirmation prompt, no console output — the caller decides how to report.
+-- Wipes the current map, loads the JSON, refreshes the renderer, and (if the
+-- mapper is enabled) syncs to the current location.
+--
+-- Returns: ok (boolean), room_count (number) on success, or error_msg (string)
+-- on failure.  Single source of truth for "load a map file into the profile" —
+-- the resource-picker dialog and f2t_map_import_execute both route through it.
+function f2t_map_import_file(file_path)
+    local file = io.open(file_path, "r")
+    if not file then return false, "File not found" end
+    file:close()
+
     deleteMap()
     F2T_MAP_CURRENT_ROOM_ID = nil
+
     local success, error_msg = loadJsonMap(file_path)
-    if success then
-        updateMap()
-        local rooms = getRooms()
-        local new_room_count = 0
-        for _ in pairs(rooms) do new_room_count = new_room_count + 1 end
+    if not success then return false, error_msg or "unknown error" end
+
+    updateMap()
+    local new_room_count = 0
+    for _ in pairs(getRooms()) do new_room_count = new_room_count + 1 end
+
+    if F2T_MAP_ENABLED and f2t_map_sync then
+        tempTimer(0.5, function() f2t_map_sync() end)
+    end
+
+    return true, new_room_count
+end
+
+local function f2t_map_import_execute(data)
+    local file_path = data.file_path
+    local ok, result = f2t_map_import_file(file_path)
+    if ok then
         cecho("\n<green>[map]<reset> Map imported successfully\n")
-        cecho(string.format("\n<dim_grey>  Rooms: %d<reset>\n", new_room_count))
+        cecho(string.format("\n<dim_grey>  Rooms: %d<reset>\n", result))
         cecho(string.format("\n<dim_grey>  File: %s<reset>\n", file_path))
         if F2T_MAP_ENABLED then
             cecho("\n<green>[map]<reset> Synchronizing with current location...\n")
-            tempTimer(0.5, function() f2t_map_sync() end)
         end
         return true
     else
         cecho("\n<red>[map]<reset> Import failed\n")
-        if error_msg then cecho(string.format("\n<dim_grey>  Error: %s<reset>\n", error_msg)) end
+        if result then cecho(string.format("\n<dim_grey>  Error: %s<reset>\n", result)) end
         return false
     end
 end

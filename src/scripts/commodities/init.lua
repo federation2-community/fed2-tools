@@ -12,7 +12,9 @@
 -- widget, so it is dropped.
 
 f2t_settings_register("commodities", "results_count", {
-    tab         = "Fed2-Tools/Commodities",
+    tab         = "Fed2-Tools/Misc",
+    order       = 4,
+    label       = "Results count",
     description = "Number of top exchanges to show in price tables",
     default     = 5,
     min = 1, max = 20,
