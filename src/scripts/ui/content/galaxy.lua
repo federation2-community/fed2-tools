@@ -59,6 +59,10 @@ end
 -- Send "di systems" and begin capturing. Safe to call repeatedly; the loading
 -- guard prevents overlap. Bails when offline (the command needs the game).
 function f2t_galaxy_scrape()
+    if not F2T_LOGGED_IN then
+        f2t_debug_log("[galaxy] scrape skipped (not logged in)")
+        return
+    end
     if F2T_GALAXY.loading then return end
     if F2T_CONNECTED == false then
         f2t_debug_log("[galaxy] scrape skipped (offline)")
@@ -434,17 +438,18 @@ function f2tRegisterGalaxy()
         icon  = "🌌",
         run   = function() f2t_galaxy_toggle() end,
     })
-    -- Background scrape now if already connected; otherwise the connect handler does it.
-    if F2T_CONNECTED ~= false then f2t_galaxy_schedule_scrape(3) end
+    -- Background scrape now only if already connected AND logged in (hot-reload case).
+    -- Normal login path: f2tCharacterChanged fires after vitals and schedules the scrape.
+    if F2T_CONNECTED ~= false and F2T_LOGGED_IN then f2t_galaxy_schedule_scrape(3) end
     f2t_debug_log("[galaxy] registered content + action")
 end
 
 -- ── Connection awareness ─────────────────────────────────────────────────────────
--- Scrape in the background on (re)connect and on character switch; refresh any
--- open navigator immediately so the offline/online banner stays accurate.
+-- Refresh open navigator on (re)connect. Do NOT schedule a scrape here:
+-- di systems would fire during the login sequence. The f2tCharacterChanged
+-- handler below schedules the scrape after login is confirmed.
 registerAnonymousEventHandler("sysConnectionEvent", function()
     if f2t_check_connection then f2t_check_connection() end
-    if F2T_CONNECTED then f2t_galaxy_schedule_scrape(3) end
     f2t_galaxy_refresh_open()
 end)
 

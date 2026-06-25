@@ -36,22 +36,30 @@ local function markMapSeen()
     f2t_debug_log("[map-import] marked map_db_version_seen = %d", MAP_DB_VERSION)
 end
 
-function f2tCheckMapImport()
-    local seen = mapVersionSeen()
-
-    -- Never offered on this profile → first-run.  Otherwise, a stale acknowledged
-    -- version → upgrade nudge.  Up to date → nothing to do.
+-- wasEmpty: boolean passed from map content apply() — true when getRooms()
+-- returned nothing before the mapper mounted.  An empty map always triggers
+-- the firstrun dialog regardless of the version-seen flag (the user may have
+-- wiped their map).  When wasEmpty is false the seen flag drives the decision.
+function f2tCheckMapImport(wasEmpty)
     local reason
-    if seen <= 0 then
+    if wasEmpty then
+        -- Map was genuinely empty before mounting; offer firstrun unconditionally.
         reason = "firstrun"
-    elseif seen < MAP_DB_VERSION then
-        reason = "upgrade"
+        f2t_debug_log("[map-import] map was empty before mount — offering firstrun import")
     else
-        f2t_debug_log("[map-import] up to date (seen=%d, current=%d) — no prompt", seen, MAP_DB_VERSION)
-        return
+        local seen = mapVersionSeen()
+        -- Never offered on this profile → first-run.  Otherwise, a stale acknowledged
+        -- version → upgrade nudge.  Up to date → nothing to do.
+        if seen <= 0 then
+            reason = "firstrun"
+        elseif seen < MAP_DB_VERSION then
+            reason = "upgrade"
+        else
+            f2t_debug_log("[map-import] up to date (seen=%d, current=%d) — no prompt", seen, MAP_DB_VERSION)
+            return
+        end
+        f2t_debug_log("[map-import] offering import dialog (reason=%s, seen=%d)", reason, seen)
     end
-
-    f2t_debug_log("[map-import] offering import dialog (reason=%s, seen=%d)", reason, seen)
 
     if not f2tShowMapImportDialog then
         f2t_debug_log("[map-import] f2tShowMapImportDialog missing — cannot prompt")

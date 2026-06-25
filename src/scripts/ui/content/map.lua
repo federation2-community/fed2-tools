@@ -57,6 +57,10 @@ local function buildContentDef()
                         width  = "100%",
                         height = "100%",
                     }, slotContent)
+                    -- Track the mapper widget name so remove() can explicitly
+                    -- hide it; closeMapWidget() alone does not always un-render
+                    -- the Geyser.Mapper overlay on the target's content area.
+                    target._activeMapperName = mapperName
 
                     -- Movement button overlay lives on top of the mapper.
                     if f2tBuildMapMovement then
@@ -75,17 +79,12 @@ local function buildContentDef()
                 end
 
                 -- Offer the map import dialog on first load / after an upgrade,
-                -- OR whenever the map is empty regardless of version-seen flag.
-                -- Deferred so any onboarding dialog that just closed animates out.
+                -- OR whenever the map was empty before mounting.  mapIsEmpty is
+                -- passed so f2tCheckMapImport can bypass the version-seen flag
+                -- when the map was genuinely empty (user may have wiped it).
                 tempTimer(0.5, function()
-                    if mapIsEmpty then
-                        if f2tShowMapImportDialog then
-                            f2tShowMapImportDialog("firstrun")
-                        else
-                            f2t_debug_log("[map content] f2tShowMapImportDialog missing — cannot offer import")
-                        end
-                    elseif f2tCheckMapImport then
-                        f2tCheckMapImport()
+                    if f2tCheckMapImport then
+                        f2tCheckMapImport(mapIsEmpty)
                     else
                         f2t_debug_log("[map content] f2tCheckMapImport missing — cannot offer import")
                     end
@@ -93,10 +92,16 @@ local function buildContentDef()
             end)
         end,
 
-        -- Geyser.Container:delete() does not call closeMapWidget() on mapper
-        -- children — the native Qt widget must be closed explicitly.
-        remove = function(_target)
+        -- Geyser.Mapper overlays the Geyser label rather than being a true Qt
+        -- child of it, so hiding the parent container does not cascade to the
+        -- mapper Qt widget.  Explicitly hide its Geyser representation first,
+        -- then close the standalone mapper widget for belt-and-suspenders cleanup.
+        remove = function(target)
             activeToken = nil
+            if target._activeMapperName then
+                pcall(function() hideWindow(target._activeMapperName) end)
+                target._activeMapperName = nil
+            end
             closeMapWidget()
         end,
 

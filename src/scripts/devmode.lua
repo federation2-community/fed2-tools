@@ -43,6 +43,14 @@ end
 -- Recursive 30-second timer. Does nothing when the stamp file is absent
 -- (standard production installs have no stamp file).
 local function f2tDevmodeCheck()
+    -- Defer all file I/O and reloads until after login. The synchronous
+    -- io.open call blocks Mudlet's main thread; if it fires during the
+    -- password prompt the brief freeze can corrupt the login sequence.
+    if not F2T_LOGGED_IN then
+        tempTimer(5, f2tDevmodeCheck)
+        return
+    end
+
     local home      = getMudletHomeDir()
     local stampPath = home .. "/fed2-tools-rebuild.stamp"
     local file      = io.open(stampPath, "r")

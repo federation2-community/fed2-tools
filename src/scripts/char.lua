@@ -14,7 +14,8 @@
 --
 -- When the character changes, fires raiseEvent("f2tCharacterChanged", newName, oldName).
 
-F2T_CHAR_NAME = nil
+F2T_CHAR_NAME  = nil
+F2T_LOGGED_IN  = false
 
 local loginDone = false
 local PERSISTENT_BASE = getMudletHomeDir() .. "/fed2-tools_persistent"
@@ -34,6 +35,7 @@ registerAnonymousEventHandler("gmcp.char.vitals", function()
     local prev    = F2T_CHAR_NAME
     F2T_CHAR_NAME = name
     loginDone     = true
+    F2T_LOGGED_IN = true
 
     lfs.mkdir(PERSISTENT_BASE)
     lfs.mkdir(f2t_get_char_persistent_dir())
@@ -47,5 +49,6 @@ end)
 
 -- Reset so the next login after a reconnect is detected fresh.
 registerAnonymousEventHandler("sysConnectionEvent", function()
-    loginDone = false
+    loginDone     = false
+    F2T_LOGGED_IN = false
 end)
