@@ -169,9 +169,84 @@ local function galaxyInfo(kind, name)
     send("di " .. kind .. " " .. name)   -- cartel / system / planet detail to the main console
 end
 
--- ── Rendering ──────────────────────────────────────────────────────────────────
--- One MiniConsole per content target, keyed by the pane/tab's stable _gid.
-local consoles = {}
+-- ── Search match helpers (ported from v1 archive ui_galaxy) ───────────────────
+local function qMatches(name, q)
+    return name and q ~= "" and name:lower():find(q:lower(), 1, true) ~= nil
+end
+local function planetMatches(pd, q) return qMatches(pd.name, q) end
+local function systemHasMatch(sd, q)
+    if qMatches(sd.name, q) then return true end
+    for _, pd in ipairs(sd.planets or {}) do if planetMatches(pd, q) then return true end end
+    return false
+end
+local function systemHasPlanetMatch(sd, q)
+    for _, pd in ipairs(sd.planets or {}) do if planetMatches(pd, q) then return true end end
+    return false
+end
+local function cartelHasMatch(cd, q)
+    if qMatches(cd.name, q) then return true end
+    for _, sd in pairs(cd.systems or {}) do if systemHasMatch(sd, q) then return true end end
+    return false
+end
+local function cartelHasChildrenMatch(cd, q)
+    for _, sd in pairs(cd.systems or {}) do if systemHasMatch(sd, q) then return true end end
+    return false
+end
+
+-- ── Styles (self-contained; no dependency on the v1 UI.style table) ───────────
+local ROW_H      = 24    -- px per row (tied to font size, not pane size)
+local INDENT_PCT = 4
+local EXPAND_PCT = 5
+local ICON_PCT   = 5
+local NAV_X      = "93%"
+local NAV_W      = "5%"
+
+local CSS_BG     = "background-color: rgb(18,18,26); border: none;"
+local CSS_ROW    = "background-color: rgb(22,22,30); border: none; border-bottom: 1px solid rgba(255,255,255,35);"
+local CSS_HEADER = "background-color: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #2a2a3a, stop:0.4 #1e1e2a, stop:1 #16161e); border:none;"
+local CSS_BTN    = [[
+    QLabel{ background-color: rgba(40,40,45,200); border:1px solid rgba(100,100,110,180);
+        border-radius:3px; color: rgba(200,200,210,255); font-size:11px; font-weight:bold;
+        qproperty-alignment: AlignCenter; }
+    QLabel::hover{ background-color: rgba(60,60,70,220); border-color: rgba(120,180,255,200); color:white; }
+]]
+local CSS_BTN_CUR = [[
+    QLabel{ background-color: rgba(40,40,45,200); border:1px solid rgba(255,140,0,200);
+        border-radius:3px; color: rgba(200,200,210,255); font-size:11px; font-weight:bold;
+        qproperty-alignment: AlignCenter; }
+    QLabel::hover{ background-color: rgba(60,60,70,220); border-color: rgba(255,165,0,255); color:white; }
+]]
+local CSS_NAV = [[
+    QLabel{ background-color: rgba(40,120,80,210); border:1px solid rgba(60,140,100,180);
+        border-radius:3px; color:white; font-size:10px; font-weight:bold; qproperty-alignment:AlignCenter; }
+    QLabel::hover{ background-color: rgba(55,150,95,230); }
+]]
+local ICONS = { cartel = { "🌌", "#ff6b9d" }, system = { "⭐", "#ffd700" }, planet = { "🌍", "#4ecdc4" } }
+
+-- Small square icon button (refresh / collapse / clear): bordered square, bigger glyph.
+local CSS_ICONBTN = [[
+    QLabel{ background-color: rgba(40,40,45,210); border:1px solid rgba(100,100,110,180);
+        border-radius:3px; color: rgba(210,210,220,255); font-size:14px; font-weight:bold;
+        qproperty-alignment: AlignCenter; }
+    QLabel::hover{ background-color: rgba(60,60,70,230); border-color: rgba(120,180,255,210); color:white; }
+]]
+
+-- ScrollBox chrome (copied from the gmcp viewer fix): dark viewport, no horizontal
+-- bar, a fixed 8px dark vertical bar, and a dark corner.  Combined with content
+-- that fills the FULL scrollbox width, this removes the white strip that used to
+-- appear left of the scrollbar when shrinking the pane.
+local CSS_SCROLL = [[
+    background: rgb(18,18,26); border: none;
+    QScrollBar:horizontal { height: 0px; max-height: 0px; }
+    QScrollBar:vertical { background: rgba(20,22,32,0.95); width: 8px; border: none; }
+    QScrollBar::handle:vertical { background: rgba(70,90,135,0.85); border-radius: 4px; min-height: 16px; }
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; border: none; }
+    QAbstractScrollArea::corner { background: rgb(18,18,26); }
+]]
+
+-- One instance per content target, keyed by the pane/tab's stable _gid.
+-- Each holds its own header/scroll/footer widgets and search state.
+local instances = {}
 
 local function ageStr(ts)
     if not ts or ts == 0 then return "never" end
@@ -182,99 +257,296 @@ local function ageStr(ts)
     else                    return string.format("%dd ago", math.floor(age / 86400)) end
 end
 
-local function renderConsole(mc)
-    if not mc then return end
-    mc:clear()
+-- ── Styled row (cartel / system / planet) ────────────────────────────────────
+local function createRow(inst, parent, name, row_type, indent_level, y_px, data, is_current)
+    local cartel_ctx = (data and data.cartel) or ""
+    -- "_r" suffix keeps the uid from ending in a Class$ pattern Geyser would skip.
+    local uid = (string.format("gx_%s_%d_%s_%s_%s", inst.gid, inst.epoch, row_type, cartel_ctx, name)
+        :gsub("[^%w_]", "_")) .. "_r"
+
+    local row = Geyser.Label:new({ name = uid, x = 0, y = y_px, width = "100%", height = ROW_H }, parent)
+    row:setStyleSheet(CSS_ROW)
+
+    local indent_pct = 1 + indent_level * INDENT_PCT
+
+    local exp_key
+    if row_type == "cartel" then exp_key = name
+    elseif row_type == "system" then exp_key = cartel_ctx .. ":" .. name end
+
+    if exp_key then
+        local is_exp = F2T_GALAXY.expanded[exp_key] or false
+        local ebtn = Geyser.Label:new({ name = uid .. "_exp", x = indent_pct .. "%", y = 1,
+            width = EXPAND_PCT .. "%", height = ROW_H - 2 }, row)
+        ebtn:setStyleSheet(CSS_BTN)
+        ebtn:echo(is_exp and "<center>−</center>" or "<center>+</center>")
+        ebtn:setClickCallback(function()
+            F2T_GALAXY.expanded[exp_key] = not F2T_GALAXY.expanded[exp_key]
+            tempTimer(0, f2t_galaxy_refresh_open)   -- defer: don't rebuild mid click-propagation
+        end)
+    end
+
+    local icon_x_pct = indent_pct + EXPAND_PCT
+    local ic = ICONS[row_type]
+    local icon = Geyser.Label:new({ name = uid .. "_ico", x = icon_x_pct .. "%", y = 1,
+        width = ICON_PCT .. "%", height = ROW_H - 2 }, row)
+    icon:setStyleSheet(string.format("background-color:transparent; color:%s; font-size:11px;", ic[2]))
+    icon:echo("<center>" .. ic[1] .. "</center>")
+
+    local name_x_pct = icon_x_pct + ICON_PCT
+    local has_nav    = (row_type == "system" or row_type == "planet")
+    local name_end   = has_nav and 91 or 97
+    local name_w_pct = math.max(5, name_end - name_x_pct)
+
+    local nlbl = Geyser.Label:new({ name = uid .. "_name", x = name_x_pct .. "%", y = 1,
+        width = name_w_pct .. "%", height = ROW_H - 2 }, row)
+    nlbl:setStyleSheet(is_current and CSS_BTN_CUR or CSS_BTN)
+    nlbl:echo(name)
+    nlbl:setClickCallback(function() galaxyInfo(row_type, name) end)
+    nlbl:setToolTip("Click for info (di " .. row_type .. ")")
+
+    if has_nav then
+        local nbtn = Geyser.Label:new({ name = uid .. "_nav", x = NAV_X, y = 1,
+            width = NAV_W, height = ROW_H - 2 }, row)
+        nbtn:setStyleSheet(CSS_NAV)
+        nbtn:echo("<center>→</center>")
+        nbtn:setClickCallback(function() f2t_galaxy_nav_to(row_type, name) end)
+        nbtn:setToolTip("Navigate here")
+    end
+
+    inst.rows[#inst.rows + 1] = row
+    return row
+end
+
+-- ── Populate one instance's scroll tree (with search filtering) ───────────────
+local function populate(gid)
+    local inst = instances[gid]
+    if not inst or not inst.scroll then return end
+    inst.epoch = (inst.epoch or 0) + 1
+
+    -- Track the live viewport so content fills the full width (no white strip by
+    -- the scrollbar) and is never shorter than the viewport (no white gap below
+    -- the rows when collapsed).
+    if inst.scroll.get_width then
+        local w = inst.scroll:get_width()
+        if w and w > 0 then inst.contentW = math.max(50, w) end
+    end
+    local viewportH = (inst.scroll.get_height and inst.scroll:get_height()) or 0
+    if viewportH <= 0 then viewportH = 200 end
+    pcall(function() inst.stateLbl:resize(inst.contentW, viewportH) end)
+    pcall(function() inst.content:resize(inst.contentW, viewportH) end)
+
+    if inst.refreshIcon then
+        inst.refreshIcon:setToolTip("Refresh — last: " .. ageStr(F2T_GALAXY.builtAt))
+    end
+
+    for _, r in ipairs(inst.rows) do pcall(function() r:delete() end) end
+    inst.rows = {}
+
     local g = F2T_GALAXY
 
-    if F2T_CONNECTED == false then
-        mc:cecho("<yellow>○ Offline<reset> <dim_grey>— showing last scrape<reset>\n")
+    -- State (loading / empty) shown on the permanent state label.
+    local function showState(msg)
+        inst.content:hide()
+        inst.stateMsg:echo("<center>" .. msg .. "</center>")
+        inst.stateLbl:show()
     end
 
-    if g.loading then
-        mc:cecho("\n<yellow>Loading galaxy data…<reset>  <dim_grey>(di systems)<reset>\n")
-        return
-    end
-
+    if g.loading then showState("Loading galaxy data…"); return end
     if not g.loaded or not g.cartels or next(g.cartels) == nil then
-        mc:cecho("\n<dim_grey>No galaxy data yet.<reset>\n\n")
-        mc:echoLink("⟳ Load from 'di systems'", function() f2t_galaxy_scrape() end,
-            "Run di systems and build the navigator", true)
-        mc:cecho("\n")
-        return
+        showState("Galaxy data is not loaded.<br/>Click ⟳ in the header to load it."); return
     end
 
-    -- Header: age + refresh + collapse-all
-    mc:cecho(string.format("<cyan>🔭 Galaxy<reset>  <dim_grey>%s<reset>   ", ageStr(g.builtAt)))
-    mc:echoLink("⟳", function() f2t_galaxy_scrape() end, "Refresh (di systems)", true)
-    mc:cecho("  ")
-    mc:echoLink("⊟", function() g.expanded = {}; f2t_galaxy_refresh_open() end, "Collapse all", true)
-    mc:cecho("\n<dim_grey>Click a name for info · click → to navigate<reset>\n\n")
+    inst.stateLbl:hide()
+    inst.content:show()
 
-    -- Current location (for a ▶ marker)
+    local q = ""
+    if inst.searchCmd then q = (inst.searchCmd:getText() or ""):match("^%s*(.-)%s*$") end
+    local searching = q ~= ""
+
+    local sorted = {}
+    for cn in pairs(g.cartels) do sorted[#sorted + 1] = cn end
+    table.sort(sorted)
+
     local ri         = gmcp and gmcp.room and gmcp.room.info
     local cur_cartel = ri and ri.cartel or ""
     local cur_system = ri and ri.system or ""
     local cur_area   = ri and ri.area   or ""
+    local cur_planet = ""
+    local _ccd = cur_cartel ~= "" and g.cartels[cur_cartel]
+    local _csd = _ccd and _ccd.systems[cur_system]
+    if _csd then
+        for _, pd in ipairs(_csd.planets or {}) do
+            if pd.name == cur_area then cur_planet = cur_area; break end
+        end
+    end
 
-    local cnames = {}
-    for cn in pairs(g.cartels) do cnames[#cnames + 1] = cn end
-    table.sort(cnames)
-
-    for _, cn in ipairs(cnames) do
-        local cd   = g.cartels[cn]
-        local cexp = g.expanded[cn] or false
-        mc:echoLink(cexp and "−" or "+",
-            function() g.expanded[cn] = not g.expanded[cn]; f2t_galaxy_refresh_open() end,
-            "Expand / collapse", true)
-        mc:cecho(" 🌌 ")
-        mc:echoLink(cn, function() galaxyInfo("cartel", cn) end, "di cartel " .. cn, true)
-        mc:cecho("\n")
-
-        if cexp then
-            local snames = {}
-            for sn in pairs(cd.systems) do snames[#snames + 1] = sn end
-            table.sort(snames)
-
-            for _, sn in ipairs(snames) do
-                local sd   = cd.systems[sn]
-                local skey = cn .. ":" .. sn
-                local sexp = g.expanded[skey] or false
-                local here = (sn == cur_system and cn == cur_cartel)
-                mc:cecho("   ")
-                mc:echoLink(sexp and "−" or "+",
-                    function() g.expanded[skey] = not g.expanded[skey]; f2t_galaxy_refresh_open() end,
-                    "Expand / collapse", true)
-                mc:cecho(here and " ⭐<yellow>▶<reset> " or " ⭐ ")
-                mc:echoLink(sn, function() galaxyInfo("system", sn) end, "di system " .. sn, true)
-                mc:cecho("  ")
-                mc:echoLink("→", function() f2t_galaxy_nav_to("system", sn) end, "Navigate to " .. sn, true)
-                mc:cecho("\n")
-
-                if sexp then
-                    if #sd.planets == 0 then
-                        mc:cecho("      <dim_grey>· space only<reset>\n")
-                    else
-                        for _, pd in ipairs(sd.planets) do
-                            local phere = (pd.name == cur_area and sn == cur_system)
-                            mc:cecho(phere and "      🌍<yellow>▶<reset> " or "      🌍 ")
-                            mc:echoLink(pd.name, function() galaxyInfo("planet", pd.name) end,
-                                "di planet " .. pd.name, true)
-                            mc:cecho("  ")
-                            mc:echoLink("→", function() f2t_galaxy_nav_to("planet", pd.name) end,
-                                "Navigate to " .. pd.name, true)
-                            mc:cecho("\n")
+    local y = 2
+    for _, cn in ipairs(sorted) do
+        local cd = g.cartels[cn]
+        if not searching or cartelHasMatch(cd, q) then
+            createRow(inst, inst.content, cn, "cartel", 0, y, cd); y = y + ROW_H
+            local auto_c = searching and cartelHasChildrenMatch(cd, q)
+            if g.expanded[cn] or auto_c then
+                local ss = {}
+                for sn in pairs(cd.systems or {}) do ss[#ss + 1] = sn end
+                table.sort(ss)
+                for _, sn in ipairs(ss) do
+                    if sn ~= (cn .. " Space") then
+                        local sd = cd.systems[sn]
+                        local show_s = not searching or g.expanded[cn] or systemHasMatch(sd, q)
+                        if show_s then
+                            local sys_cur = (sn == cur_system) and (cn == cur_cartel) and (cur_planet == "")
+                            createRow(inst, inst.content, sn, "system", 1, y, sd, sys_cur); y = y + ROW_H
+                            local skey = cn .. ":" .. sn
+                            local s_named = searching and qMatches(sd.name, q)
+                            local auto_s  = searching and not s_named and systemHasPlanetMatch(sd, q)
+                            if g.expanded[skey] or auto_s then
+                                for _, pd in ipairs(sd.planets or {}) do
+                                    if pd.name ~= (sn .. " Space") then
+                                        local show_p = not searching or g.expanded[skey] or planetMatches(pd, q)
+                                        if show_p then
+                                            local pcur = (pd.name == cur_planet) and (sn == cur_system)
+                                            createRow(inst, inst.content, pd.name, "planet", 2, y, pd, pcur)
+                                            y = y + ROW_H
+                                        end
+                                    end
+                                end
+                            end
                         end
                     end
                 end
             end
         end
     end
+
+    -- Resize AFTER all rows exist (resizing mid-loop corrupts container refs).
+    -- Height is max(rows, viewport): fills the viewport when short (no white gap,
+    -- no phantom scroll) and grows to scroll when long.
+    pcall(function() inst.content:resize(inst.contentW or 200, math.max(y + 4, viewportH)) end)
 end
 
--- Re-render every open navigator (after a scrape or a connection change).
+-- ── Build the header / scroll / footer panel into a content target ────────────
+local function buildPanel(target)
+    local gid = target._gid
+    if target.contentBg then
+        target.contentBg:echo("")
+        target.contentBg:setStyleSheet("background-color: rgba(0,0,0,0); border: none;")
+    end
+    if instances[gid] then populate(gid); return end
+
+    local C = target.content
+    local inst = { gid = gid, epoch = 0, rows = {} }
+    instances[gid] = inst
+
+    local topbar_h, footer_h = 86, 24
+
+    -- Header bar (three rows: title+refresh / search+clear / collapse-all)
+    local topbar = Geyser.Label:new({ name = gid .. "_gx_top", x = 0, y = 0, width = "100%", height = topbar_h }, C)
+    topbar:setStyleSheet(CSS_HEADER)
+
+    -- Row 1: title (left) + refresh (small square, top-right of the content)
+    local title = Geyser.Label:new({ name = gid .. "_gx_title", x = 8, y = 6, width = "100%-44px", height = 22 }, topbar)
+    title:setStyleSheet("background-color:transparent; color:#c8c8d0; font-size:11px; font-weight:bold;")
+    title:echo("🔭 Galaxy Navigator")
+
+    inst.refreshIcon = Geyser.Label:new({ name = gid .. "_gx_ref", x = "-30", y = 6, width = 24, height = 24 }, topbar)
+    inst.refreshIcon:setStyleSheet(CSS_ICONBTN)
+    inst.refreshIcon:echo("<center>🔄</center>")
+    inst.refreshIcon:setToolTip("Refresh (di systems)")
+    inst.refreshIcon:setClickCallback(function() f2t_galaxy_scrape() end)
+
+    -- Row 2: search box (fills) + clear (✕) square on the far right
+    inst.searchCmd = Geyser.CommandLine:new({ name = gid .. "_gx_search", x = 8, y = 34, width = "100%-44px", height = 24 }, topbar)
+    inst.searchCmd:setStyleSheet([[
+        background-color: rgb(10,10,16); color: rgba(200,200,210,255); font-size:11px; font-weight:bold;
+        border:1px solid rgba(100,100,110,180); border-radius:3px; padding-left:4px; padding-right:4px;
+    ]])
+    inst.searchCmd:setAction(function() end)   -- never submit to the game on Enter
+
+    local clearBtn = Geyser.Label:new({ name = gid .. "_gx_clear", x = "-30", y = 34, width = 24, height = 24 }, topbar)
+    clearBtn:setStyleSheet(CSS_ICONBTN)
+    clearBtn:echo("<center>✕</center>")
+    clearBtn:setToolTip("Clear search")
+    clearBtn:setClickCallback(function()
+        if inst.searchCmd then
+            if inst.searchCmd.clear then pcall(function() inst.searchCmd:clear() end)
+            else pcall(function() inst.searchCmd:setText("") end) end
+        end
+        inst.lastSearch = ""
+        populate(gid)
+    end)
+
+    -- Row 3: collapse-all square (minus), left-aligned with the cartel expand column
+    local collapse = Geyser.Label:new({ name = gid .. "_gx_col", x = "1%", y = 60, width = 22, height = 22 }, topbar)
+    collapse:setStyleSheet(CSS_ICONBTN)
+    collapse:echo("<center>−</center>")
+    collapse:setToolTip("Collapse all")
+    collapse:setClickCallback(function() F2T_GALAXY.expanded = {}; f2t_galaxy_refresh_open() end)
+
+    -- Scroll area (styled chrome so no white strip appears beside the scrollbar)
+    inst.scroll = Geyser.ScrollBox:new({ name = gid .. "_gx_scroll", x = 0, y = topbar_h,
+        width = "100%", height = "100%-" .. (topbar_h + footer_h) .. "px" }, C)
+    pcall(function() inst.scroll:setStyleSheet(CSS_SCROLL) end)
+    -- Content fills the FULL scrollbox width; the 8px scrollbar overlaps only the
+    -- right edge (rows are left-anchored), so there is no uncovered white column.
+    inst.contentW = math.max(50, inst.scroll:get_width() or 220)
+
+    -- Permanent state label (loading / empty) and the row container.
+    inst.stateLbl = Geyser.Label:new({ name = gid .. "_gx_state", x = 0, y = 0, width = inst.contentW, height = 2000 }, inst.scroll)
+    inst.stateLbl:setStyleSheet(CSS_BG)
+    inst.stateMsg = Geyser.Label:new({ name = gid .. "_gx_statemsg", x = 0, y = "35%", width = "100%", height = 60 }, inst.stateLbl)
+    inst.stateMsg:setStyleSheet("background-color:transparent; color:rgba(190,190,200,210); font-size:11px;")
+
+    inst.content = Geyser.Label:new({ name = gid .. "_gx_content", x = 0, y = 0, width = inst.contentW, height = 2000 }, inst.scroll)
+    inst.content:setStyleSheet(CSS_BG)
+
+    -- Footer legend (a little taller so the text isn't cramped)
+    local footer = Geyser.Label:new({ name = gid .. "_gx_foot", x = 0, y = "-" .. footer_h, width = "100%", height = footer_h }, C)
+    footer:setStyleSheet(CSS_HEADER)
+    local legend = Geyser.Label:new({ name = gid .. "_gx_legend", x = "1%", y = 0, width = "98%", height = "100%" }, footer)
+    legend:setStyleSheet("background-color:transparent; color:rgba(160,160,170,190); font-size:9px;")
+    legend:echo("<center>🌌 Cartel&nbsp;&nbsp;&nbsp;⭐ System&nbsp;&nbsp;&nbsp;🌍 Planet</center>")
+
+    -- Auto-expand current cartel/system on open.
+    local ri = gmcp and gmcp.room and gmcp.room.info
+    if ri and ri.cartel and ri.cartel ~= "" then
+        F2T_GALAXY.expanded[ri.cartel] = true
+        if ri.system and ri.system ~= "" then F2T_GALAXY.expanded[ri.cartel .. ":" .. ri.system] = true end
+    end
+
+    populate(gid)
+
+    -- Debounced search poll: rebuild the tree shortly after typing stops.
+    inst.pollActive = true
+    inst.lastSearch = nil
+    local function poll()
+        local i = instances[gid]
+        if not i or not i.pollActive then return end
+        local q = (i.searchCmd and i.searchCmd:getText() or ""):match("^%s*(.-)%s*$")
+        if q ~= i.lastSearch then
+            i.lastSearch = q
+            if i.searchDebounce then killTimer(i.searchDebounce) end
+            i.searchDebounce = tempTimer(0.3, function()
+                i.searchDebounce = nil
+                if instances[gid] then populate(gid) end
+            end)
+        end
+        tempTimer(0.15, poll)
+    end
+    tempTimer(0.15, poll)
+end
+
+local function teardownPanel(gid)
+    local inst = instances[gid]
+    if not inst then return end
+    inst.pollActive = false
+    if inst.searchDebounce then killTimer(inst.searchDebounce); inst.searchDebounce = nil end
+    instances[gid] = nil   -- widgets are children of target.content; the slot delete removes them
+end
+
+-- Re-render every open navigator (after a scrape, expand toggle, or reconnect).
 function f2t_galaxy_refresh_open()
-    for _, mc in pairs(consoles) do pcall(renderConsole, mc) end
+    for gid in pairs(instances) do pcall(populate, gid) end
 end
 
 -- ── Content type ────────────────────────────────────────────────────────────────
@@ -285,38 +557,21 @@ local function buildGalaxyDef()
         singleton   = false,
 
         apply = function(target)
-            if target.contentBg then
-                target.contentBg:echo("")
-                target.contentBg:setStyleSheet("background-color: rgba(0,0,0,0); border: none;")
-            end
-            local mc = consoles[target._gid]
-            if not mc then
-                mc = Geyser.MiniConsole:new({
-                    name = target._gid .. "_galaxymc", x = 0, y = 0, width = "100%", height = "100%",
-                    scrollBar = true, fontSize = 9,
-                }, target.content)
-                mc:setColor(18, 18, 26)
-                mc:enableScrollBar()
-                consoles[target._gid] = mc
-            else
-                mc:show(); mc:raise()
-            end
-            renderConsole(mc)
+            local ok, err = pcall(buildPanel, target)
+            if not ok and f2t_debug_log then f2t_debug_log("[galaxy] apply error: %s", tostring(err)) end
         end,
 
         remove = function(target)
-            local mc = consoles[target._gid]
-            if mc then if mc.delete then mc:delete() else mc:hide() end end
-            consoles[target._gid] = nil
+            teardownPanel(target._gid)
         end,
 
         resize = function(target)
-            renderConsole(consoles[target._gid])   -- %-sized console tracks the parent; re-render keeps wrap sane
+            if instances[target._gid] then populate(target._gid) end
         end,
 
         serialize = function(_target) return {} end,     -- data is global; nothing per-instance
         restore   = function(_target, _data) end,
-        onReveal  = function(target) renderConsole(consoles[target._gid]) end,
+        onReveal  = function(target) populate(target._gid) end,
     }
 end
 

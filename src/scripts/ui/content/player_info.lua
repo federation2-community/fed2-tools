@@ -43,6 +43,13 @@ local BUTTON_CSS = [[
 ]]
 
 
+-- Fuel cell is a fixed width sized to its readout + Buy Fuel button (see layout
+-- note in buildContent). The readout region must fit "Fuel: 999/999".
+local FUEL_READOUT_W = 104
+local FUEL_BTN_X     = 106
+local FUEL_BTN_W     = 84
+local FUEL_CELL_W    = FUEL_BTN_X + FUEL_BTN_W + 2   -- = 192
+
 -- Groats target per rank (archive UI.magic_cash_numbers): the "promotion cash"
 -- threshold shown as Groats: cur/target.  Ranks past Financier have no fixed
 -- target, so only the current cash is shown.
@@ -151,6 +158,25 @@ local function refreshAll()
     for gid in pairs(instances) do pcall(refreshInstance, gid) end
 end
 
+-- Position the six cells: fuel (cell 2) fixed; the other five split the rest, the
+-- last cell taking the rounding remainder so there is never a gap on the right.
+local function layoutCells(inst)
+    if not inst or not inst.cells or not inst.host then return end
+    local W = inst.host.get_width and inst.host:get_width() or 0
+    if not W or W <= 0 then return end
+    local flexW = math.max(40, math.floor((W - FUEL_CELL_W) / 5))
+    local x = 0
+    for i = 1, 6 do
+        local w
+        if i == 2 then        w = FUEL_CELL_W
+        elseif i == 6 then    w = math.max(40, W - x)   -- fill remainder
+        else                  w = flexW end
+        local cell = inst.cells[i]
+        if cell then pcall(function() cell:move(x, 0); cell:resize(w, "100%") end) end
+        x = x + w
+    end
+end
+
 local function buildContent(target)
     local gid = target._gid
 
@@ -171,65 +197,50 @@ local function buildContent(target)
         return string.format("%s_pinfo_%d", gid, wc)
     end
 
-    -- Stat row: an HBox that fills the whole content area so the six cells share
-    -- the width evenly and rescale with the placement.
-    local box = Geyser.HBox:new({
-        name = wid(), x = 0, y = 0,
-        width = "100%", height = "100%",
-    }, target.content)
-
     -- Transparent text sub-label CSS (lets the cell's gradient show through).
     local CELL_TEXT_CSS =
         "background: transparent; border: none; color: #c8c8d0;" ..
-        ' padding: 4px 8px; font-family: "Consolas","Monaco",monospace;'
+        ' padding: 4px 6px; font-family: "Consolas","Monaco",monospace;'
 
-
-    local labels = {}
-    local buyBtn
+    -- Six cells laid out manually (NOT an HBox): the fuel cell is a FIXED width
+    -- sized to its readout + button, and the other five split the remaining width
+    -- evenly.  An HBox would size every cell proportionally, which forces the fuel
+    -- cell to either clip the fixed-size button or leave a growing empty gap to its
+    -- right as the bar widens.  layoutCells() (re)positions them on build/resize.
+    local cells = {}
     for i = 1, 6 do
-        if i == 2 then
-            -- Fuel cell: the readout plus an embedded Buy Fuel button on the
-            -- right.  Given a larger stretch factor so there is room for both the
-            -- value and the "⛽ Buy Fuel" button.  The cell keeps the row styling;
-            -- an inner text label holds the value (so it is what refreshInstance
-            -- echoes to) and the button is anchored at the right edge of the cell.
-            local cell = Geyser.Label:new({ name = wid(), h_stretch_factor = 1.8 }, box)
-            cell:setStyleSheet(H_LABEL_CSS)
-            cell.h_stretch_factor = 1.8
-
-            -- Fixed-pixel layout so the gap between readout and button stays small
-            -- and constant at any pane width (a percentage gap widens as the strip
-            -- grows).  The readout occupies a fixed text region; the button sits a
-            -- couple of px after it and is only as large as its label needs.
-            local fuelText = Geyser.Label:new({
-                name = wid(), x = 0, y = 0,
-                width = 92, height = "100%",
-            }, cell)
-            fuelText:setStyleSheet(CELL_TEXT_CSS)
-            pcall(function() fuelText:setFontSize(11) end)
-            labels[2] = fuelText
-
-            buyBtn = Geyser.Label:new({
-                name = wid(), x = 94, y = "15%",
-                width = 84, height = "70%",
-            }, cell)
-            buyBtn:setStyleSheet(BUTTON_CSS)
-            buyBtn:echo("<center>⛽&nbsp;Buy&nbsp;Fuel</center>")
-            buyBtn:setToolTip("Buy fuel at a shuttlepad")
-            buyBtn:setClickCallback(function() send("buy fuel") end)
-        else
-            local l = Geyser.Label:new({ name = wid() }, box)
-            l:setStyleSheet(H_LABEL_CSS)
-            pcall(function() l:setFontSize(11) end)
-            labels[i] = l
-        end
+        local cell = Geyser.Label:new({ name = wid(), x = 0, y = 0, width = 10, height = "100%" }, target.content)
+        cell:setStyleSheet(H_LABEL_CSS)
+        cells[i] = cell
     end
 
-    -- Hold label stays informative; the legacy inline cargo panel is now its own
-    -- registered content (fed2_cargo).
-    labels[6]:setToolTip("Cargo hold")
+    local labels = {}
+    -- Plain stat cells (1,3,4,5,6): the cell itself shows the text.
+    for _, i in ipairs({ 1, 3, 4, 5, 6 }) do
+        pcall(function() cells[i]:setFontSize(11) end)
+        labels[i] = cells[i]
+    end
 
-    instances[gid] = { labels = labels, buyBtn = buyBtn }
+    -- Fuel cell (2): inner readout (left) + small Buy Fuel button right after it.
+    local fuelText = Geyser.Label:new({
+        name = wid(), x = 0, y = 0, width = FUEL_READOUT_W, height = "100%",
+    }, cells[2])
+    fuelText:setStyleSheet(CELL_TEXT_CSS)
+    pcall(function() fuelText:setFontSize(11) end)
+    labels[2] = fuelText
+
+    local buyBtn = Geyser.Label:new({
+        name = wid(), x = FUEL_BTN_X, y = "20%", width = FUEL_BTN_W, height = "60%",
+    }, cells[2])
+    buyBtn:setStyleSheet(BUTTON_CSS)
+    buyBtn:echo("<center>⛽&nbsp;Buy&nbsp;Fuel</center>")
+    buyBtn:setToolTip("Buy fuel at a shuttlepad")
+    buyBtn:setClickCallback(function() send("buy fuel") end)
+
+    labels[6]:setToolTip("Cargo hold")   -- legacy inline cargo panel is now fed2_cargo
+
+    instances[gid] = { labels = labels, buyBtn = buyBtn, cells = cells, host = target.content }
+    layoutCells(instances[gid])
     refreshInstance(gid)
 end
 
@@ -250,8 +261,9 @@ local function buildPlayerInfoDef()
             instances[target._gid] = nil
         end,
         resize = function(target)
-            -- HBox + percentage anchors rescale automatically; re-echo so any
-            -- text that depends on width re-renders crisply.
+            -- Re-flow the fixed/flex cell layout, then re-echo (text may depend on width).
+            local inst = instances[target._gid]
+            if inst then layoutCells(inst) end
             refreshInstance(target._gid)
         end,
         serialize = function(_t) return {} end,

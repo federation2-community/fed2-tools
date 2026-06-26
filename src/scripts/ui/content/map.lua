@@ -1,32 +1,38 @@
 -- fed2-tools — Map content registration
 --
 -- Registers the Fed2 Map content with Muxlet: apply/remove lifecycle hooks that
--- mount and unmount the Geyser.Mapper widget inside a Muxlet pane.
+-- mount and unmount a Geyser.Mapper widget inside a Muxlet pane.
 --
 -- Why the mapper needs special handling
 -- -------------------------------------
 -- Muxlet tears down content by deleting the disposable Geyser.Container slot it
 -- wraps each apply() in; that delete is recursive, so for ordinary widgets no
--- remove() cleanup is needed.  A Geyser.Mapper is the exception: the Mudlet map
--- widget it wraps is NOT a true Qt child of its parent container, so deleting the
--- slot does not remove it, and Mudlet exposes no deleteMapper().  The previous
--- implementation also created a brand-new mapper on every apply and only called
--- hideWindow() on remove (a no-op for a mapper) — so removing the map content
--- left the mapper painted over whatever replaced it, and repeated applies leaked
--- mappers.
+-- remove() cleanup is needed.  A Geyser.Mapper is the exception on two counts:
+--   1. The Mudlet map widget it wraps is NOT a true Qt child of its container,
+--      so deleting the slot does not remove it (it would keep painting over
+--      whatever replaced it), and Mudlet exposes no deleteMapper().
+--   2. The native map is a GL surface that does NOT survive being reparented:
+--      reparenting it into a new slot (or hiding then re-showing it) leaves it
+--      blank, and updateMap()/show() do not revive it.
 --
--- The fix: keep ONE shared mapper for the whole session and move it between the
--- active content slot and a hidden "garage" container.  apply() acquires it into
--- the slot; remove() releases it back to the garage BEFORE the framework deletes
--- the slot, so it is never orphaned and never keeps drawing.
+-- So a single mapper cannot simply be moved between slots.  Instead we CREATE A
+-- FRESH mapper on every acquire (a fresh createMapper always renders), and PARK
+-- the previous one — hidden, in a persistent off-view garage container — on
+-- release.  Parked mappers are inert and invisible; they are kept referenced so
+-- they are never garbage-orphaned over live content.  (Mudlet has no deleteMapper,
+-- so a small number of parked widgets is the cost of reliable rendering; map
+-- content is normally placed once, not toggled in a hot loop.)
 --
 -- f2tRegisterMapContent() is called from init.lua's muxletReady handler.
 
--- ── Shared mapper management ────────────────────────────────────────────────────
-local sharedMapper = nil
+-- ── Mapper management ───────────────────────────────────────────────────────────
+local liveMapper  = nil    -- the mapper currently shown in a pane (or nil)
+local parked      = {}     -- previous mappers, hidden in the garage
 local mapperGarage = nil
+local mapperSeq   = 0
 
--- Hidden 1x1 holder the mapper lives in whenever no pane is showing it.
+-- Persistent, hidden, full-size holder that parked mappers live in so they are
+-- never orphaned inside a deleted content slot.
 local function ensureGarage()
     if mapperGarage then return mapperGarage end
     mapperGarage = Geyser.Container:new({
@@ -37,62 +43,49 @@ local function ensureGarage()
     return mapperGarage
 end
 
--- Acquire the shared mapper into `slotContent`, creating it on first use.
+-- Move the current live mapper into the hidden garage (and remember it).
+local function parkLive()
+    if not liveMapper then return end
+    ensureGarage()
+    local m = liveMapper
+    liveMapper = nil
+    pcall(function() m:hide() end)
+    pcall(function() m:changeContainer(mapperGarage) end)
+    parked[#parked + 1] = m
+end
+
+-- Acquire a mapper into `slotContent`.  Always a FRESH widget (reparenting an
+-- existing one renders blank), with the prior one parked first.
 local function mapperAcquire(slotContent)
     ensureGarage()
-    if not sharedMapper then
-        sharedMapper = Geyser.Mapper:new({
-            name   = "f2t_shared_mapper",
-            x      = "0%", y = "0%",
-            width  = "100%", height = "100%",
-        }, slotContent)
-    else
-        pcall(function() sharedMapper:changeContainer(slotContent) end)
-    end
+    parkLive()
+    mapperSeq = mapperSeq + 1
+    liveMapper = Geyser.Mapper:new({
+        name   = "f2t_mapper_" .. mapperSeq,
+        x      = "0%", y = "0%",
+        width  = "100%", height = "100%",
+    }, slotContent)
     pcall(function()
-        sharedMapper:move("0%", "0%")
-        sharedMapper:resize("100%", "100%")
-        sharedMapper:show()
-        sharedMapper:reposition()
+        liveMapper:show()
+        liveMapper:reposition()
     end)
-    -- The native map widget is a GL surface that does not reliably repaint just
-    -- because its Geyser wrapper was reparented and re-shown — after a prior hide
-    -- it commonly comes back blank.  Force a redraw now, then again on the next
-    -- event-loop turn once the new geometry has actually been applied (the widget
-    -- needs a tick after reparenting before resize/repaint takes).
     if updateMap then pcall(updateMap) end
-    tempTimer(0.05, function()
-        if not sharedMapper then return end
-        pcall(function()
-            sharedMapper:show()
-            sharedMapper:resize("100%", "100%")
-            sharedMapper:reposition()
-        end)
-        if updateMap then pcall(updateMap) end
-    end)
-    return sharedMapper
+    return liveMapper
 end
 
--- Park the shared mapper back in the hidden, full-size garage and hide it.
--- Called from remove() BEFORE the slot is destroyed so the mapper is never
--- orphaned in a deleted container.  Crucially it is NOT resized here: shrinking
--- it to a tiny garage collapsed the GL surface and it came back blank on the next
--- acquire.  The garage is full-window-size, so the parked mapper keeps a sane
--- size and only needs re-fitting to the new slot when re-acquired.
+-- Park the live mapper on content removal, BEFORE the slot is destroyed, so it is
+-- never orphaned in a deleted container nor left drawing over the replacement.
 local function mapperRelease()
-    if not sharedMapper then return end
-    ensureGarage()
-    pcall(function() sharedMapper:hide() end)
-    pcall(function() sharedMapper:changeContainer(mapperGarage) end)
+    parkLive()
 end
 
--- Refit the mapper to the current slot (called from resize()).
+-- Refit the live mapper to the current slot (called from resize()).
 local function mapperFit()
-    if not sharedMapper then return end
+    if not liveMapper then return end
     pcall(function()
-        sharedMapper:move("0%", "0%")
-        sharedMapper:resize("100%", "100%")
-        sharedMapper:reposition()
+        liveMapper:move("0%", "0%")
+        liveMapper:resize("100%", "100%")
+        liveMapper:reposition()
     end)
     if updateMap then pcall(updateMap) end
 end
