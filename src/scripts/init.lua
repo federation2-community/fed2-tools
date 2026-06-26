@@ -189,6 +189,9 @@ function f2tInit()
     if f2t_settings_flush_registrations then f2t_settings_flush_registrations() end
     if f2tRegisterMapContent            then f2tRegisterMapContent()            end
     if f2tRegisterWho                   then f2tRegisterWho()                   end
+    if f2tRegisterGalaxy                then f2tRegisterGalaxy()                end
+    if f2tRegisterPlayerInfo            then f2tRegisterPlayerInfo()            end
+    if f2tRegisterCargo                 then f2tRegisterCargo()                 end
     if f2tRegisterMapperCss             then f2tRegisterMapperCss()             end
 
     local d               = Mux.settings._data

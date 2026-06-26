@@ -1,5 +1,7 @@
 [
   {"name": "map"},
   {"name": "who"},
-  {"name": "galaxy"}
+  {"name": "galaxy"},
+  {"name": "player_info"},
+  {"name": "cargo"}
 ]
