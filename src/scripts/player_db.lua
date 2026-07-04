@@ -80,7 +80,7 @@ function f2t_player_db_upsert(entry)
     local k        = _key(entry.name)
     local now      = os.time()
     local existing = F2T_PLAYER_DB[k]
-    local online   = (entry.is_online ~= nil) and entry.is_online or false
+    local online   = (entry.is_online ~= nil) and entry.is_online or (existing and existing.is_online) or false
 
     local new_entry = {
         name       = entry.name,
@@ -154,27 +154,54 @@ end
 -- Always-on: keeps the DB current independent of any open window.  Consumers
 -- that want to react to fresh data listen for "f2tPlayerDbUpdated".
 
+-- The server always publishes under gmcp.players.online, keyed by name. A
+-- "count" key alongside it means this is the full authoritative roster (sent
+-- on login/logout/new character/deletion): every entry is complete for its
+-- rank, so a field the JSON omits genuinely doesn't apply right now and
+-- should replace whatever we had. No "count" means this is a targeted delta
+-- for exactly one player (a location move, rank/company/ship change, etc.)
+-- carrying only the fields that changed -- those get merged onto the
+-- existing record instead of blanking everything else.
 function f2t_player_db_feed_from_gmcp()
     if not (gmcp and gmcp.players and type(gmcp.players.online) == "table") then return end
 
-    f2t_player_db_mark_all_offline()
-    for _, p in pairs(gmcp.players.online) do
-        if p.name then
+    if gmcp.players.count then
+        f2t_player_db_mark_all_offline()
+        for _, p in pairs(gmcp.players.online) do
+            if p.name then
+                f2t_player_db_upsert({
+                    name       = p.name,
+                    rank       = p.rank or "",
+                    rank_order = f2t_get_rank_level(p.rank) or 0,
+                    location   = p.location or "",
+                    company    = p.company or "",
+                    system     = p.system or "",
+                    cartel     = p.cartel or "",
+                    ship_class = p.ship_class or "",
+                    staff      = p.staff_role or "",
+                    titles     = p.titles or {},
+                    is_online  = true,
+                })
+            end
+        end
+    else
+        for name, p in pairs(gmcp.players.online) do
             f2t_player_db_upsert({
-                name       = p.name,
-                rank       = p.rank or "",
-                rank_order = f2t_get_rank_level(p.rank) or 0,
-                location   = p.location or "",
-                company    = p.company or "",
-                system     = p.system or "",
-                cartel     = p.cartel or "",
-                ship_class = p.ship_class or "",
-                staff      = p.staff_role or "",
-                titles     = p.titles or {},
+                name       = p.name or name,
+                rank       = p.rank,
+                rank_order = p.rank and f2t_get_rank_level(p.rank) or nil,
+                location   = p.location,
+                company    = p.company,
+                system     = p.system,
+                cartel     = p.cartel,
+                ship_class = p.ship_class,
+                staff      = p.staff_role,
+                titles     = p.titles,
                 is_online  = true,
             })
         end
     end
+
     f2t_player_db_save()
     raiseEvent("f2tPlayerDbUpdated")
 end
