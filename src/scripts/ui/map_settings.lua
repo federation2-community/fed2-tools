@@ -56,6 +56,12 @@ local _CSS_MENU_ITEM = [[
 
 local _MENU_ITEMS = {
     {
+        label  = "  Map Legend…",
+        action = function()
+            if f2tShowMapLegend then f2tShowMapLegend() end
+        end,
+    },
+    {
         label  = "  Import Map Database…",
         action = function()
             if f2tShowMapImportDialog then f2tShowMapImportDialog("manual") end

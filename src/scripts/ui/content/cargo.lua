@@ -71,6 +71,7 @@ local function buildCargoDef()
     return {
         name        = "Cargo",
         description = "Live ship cargo manifest from gmcp.char.ship.",
+        group       = "Fed2 Tools",
         internal    = false,
         singleton   = false,
         apply = function(target)
@@ -112,6 +113,9 @@ function f2tRegisterCargo()
     Mux.registerContent("fed2_cargo", buildCargoDef())
     if f2t_debug_log then f2t_debug_log("[cargo] registered fed2_cargo content") end
 end
+
+F2T_CONTENT_REGISTRARS = F2T_CONTENT_REGISTRARS or {}
+table.insert(F2T_CONTENT_REGISTRARS, f2tRegisterCargo)
 
 -- Keep any open cargo window current as ship data arrives.
 registerAnonymousEventHandler("gmcp.char.ship", function() f2t_cargo_refresh_open() end)

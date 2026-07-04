@@ -27,7 +27,18 @@
       "PowerShell(Get-ChildItem \"${env:LOCALAPPDATA}\\\\Mudlet\" -Recurse -Name -ErrorAction SilentlyContinue | Select-Object -First 40)",
       "Read(//c/Program Files/**)",
       "Bash(dir)",
-      "Bash(dir src *)"
+      "Bash(dir src *)",
+      "PowerShell(git -C \"C:\\\\Users\\\\Thomas\\\\OneDrive\\\\Documents\\\\GitHub\\\\Muxlet\" log --oneline -20)",
+      "PowerShell(git -C \"C:\\\\Users\\\\Thomas\\\\OneDrive\\\\Documents\\\\GitHub\\\\fed2-tools\" log --oneline -10)",
+      "PowerShell(git -C \"C:\\\\Users\\\\Thomas\\\\OneDrive\\\\Documents\\\\GitHub\\\\Muxlet\" log --format=\"%h %ad %s\" --date=short -12)",
+      "PowerShell(git -C \"C:\\\\Users\\\\Thomas\\\\OneDrive\\\\Documents\\\\GitHub\\\\fed2-tools\" log --format=\"%h %ad %s\" --date=short -6)",
+      "PowerShell(git -C \"C:\\\\Users\\\\Thomas\\\\OneDrive\\\\Documents\\\\GitHub\\\\Muxlet\" diff --stat f0e6f3e..HEAD)",
+      "PowerShell(git -C \"C:\\\\Users\\\\Thomas\\\\OneDrive\\\\Documents\\\\GitHub\\\\Muxlet\" diff f0e6f3e..HEAD -- src/scripts/content.lua src/scripts/globals.lua)",
+      "PowerShell(git -C \"C:\\\\Users\\\\Thomas\\\\OneDrive\\\\Documents\\\\GitHub\\\\Muxlet\" diff f0e6f3e..HEAD -- src/scripts/dialog.lua src/scripts/actions.lua src/scripts/workspace.lua)",
+      "PowerShell(git -C \"C:\\\\Users\\\\Thomas\\\\OneDrive\\\\Documents\\\\GitHub\\\\Muxlet\" diff f0e6f3e..HEAD -- src/scripts/manager.lua)",
+      "PowerShell(git -C \"C:\\\\Users\\\\Thomas\\\\OneDrive\\\\Documents\\\\GitHub\\\\Muxlet\" diff f0e6f3e..HEAD -- src/scripts/connection.lua)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\Thomas\\\\OneDrive\\\\Documents\\\\GitHub\\\\fed2-tools_archive\\\\src\" -Recurse -Directory | Select-Object -ExpandProperty FullName; echo \"=== file counts per dir ===\"; Get-ChildItem \"C:\\\\Users\\\\Thomas\\\\OneDrive\\\\Documents\\\\GitHub\\\\fed2-tools_archive\\\\src\" -Recurse -File | Group-Object DirectoryName | Sort-Object Name | ForEach-Object { \"{0,4}  {1}\" -f $_.Count, $_.Name })",
+      "PowerShell(git -C \"C:\\\\Users\\\\Thomas\\\\OneDrive\\\\Documents\\\\GitHub\\\\Muxlet\" show cfff208 --stat)"
     ]
   }
 }

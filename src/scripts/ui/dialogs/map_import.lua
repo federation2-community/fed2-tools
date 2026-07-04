@@ -247,11 +247,18 @@ function f2tShowMapImportDialog(reason)
         and "Map Database Update Recommended"
         or  "Import Map Database"
 
+    -- Singleton: without this, repeated triggers (e.g. re-testing the same
+    -- profile) each spawn a brand-new cascaded dialog and never close the old
+    -- ones, drifting further off the diagonal cascade each time until new
+    -- instances land off-screen. A singleton key reuses/raises the existing
+    -- dialog instead of piling up invisible duplicates.
     local dialog = Mux.createDialog({
-        title  = title,
-        width  = DIALOG_W,
-        height = DIALOG_H,
+        title     = title,
+        width     = DIALOG_W,
+        height    = DIALOG_H,
+        singleton = "f2t_map_import",
     })
+    if dialog.setName then dialog:setName(title) end   -- refresh titlebar text on reuse
     Mux._applyContent(dialog, "f2t_map_import")
     dialog:show()
     dialog:raise()

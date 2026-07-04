@@ -71,3 +71,16 @@ f2t_settings_register("map", "movement_keys", {
     description = "Enable numpad keys for directional movement",
     default     = true,
 })
+
+-- Gates the map import dialog. Independent of the Mudlet map's actual room
+-- count — the map always has at least the current room once mapping is
+-- enabled, so room count can't signal "first run". A plain on/off toggle
+-- (rather than a version-number stepper) so it's an intuitive control from
+-- Fed2-Tools/Map: turn it on to see the import prompt again next time the map
+-- content loads. import_check.lua flips it back on by itself whenever a newer
+-- bundled map database ships, even if the user had turned it off.
+f2t_settings_register("map", "show_import_prompt", {
+    label       = "Show map import prompt",
+    description = "Offer the bundled map-database import dialog next time the map loads. Turns itself back on when a new map database ships.",
+    default     = true,
+})

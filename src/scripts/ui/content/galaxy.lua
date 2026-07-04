@@ -554,6 +554,7 @@ local function buildGalaxyDef()
     return {
         name        = "Galaxy Navigator",
         description = "Browse every cartel, system, and planet from 'di systems'; click → to travel.",
+        group       = "Fed2 Tools",
         singleton   = false,
 
         apply = function(target)
@@ -693,11 +694,19 @@ function f2tRegisterGalaxy()
         icon  = "🌌",
         run   = function() f2t_galaxy_toggle() end,
     })
-    -- Background scrape now only if already connected AND logged in (hot-reload case).
-    -- Normal login path: f2tCharacterChanged fires after vitals and schedules the scrape.
-    if F2T_CONNECTED ~= false and F2T_LOGGED_IN then f2t_galaxy_schedule_scrape(3) end
+    -- Background scrape only for a genuine hot-reload (script re-executed
+    -- with no index built yet). Normal login path: f2tCharacterChanged fires
+    -- after vitals and schedules the scrape. Guarding on `loaded` also stops
+    -- a redundant, visible "di systems" re-scrape when Muxlet finishes an
+    -- in-session install well after login and this registrar re-runs.
+    if not F2T_GALAXY.loaded and F2T_CONNECTED ~= false and F2T_LOGGED_IN then
+        f2t_galaxy_schedule_scrape(3)
+    end
     f2t_debug_log("[galaxy] registered content + action")
 end
+
+F2T_CONTENT_REGISTRARS = F2T_CONTENT_REGISTRARS or {}
+table.insert(F2T_CONTENT_REGISTRARS, f2tRegisterGalaxy)
 
 -- ── Connection awareness ─────────────────────────────────────────────────────────
 -- Refresh open navigator on (re)connect. Do NOT schedule a scrape here:

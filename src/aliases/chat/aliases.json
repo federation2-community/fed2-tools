@@ -1,0 +1,3 @@
+[
+  {"name": "chat_outbound", "regex": "^(?:(?i:tb|tell)\\s+(\\w+)\\s+(.+)|(?:(?i:com|comm|say))\\s+(.*)|(['\"]{1,2})\\s*(.*))$"}
+]

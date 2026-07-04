@@ -313,6 +313,7 @@ local function buildWhoDef()
     return {
         name        = "Who",
         description = "Online player list from gmcp.players.",
+        group       = "Fed2 Tools",
         internal    = false,
         singleton   = false,
         apply = function(target)
@@ -352,6 +353,9 @@ function f2tRegisterWho()
     Mux.registerContent("fed2_who", buildWhoDef())
     if f2t_debug_log then f2t_debug_log("[who] registered fed2_who content") end
 end
+
+F2T_CONTENT_REGISTRARS = F2T_CONTENT_REGISTRARS or {}
+table.insert(F2T_CONTENT_REGISTRARS, f2tRegisterWho)
 
 registerAnonymousEventHandler("f2tPlayerDbUpdated", function() refreshAll() end)
 

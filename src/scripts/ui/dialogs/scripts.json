@@ -1,5 +1,6 @@
 [
   {"name": "player_card"},
   {"name": "map_import"},
+  {"name": "map_legend"},
   {"name": "popups"}
 ]

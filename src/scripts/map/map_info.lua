@@ -39,6 +39,9 @@ function f2tRegisterMapperCss()
     end
 end
 
+F2T_CONTENT_REGISTRARS = F2T_CONTENT_REGISTRARS or {}
+table.insert(F2T_CONTENT_REGISTRARS, f2tRegisterMapperCss)
+
 -- ── Map info overlay ──────────────────────────────────────────────────────────
 
 pcall(function() disableMapInfo("Short") end)

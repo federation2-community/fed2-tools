@@ -248,6 +248,7 @@ local function buildPlayerInfoDef()
     return {
         name        = "Player Info",
         description = "Live rank / fuel / stamina / groats / slithies / hold strip with Buy Fuel.",
+        group       = "Fed2 Tools",
         internal    = false,
         singleton   = false,
         apply = function(target)
@@ -280,6 +281,9 @@ function f2tRegisterPlayerInfo()
     Mux.registerContent("fed2_player_info", buildPlayerInfoDef())
     if f2t_debug_log then f2t_debug_log("[player_info] registered fed2_player_info content") end
 end
+
+F2T_CONTENT_REGISTRARS = F2T_CONTENT_REGISTRARS or {}
+table.insert(F2T_CONTENT_REGISTRARS, f2tRegisterPlayerInfo)
 
 -- Session-level live updates: refresh every open header on the relevant GMCP
 -- pushes.  Iterates only existing instances, so it is a no-op when no header is

@@ -6,5 +6,29 @@
   {
     "name": "galaxy_nav_end",
     "patterns": [{"pattern": "^$", "type": "regex"}]
+  },
+  {
+    "name": "hauling_work_start",
+    "patterns": [{"pattern": "Work available from Armstrong Cuthbert:", "type": "exact"}]
+  },
+  {
+    "name": "hauling_work_line",
+    "patterns": [{"pattern": "^\\s+(\\d+)\\.\\s+From\\s+(.+?)\\s+to\\s+(.+?)\\s+-\\s+\\d+\\s+tons\\s+of\\s+\\S+\\s+-\\s+(\\d+)gtu\\s+(\\d+)ig", "type": "regex"}]
+  },
+  {
+    "name": "trading_line",
+    "patterns": [{"pattern": "^([\\w\\s]+): ([\\w\\s]+) is (buying|selling) (\\d+) tons at (\\d+)ig/ton$", "type": "regex"}]
+  },
+  {
+    "name": "trading_profit_tick",
+    "patterns": [{"pattern": "^$", "type": "regex"}]
+  },
+  {
+    "name": "trading_search_hide",
+    "patterns": [
+      {"pattern": "^Your comm unit lights up as your brokers, Messrs Trum.*", "type": "regex"},
+      {"pattern": "^requested spot market p.*", "type": "regex"},
+      {"pattern": ".*is not currently trading in this commodity$", "type": "regex"}
+    ]
   }
 ]

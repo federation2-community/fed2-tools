@@ -187,12 +187,18 @@ function f2tInit()
     Mux.settings.set("mux", "auto_start", false)
 
     if f2t_settings_flush_registrations then f2t_settings_flush_registrations() end
-    if f2tRegisterMapContent            then f2tRegisterMapContent()            end
-    if f2tRegisterWho                   then f2tRegisterWho()                   end
-    if f2tRegisterGalaxy                then f2tRegisterGalaxy()                end
-    if f2tRegisterPlayerInfo            then f2tRegisterPlayerInfo()            end
-    if f2tRegisterCargo                 then f2tRegisterCargo()                 end
-    if f2tRegisterMapperCss             then f2tRegisterMapperCss()             end
+
+    -- Content modules self-enroll by appending their registrar function to
+    -- F2T_CONTENT_REGISTRARS at load time (order-independent — each module
+    -- creates the table if it loads first).  Everything Muxlet-facing that
+    -- fed2-tools provides (registered content, actions, profile CSS) is
+    -- registered here, once Muxlet is confirmed ready.
+    for _, registrar in ipairs(F2T_CONTENT_REGISTRARS or {}) do
+        local ok, err = pcall(registrar)
+        if not ok then
+            f2t_debug_log("[init] content registrar error: %s", tostring(err))
+        end
+    end
 
     local d               = Mux.settings._data
     local autostart       = d and d["f2t"] and d["f2t"]["mux_autostart"]

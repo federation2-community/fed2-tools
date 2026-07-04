@@ -3,5 +3,12 @@
   {"name": "who"},
   {"name": "galaxy"},
   {"name": "player_info"},
-  {"name": "cargo"}
+  {"name": "cargo"},
+  {"name": "chat"},
+  {"name": "local_players"},
+  {"name": "commodities"},
+  {"name": "hauling_jobs"},
+  {"name": "trading"},
+  {"name": "company"},
+  {"name": "futures"}
 ]

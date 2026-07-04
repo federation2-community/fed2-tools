@@ -99,17 +99,12 @@ local function buildContentDef()
     return {
         name        = "Fed2 Map",
         description = "Federation 2 mapper",
+        group       = "Fed2 Tools",
         singleton   = true,
 
         apply = function(target)
             target.contentBg:echo("")
             target.contentBg:setStyleSheet("background-color: rgba(0,0,0,0); border: none;")
-
-            -- Snapshot map emptiness BEFORE mounting the mapper.  Auto-mapping
-            -- fires when the widget first renders, so checking after would give a
-            -- false "has rooms" reading on a genuinely fresh profile.
-            local preRooms   = getRooms()
-            local mapIsEmpty = not preRooms or not next(preRooms)
 
             local gid = target._gid
 
@@ -151,11 +146,12 @@ local function buildContentDef()
                     f2t_debug_log("[map content] overlay build error: %s", tostring(err))
                 end
 
-                -- Offer the map import dialog on first load / after an upgrade,
-                -- OR whenever the map was empty before mounting.
+                -- Offer the map import dialog on first load / after an upgrade
+                -- (decision lives entirely in f2tCheckMapImport's persisted
+                -- seen-version setting — see map/import_check.lua).
                 tempTimer(0.5, function()
                     if f2tCheckMapImport then
-                        f2tCheckMapImport(mapIsEmpty)
+                        f2tCheckMapImport()
                     else
                         f2t_debug_log("[map content] f2tCheckMapImport missing — cannot offer import")
                     end
@@ -185,3 +181,6 @@ function f2tRegisterMapContent()
     if not (Mux and Mux.registerContent) then return end
     Mux.registerContent("fed2_map", buildContentDef())
 end
+
+F2T_CONTENT_REGISTRARS = F2T_CONTENT_REGISTRARS or {}
+table.insert(F2T_CONTENT_REGISTRARS, f2tRegisterMapContent)
