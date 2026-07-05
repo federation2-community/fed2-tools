@@ -25,6 +25,7 @@ local RANK_CECHO = {
     ["Industrialist"] = "ansiGreen",
     ["Financier"]     = "ansiGreen",
     ["Plutocrat"]     = "ansiRed",
+    ["Syndicrat"]     = "olive",
     ["Commander"]     = "dark_violet",
     ["Groundhog"]     = "dark_violet",
 }

@@ -18,6 +18,7 @@ F2T_RANK_LEVELS = {
     gengineer    = 14,
     magnate      = 15,
     plutocrat    = 16,
+    syndicrat    = 17,
 }
 
 function f2t_get_rank()

@@ -22,6 +22,7 @@ local state = {
     refTime = nil,
     buffer  = {},      -- list of {name, ago, text}
     timerId = nil,
+    peekId  = nil,     -- tempLineTrigger id armed to catch a wrapped continuation line
 }
 
 -- Returns (estimatedUnixTime, toleranceSeconds).  "N hours ago" means the
@@ -69,7 +70,29 @@ local function merge(newRecords)
     F2T_CHAT.history = merged
 end
 
-local function finish()
+local finish, killPeek, resetFinishTimer, matchHeader, armPeek, recordEntry
+
+killPeek = function()
+    if state.peekId then killTrigger(state.peekId); state.peekId = nil end
+end
+
+resetFinishTimer = function()
+    if state.timerId then killTimer(state.timerId) end
+    state.timerId = tempTimer(0.5, finish)
+end
+
+-- Matches a comhistory entry header line ("Name, X ago: text" / "Name, just
+-- now: text"). Returns name, ago, text, or nil if the line isn't one.
+matchHeader = function(l)
+    local name, ago, text = l:match("^(%a+), (%d+ %a+ ago): (.+)$")
+    if name then return name, ago, text end
+    name, text = l:match("^(%a+), just now: (.+)$")
+    if name then return name, "just now", text end
+    return nil
+end
+
+finish = function()
+    killPeek()
     state.active  = false
     state.timerId = nil
 
@@ -97,6 +120,49 @@ local function finish()
     local s = #newRecords == 1 and "" or "s"
     cecho(string.format("\n<dim_gray>[comhistory]<reset> %d missed message%s added to chat\n",
         #newRecords, s))
+end
+
+-- Records one entry (skipping our own messages — already in the live log) and
+-- arms a peek for a possible wrapped continuation line.
+recordEntry = function(name, ago, text)
+    local entry = nil
+    if not (F2T_CHAR_NAME and name:lower() == F2T_CHAR_NAME:lower()) then
+        entry = { name = name, ago = ago, text = text }
+        table.insert(state.buffer, entry)
+    end
+    armPeek(entry)
+end
+
+-- Fed2 wraps long comhistory lines the same way it wraps quoted chat messages
+-- (chat_inbound.lua) — a continuation line repeats neither the sender name nor
+-- the "X ago:" prefix, so comhistory_line's trigger pattern never matches it,
+-- and it was previously left on screen, untouched and un-merged (the bug this
+-- fixes). Peek the very next physical line with a temp line trigger, the same
+-- technique chat_inbound.lua's captureContinuation uses (getCurrentLine(), not
+-- the `line` global — temp line triggers don't populate that the same way a
+-- pattern-matched trigger does): if it's a new entry's header, dispatch it as
+-- one; otherwise fold it into the entry just captured and keep peeking.
+-- `entry` is nil when the just-captured line was one of our own messages
+-- (still consumed/hidden, just never buffered). killPeek() (called from
+-- finish() and the disconnect handler) always tears this down so a still-armed
+-- peek can never swallow an unrelated later line once capture is done.
+armPeek = function(entry)
+    killPeek()
+    state.peekId = tempLineTrigger(1, 1, function()
+        if not state.active then return end
+        local l = getCurrentLine()
+        local name, ago, text = matchHeader(l)
+        if name then
+            deleteLine()
+            resetFinishTimer()
+            recordEntry(name, ago, text)
+            return
+        end
+        deleteLine()
+        if entry then entry.text = entry.text .. " " .. l end
+        resetFinishTimer()
+        armPeek(entry)
+    end)
 end
 
 -- ── Trigger entry points ──────────────────────────────────────────────────────
@@ -127,26 +193,27 @@ end
 
 function f2tChatComhistoryLine()
     if not state.active then return end
+    -- Once the first entry has armed a continuation peek (armPeek below), that
+    -- peek becomes the sole handler for every line that follows — permanent and
+    -- temp triggers both fire on the same incoming line, so acting here too
+    -- would double-delete/double-record it. This trigger only ever needs to
+    -- catch the very first entry line, which may already be batched with the
+    -- header before a temp trigger could be armed (hence a permanent trigger
+    -- for it, per the file-level comment).
+    if state.peekId then return end
 
-    local l = line   -- Mudlet global for the trigger's current line
-    local name, ago, text = l:match("^(%a+), (%d+ %a+ ago): (.+)$")
-    if not name then
-        name, text = l:match("^(%a+), just now: (.+)$")
-        if name then ago = "just now" end
-    end
+    local name, ago, text = matchHeader(line)   -- `line` is Mudlet's global for the trigger's current line
     if not name then return end
 
     deleteLine()
 
     -- Timer-based completion: any recognized line resets the window, and the
     -- timer ALWAYS finishes the capture when it expires (even on empty data).
-    if state.timerId then killTimer(state.timerId) end
-    state.timerId = tempTimer(0.5, finish)
+    resetFinishTimer()
 
-    -- Skip our own messages — they're already in the live log.
-    if F2T_CHAR_NAME and name:lower() == F2T_CHAR_NAME:lower() then return end
-
-    table.insert(state.buffer, { name = name, ago = ago, text = text })
+    -- Records the entry (skipping our own — already in the live log) and arms
+    -- a peek for a possible wrapped continuation line (see armPeek above).
+    recordEntry(name, ago, text)
 end
 
 -- ── Session wiring ────────────────────────────────────────────────────────────
@@ -174,6 +241,7 @@ registerAnonymousEventHandler("sysConnectionEvent", function()
     if connected then return end
     -- Reset on disconnect so the next login fetches again.
     if state.timerId then killTimer(state.timerId) end
+    killPeek()
     state.sent, state.active, state.refTime = false, false, nil
     state.buffer, state.timerId = {}, nil
 end)

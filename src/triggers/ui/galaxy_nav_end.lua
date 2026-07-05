@@ -1,7 +1,10 @@
--- Galaxy Navigator capture terminator: the blank line after "di systems" ends
--- the capture and triggers the parse. Requires at least one captured line so
--- that a leading blank line in the output does not end capture prematurely.
-if F2T_GALAXY and F2T_GALAXY.capture_active and #F2T_GALAXY.capture_lines > 0 then
-    f2t_galaxy_finish_capture()
+-- A blank line while a galaxy scrape is active: hidden (still part of the
+-- automated background command) and treated as activity, not as "the"
+-- terminator — Fed2's login sequence can interleave unrelated blank lines
+-- mid-response, and ending capture on the first one leaked the rest of the
+-- (much longer) listing. Completion is purely silence-timer driven; see
+-- f2t_galaxy_capture_blank / resetFinishTimer in galaxy.lua.
+if F2T_GALAXY and F2T_GALAXY.capture_active then
     deleteLine()
+    f2t_galaxy_capture_blank()
 end

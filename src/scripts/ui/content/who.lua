@@ -29,6 +29,7 @@ local RANK_COLOR = {
     ["Industrialist"] = "#00cc44",
     ["Financier"]     = "#00cc44",
     ["Plutocrat"]     = "#ff5555",
+    ["Syndicrat"]     = "#808000",
     ["Commander"]     = "#9932cc",
     ["Groundhog"]     = "#9932cc",
 }

@@ -5,7 +5,7 @@
 -- player's map may be incomplete, whereas "di systems" is always authoritative.
 -- The capture/parse mirrors the v1 archive's ui_galaxy module.
 --
--- Three pieces, registered with Muxlet from init.lua's muxletReady handler via
+-- Two pieces, registered with Muxlet from init.lua's muxletReady handler via
 -- f2tRegisterGalaxy():
 --
 --   1. A background "di systems" scrape, run at load (once connected) and on
@@ -13,17 +13,14 @@
 --      two triggers, so nothing spams the main console. Because the index is
 --      pre-built in the background, opening the navigator is instant.
 --
---   2. A "fed2_galaxy" Muxlet content type rendering the cartel → system →
---      planet tree in a scrollable console (expand/collapse, click a name for
---      "di" info, click → to navigate). It can be added to any pane/tab from the
---      Content Library like any other content.
---
---   3. A "fed2.galaxy.toggle" action that surfaces/hides a dedicated floating
---      navigator pane (titlebar hidden, not zoomable/resizable/convertible,
---      movable, closeable). Re-showing snaps it back to a known location; the ✕
---      closes it and the next toggle recreates it in the same spot. The action
---      appears in the button editor's Action dropdown, so a Button Grid button
---      can be bound to it.
+--   2. A "fed2_galaxy" Muxlet content type (singleton) rendering the cartel →
+--      system → planet tree in a scrollable console (expand/collapse, click a
+--      name for "di" info, click → to navigate). Add it to a pane from the
+--      Content Library, position/anchor that pane, and save the workspace —
+--      Muxlet's own pane persistence carries the placement from there. To
+--      show/hide it from a Button Grid button, bind the button to Muxlet's
+--      generic "Toggle Pane/Tab Visibility" action and pick that pane as the
+--      target (see Muxlet's conditional.lua / contentLibrary/buttons.lua).
 
 -- ── Data store ───────────────────────────────────────────────────────────────
 -- cartels[cartel] = { name, systems = { [sys] = { name, cartel, planets = { {name,system,cartel}, ... } } } }
@@ -37,23 +34,22 @@ F2T_GALAXY = F2T_GALAXY or {
     expanded       = {},       -- [key]=true; session-only expand state
 }
 
--- Where the navigator snaps to when shown. Two modes, combinable per-axis:
---   • Absolute: set x / y (nil → sensible top-right default).
---   • Relative (anchored to other panes, so it tracks layout changes):
---       anchorRight = "<pane id>"  → my RIGHT edge sits flush on that pane's LEFT edge
---       anchorTop   = "<pane id>"  → my TOP edge sits flush under that pane's BOTTOM edge
---     When an anchor pane is missing (closed / relaid-out) that axis falls back to
---     the absolute value. Read pane ids/coords from any pane's Properties dialog.
-F2T_GALAXY_NAV = F2T_GALAXY_NAV or {
-    x = nil, y = nil, w = 440, h = 560,
-    anchorRight = nil, anchorTop = nil,
-}
-
 -- ── "di systems" capture (mirrors the v1 archive methodology) ──────────────────
 
-local captureTimer = nil
-local function cancelCaptureTimeout()
-    if captureTimer then killTimer(captureTimer); captureTimer = nil end
+-- Completion is silence-based (0.5s of no further di-systems-shaped output),
+-- reset on every line seen while capturing — NOT "the first blank line ends
+-- it". Fed2's login sequence can interleave unrelated blank lines (and other
+-- chatter) mid-response while this scrape runs in the background; treating any
+-- blank line as authoritative "end of di systems" cut capture short after just
+-- the first few entries, leaking the (much longer) remainder of the listing
+-- straight to the console. See CLAUDE.md's "Timer-Based Completion Rules".
+local finishTimer = nil
+local function resetFinishTimer()
+    if finishTimer then killTimer(finishTimer) end
+    finishTimer = tempTimer(0.5, function()
+        finishTimer = nil
+        if F2T_GALAXY.capture_active then f2t_galaxy_finish_capture() end
+    end)
 end
 
 -- Send "di systems" and begin capturing. Safe to call repeatedly; the loading
@@ -73,11 +69,7 @@ function f2t_galaxy_scrape()
     F2T_GALAXY.capture_lines  = {}
     f2t_galaxy_refresh_open()              -- show the loading state in any open navigator
     sendAll("di systems", false)           -- false = don't echo the command; triggers delete the output
-    cancelCaptureTimeout()
-    captureTimer = tempTimer(8, function()  -- safety net if no terminating blank line arrives
-        captureTimer = nil
-        if F2T_GALAXY.capture_active then f2t_galaxy_finish_capture() end
-    end)
+    resetFinishTimer()
 end
 
 -- Called by the galaxy_nav_line trigger for every line while capture is active.
@@ -86,6 +78,7 @@ function f2t_galaxy_capture_line(line)
     if not F2T_GALAXY.capture_active then return end
     line = (line or ""):match("^%s*(.-)%s*$")
     if line == "" then return end
+    resetFinishTimer()
     if line:match(" %- .+ cartel %- ") then
         table.insert(F2T_GALAXY.capture_lines, line)
     elseif #F2T_GALAXY.capture_lines > 0 then
@@ -93,6 +86,14 @@ function f2t_galaxy_capture_line(line)
         F2T_GALAXY.capture_lines[n] = F2T_GALAXY.capture_lines[n] .. " " .. line
     end
     -- Lines matching neither (command echo, stray text) are ignored.
+end
+
+-- Called by the galaxy_nav_end trigger for a blank line while capture is
+-- active — hidden (it's still part of an automated background command) but
+-- no longer treated as "the" terminator; see resetFinishTimer above.
+function f2t_galaxy_capture_blank()
+    if not F2T_GALAXY.capture_active then return end
+    resetFinishTimer()
 end
 
 -- Parse one combined system line into its components.
@@ -115,11 +116,11 @@ local function parseSystemLine(line)
     return system_name, cartel_name, planets
 end
 
--- Called by the galaxy_nav_end trigger on the terminating blank line.
+-- Called when the 0.5s silence timer (resetFinishTimer) expires.
 function f2t_galaxy_finish_capture()
     if not F2T_GALAXY.capture_active then return end
     F2T_GALAXY.capture_active = false
-    cancelCaptureTimeout()
+    if finishTimer then killTimer(finishTimer); finishTimer = nil end
 
     if #F2T_GALAXY.capture_lines == 0 then
         F2T_GALAXY.loading = false
@@ -555,7 +556,10 @@ local function buildGalaxyDef()
         name        = "Galaxy Navigator",
         description = "Browse every cartel, system, and planet from 'di systems'; click → to travel.",
         group       = "Fed2 Tools",
-        singleton   = false,
+        -- One navigator at a time: Muxlet tracks the active instance itself
+        -- (def._activeTargetRef), which f2t_galaxy_show_nav/hide_nav below use to
+        -- find "the" navigator without fed2-tools keeping its own pane reference.
+        singleton   = true,
 
         apply = function(target)
             local ok, err = pcall(buildPanel, target)
@@ -576,124 +580,51 @@ local function buildGalaxyDef()
     }
 end
 
--- ── Toggle action + dedicated navigator pane ─────────────────────────────────────
-local navPaneId  = nil
-local navVisible = false
-
-local function currentNavPane()
-    if not navPaneId then return nil end
-    local p = Mux.getPane and Mux.getPane(navPaneId) or nil
-    if not p then navPaneId = nil end          -- it was closed via ✕
-    return p
+-- ── Show/hide convenience ─────────────────────────────────────────────────────
+-- The navigator pane itself is no longer created or placed by fed2-tools: add
+-- the "Galaxy Navigator" content to a pane from the Content Library once,
+-- position/anchor it, and save the workspace — Muxlet's own pane persistence
+-- (floating geometry, anchors) carries it from there. Since the content is
+-- singleton (above), Muxlet tracks that one active instance itself
+-- (def._activeTargetRef); these two helpers just find it and drive its real
+-- condition-hidden state (MuxPane/MuxTab :_conditionShow/_conditionHide,
+-- shared with the generic "Toggle Pane/Tab Visibility" action a Button Grid
+-- button can bind to — see Muxlet's conditional.lua).
+local function currentNavTarget()
+    local def = Mux._content and Mux._content.fed2_galaxy
+    return def and def._activeTargetRef or nil
 end
 
--- Absolute navigator geometry (used when not anchored). x/y nil → top-right default.
-local function navGeom()
-    local sw, sh = getMainWindowSize()
-    local W = F2T_GALAXY_NAV.w or 440
-    local H = F2T_GALAXY_NAV.h or 560
-    local X = F2T_GALAXY_NAV.x or (sw - W - 30)
-    local Y = F2T_GALAXY_NAV.y or 80
-    X = math.max(0, math.min(X, math.max(0, sw - W)))
-    Y = math.max(0, math.min(Y, math.max(0, sh - H)))
-    return X, Y, W, H
-end
-
-local function snapTo(p)
-    local X, Y, W, H = navGeom()
-    p.floatX, p.floatY, p.floatW, p.floatH = X, Y, W, H
-    if p.outer then p.outer:move(X, Y); p.outer:resize(W, H) end
-    if p._notifyReposition then p:_notifyReposition() end
-end
-
--- Position the navigator. Priority: a configured anchor (built from the pane
--- ids in F2T_GALAXY_NAV and handed to Muxlet, which then tracks layout changes
--- natively — no poll); else any anchor already on the pane (e.g. set graphically
--- and persisted in the workspace), re-applied; else absolute placement. With
--- both ids set it's a corner anchor (right edge to one pane, top to another).
-local function placeNav(p)
-    if F2T_GALAXY_NAV.anchorRight or F2T_GALAXY_NAV.anchorTop then
-        local A = {}
-        if F2T_GALAXY_NAV.anchorRight then
-            A.v = { ref = F2T_GALAXY_NAV.anchorRight, targetEdge = "left", myEdge = "right" }
-        end
-        if F2T_GALAXY_NAV.anchorTop then
-            A.h = { ref = F2T_GALAXY_NAV.anchorTop, targetEdge = "bottom", myEdge = "top" }
-        end
-        if not A.v then A.alongH = 0 end
-        if not A.h then A.alongV = 0 end
-        if p.setAnchor and p:setAnchor(A) then return end
-    end
-    if p.anchor and p.returnToAnchor and p:returnToAnchor() then return end
-    snapTo(p)
+-- Walks a tab's .pane back-references up to the owning MuxPane (a tab hosting
+-- sub-tabs is itself a .pane host, so a nested sub-tab needs more than one hop).
+local function rootPaneOf(t)
+    while t and t.pane do t = t.pane end
+    return t
 end
 
 -- Hide the dedicated navigator pane if it's showing (used after navigating).
 function f2t_galaxy_hide_nav()
-    local p = currentNavPane()
-    if p and navVisible then
-        p:hide(); navVisible = false
-    end
+    local t = currentNavTarget()
+    if t and t._conditionHide and not t._conditionHidden then t:_conditionHide() end
 end
 
-function f2t_galaxy_toggle()
-    if not (Mux and Mux.newFloatingPane and Mux._applyContent) then
-        cecho("\n<red>[fed2-tools]<reset> Muxlet is not started. Run <cyan>mux start<reset> first.\n")
+-- Reveal the navigator (used when a player card jumps to a system).
+function f2t_galaxy_show_nav()
+    local t = currentNavTarget()
+    if not t then
+        cecho("\n<red>[fed2-tools]<reset> No Galaxy navigator pane yet — add the "
+            .. "<cyan>Galaxy Navigator<reset> content to a pane from the Content Library first.\n")
         return
     end
-
-    local p = currentNavPane()
-    if p then
-        if navVisible then
-            p:hide(); navVisible = false
-        else
-            p:show()
-            placeNav(p)                          -- return to anchor (or absolute) on every show
-            if Mux.raisePane then Mux.raisePane(p) end
-            navVisible = true
-            f2t_galaxy_refresh_open()
-        end
-        return
-    end
-
-    -- Fresh navigator. anchorable so it can also be anchored graphically (drag
-    -- in anchor mode); convertible stays false so it never embeds.
-    local X, Y, W, H = navGeom()
-    p = Mux.newFloatingPane({
-        name             = "Galaxy",
-        showTitlebar     = false,
-        titlebarHideable = false,
-        zoomable         = false,
-        resizable        = false,
-        convertible      = false,
-        anchorable       = true,
-        movable          = true,
-        closeable        = true,
-        minimizable      = false,
-        splittable       = false,
-        swappable        = false,
-        floatX = X, floatY = Y, floatW = W, floatH = H,
-        onClose = function() navPaneId = nil; navVisible = false end,
-    })
-    if not p then return end
-    navPaneId  = p.id
-    navVisible = true
-    Mux._applyContent(p, "fed2_galaxy")
-    placeNav(p)
-    if Mux.raisePane then Mux.raisePane(p) end
+    if t._conditionShow and t._conditionHidden then t:_conditionShow() end
+    if Mux.raisePane then Mux.raisePane(rootPaneOf(t)) end
+    f2t_galaxy_refresh_open()
 end
 
 -- ── Registration (called from init.lua muxletReady) ──────────────────────────────
 function f2tRegisterGalaxy()
-    if not (Mux and Mux.registerContent and Mux.registerAction) then return end
+    if not (Mux and Mux.registerContent) then return end
     Mux.registerContent("fed2_galaxy", buildGalaxyDef())
-    Mux.registerAction("fed2.galaxy.toggle", {
-        name  = "Toggle Galaxy Navigator",
-        group = "fed2-tools",
-        desc  = "Show or hide the galaxy navigator pane (snaps to a fixed location).",
-        icon  = "🌌",
-        run   = function() f2t_galaxy_toggle() end,
-    })
     -- Background scrape only for a genuine hot-reload (script re-executed
     -- with no index built yet). Normal login path: f2tCharacterChanged fires
     -- after vitals and schedules the scrape. Guarding on `loaded` also stops
@@ -702,7 +633,7 @@ function f2tRegisterGalaxy()
     if not F2T_GALAXY.loaded and F2T_CONNECTED ~= false and F2T_LOGGED_IN then
         f2t_galaxy_schedule_scrape(3)
     end
-    f2t_debug_log("[galaxy] registered content + action")
+    f2t_debug_log("[galaxy] registered content")
 end
 
 F2T_CONTENT_REGISTRARS = F2T_CONTENT_REGISTRARS or {}
