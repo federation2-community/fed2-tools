@@ -168,7 +168,7 @@ function f2t_player_db_feed_from_gmcp()
     if gmcp.players.count then
         f2t_player_db_mark_all_offline()
         for _, p in pairs(gmcp.players.online) do
-            if p.name then
+            if type(p) == "table" and p.name then
                 f2t_player_db_upsert({
                     name       = p.name,
                     rank       = p.rank or "",
@@ -186,19 +186,21 @@ function f2t_player_db_feed_from_gmcp()
         end
     else
         for name, p in pairs(gmcp.players.online) do
-            f2t_player_db_upsert({
-                name       = p.name or name,
-                rank       = p.rank,
-                rank_order = p.rank and f2t_get_rank_level(p.rank) or nil,
-                location   = p.location,
-                company    = p.company,
-                system     = p.system,
-                cartel     = p.cartel,
-                ship_class = p.ship_class,
-                staff      = p.staff_role,
-                titles     = p.titles,
-                is_online  = true,
-            })
+            if type(p) == "table" then
+                f2t_player_db_upsert({
+                    name       = p.name or name,
+                    rank       = p.rank,
+                    rank_order = p.rank and f2t_get_rank_level(p.rank) or nil,
+                    location   = p.location,
+                    company    = p.company,
+                    system     = p.system,
+                    cartel     = p.cartel,
+                    ship_class = p.ship_class,
+                    staff      = p.staff_role,
+                    titles     = p.titles,
+                    is_online  = true,
+                })
+            end
         end
     end
 

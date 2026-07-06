@@ -31,6 +31,12 @@ local parked      = {}     -- previous mappers, hidden in the garage
 local mapperGarage = nil
 local mapperSeq   = 0
 
+-- Slot container + gid of the currently live map pane, so code outside this
+-- apply() closure (settings gear menu, "map import db" alias) can build the
+-- import overlay into the right place. See f2tGetMapSlotInfo() below.
+local liveSlotContent = nil
+local liveGid         = nil
+
 -- Persistent, hidden, full-size holder that parked mappers live in so they are
 -- never orphaned inside a deleted content slot.
 local function ensureGarage()
@@ -105,6 +111,7 @@ local function buildContentDef()
         apply = function(target)
             target.contentBg:echo("")
             target.contentBg:setStyleSheet("background-color: rgba(0,0,0,0); border: none;")
+            target.contentBg:hide()
 
             local gid = target._gid
 
@@ -119,14 +126,30 @@ local function buildContentDef()
 
             tempTimer(0.1, function()
                 if activeToken ~= myToken then return end
-                activeToken = nil
 
                 -- Build the mapper + overlays under pcall so a failure here can
                 -- never swallow the import-check scheduling below.
                 local ok, err = pcall(function()
                     local mapper = mapperAcquire(slotContent)
                     target._f2tHasMapper = true
+                    liveSlotContent, liveGid = slotContent, gid
                     if mapper then mapper:raise() end
+
+                    -- Mudlet's own mapper widget shows a built-in "No map yet
+                    -- for this profile" empty-state overlay whenever the room
+                    -- database is empty, with its own raw Load/Create buttons
+                    -- — entirely outside fed2-tools' control, no Lua hook to
+                    -- suppress it. This is UNRELATED to the show_import_prompt
+                    -- decision below: it just seeds the player's current room
+                    -- from already-cached GMCP data (no command sent to the
+                    -- game) whenever the database happens to be empty, purely
+                    -- so that native overlay never gets a chance to stick —
+                    -- fed2-tools decides what the user sees here, never raw
+                    -- Mudlet. See map/import_check.lua for the prompt decision
+                    -- itself, which never looks at room count.
+                    if next(getRooms()) == nil and type(f2t_map_handle_gmcp_room) == "function" then
+                        f2t_map_handle_gmcp_room()
+                    end
 
                     -- Movement button overlay lives on top of the mapper.  It is
                     -- a true child of the slot, so the framework's slot delete
@@ -146,16 +169,17 @@ local function buildContentDef()
                     f2t_debug_log("[map content] overlay build error: %s", tostring(err))
                 end
 
-                -- Offer the map import dialog on first load / after an upgrade
-                -- (decision lives entirely in f2tCheckMapImport's persisted
-                -- seen-version setting — see map/import_check.lua).
-                tempTimer(0.5, function()
-                    if f2tCheckMapImport then
-                        f2tCheckMapImport()
-                    else
-                        f2t_debug_log("[map content] f2tCheckMapImport missing — cannot offer import")
-                    end
-                end)
+                -- Offer the bundled map-database import overlay on first load /
+                -- after an upgrade (decision lives entirely in f2tCheckMapImport's
+                -- persisted show_import_prompt setting — see map/import_check.lua;
+                -- it never looks at room count). Built directly into this slot
+                -- (not a separate floating dialog) so it stacks above the native
+                -- mapper widget exactly like the overlays above.
+                if f2tCheckMapImport then
+                    f2tCheckMapImport()
+                else
+                    f2t_debug_log("[map content] f2tCheckMapImport missing — cannot offer import")
+                end
             end)
         end,
 
@@ -168,6 +192,7 @@ local function buildContentDef()
             activeToken = nil
             mapperRelease()
             target._f2tHasMapper = nil
+            liveSlotContent, liveGid = nil, nil
         end,
 
         -- Keep the mapper filling the slot as the pane/tab is resized.
@@ -175,6 +200,13 @@ local function buildContentDef()
             if target._f2tHasMapper then mapperFit() end
         end,
     }
+end
+
+-- Lets code outside this apply() closure (settings gear menu, "map import db"
+-- alias) build the import overlay into the live map pane's slot. Returns
+-- nil, nil if no Fed2 Map content is currently applied anywhere.
+function f2tGetMapSlotInfo()
+    return liveSlotContent, liveGid
 end
 
 function f2tRegisterMapContent()

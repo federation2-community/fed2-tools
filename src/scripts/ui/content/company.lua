@@ -153,6 +153,7 @@ local function openDialog(opts, buildFn)
             apply    = function(target)
                 target.contentBg:echo("")
                 target.contentBg:setStyleSheet("background-color:rgba(0,0,0,0);border:none;")
+                target.contentBg:hide()
                 local fn = _pendingDialog
                 _pendingDialog = nil
                 if fn then fn(target) end
@@ -595,6 +596,7 @@ local function buildOverview(target)
     if target.contentBg then
         target.contentBg:echo("")
         target.contentBg:setStyleSheet("background-color: rgba(0,0,0,0); border: none;")
+        target.contentBg:hide()
     end
     if instances[gid] then
         renderOverview(instances[gid])
@@ -801,6 +803,7 @@ local function buildFactories(target)
     if target.contentBg then
         target.contentBg:echo("")
         target.contentBg:setStyleSheet("background-color: rgba(0,0,0,0); border: none;")
+        target.contentBg:hide()
     end
     if instances[gid] then
         renderFactories(instances[gid])
@@ -968,6 +971,7 @@ local function buildFinancials(target)
     if target.contentBg then
         target.contentBg:echo("")
         target.contentBg:setStyleSheet("background-color: rgba(0,0,0,0); border: none;")
+        target.contentBg:hide()
     end
     if instances[gid] then
         renderFinancials(instances[gid])

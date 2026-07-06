@@ -202,8 +202,8 @@ function f2tHaulingJobsLine(jobNumber, origin, dest, allowedMoves, payPerTon)
     local allowedNum   = tonumber(allowedMoves) or 0
 
     local distance
-    if f2t_map_get_route_info then
-        local info = f2t_map_get_route_info(origin, dest)
+    if f2t_map_get_cartel_route_info then
+        local info = f2t_map_get_cartel_route_info(origin, dest)
         if info and info.success then distance = info.space_moves end
     end
 
@@ -243,6 +243,7 @@ local function buildContent(target)
     if target.contentBg then
         target.contentBg:echo("")
         target.contentBg:setStyleSheet("background-color: rgba(0,0,0,0); border: none;")
+        target.contentBg:hide()
     end
 
     if instances[gid] then

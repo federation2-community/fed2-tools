@@ -37,7 +37,13 @@ local function f2tDevmodeDoReload(pkgPath)
     if table.contains(getPackages(), "fed2-tools") then
         uninstallPackage("fed2-tools")
     end
+    -- Reinstalling only reloads fed2-tools' Lua; Muxlet keeps running and never
+    -- re-fires "muxletReady", so nothing re-triggers content registration on
+    -- its own. Clear the registrar list so reloaded modules repopulate it
+    -- fresh, then run it explicitly once the new package has loaded.
+    F2T_CONTENT_REGISTRARS = {}
     installPackage(pkgPath)
+    if f2tRegisterAllContent then f2tRegisterAllContent() end
 end
 
 -- Recursive 30-second timer. Does nothing when the stamp file is absent

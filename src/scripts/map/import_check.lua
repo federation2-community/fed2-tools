@@ -4,8 +4,27 @@
 -- fed2_map content is applied to a pane/tab — both a manual add from the
 -- Content Library and a workspace restore reapplying a previously-saved
 -- layout funnel through the same Mux._applyContent -> apply() path, so this
--- fires identically either way.  It decides whether to offer the bundled
--- map-database import dialog and, if so, with what framing:
+-- fires identically either way. It decides whether to offer the bundled
+-- map-database import overlay and, if so, with what framing. That decision is
+-- driven ENTIRELY by the persisted show_import_prompt setting (plus the
+-- version re-arm below) — never by live room count. (map.lua separately seeds
+-- a placeholder room when the database is empty, purely to keep Mudlet's own
+-- native mapper overlay from showing; that is unrelated bookkeeping and has no
+-- bearing on this decision.)
+--
+-- Deliberately does NOT take a slotContent/gid snapshot from the calling
+-- apply() — it resolves f2tGetMapSlotInfo() fresh at the moment the overlay
+-- actually builds (after its own tempTimer defer below). map.lua's apply()
+-- can legitimately re-run more than once during profile startup (default
+-- workspace restore reapplying content shortly after its first mount), which
+-- invalidates that apply's own activeToken; snapshotting slotContent at
+-- call time meant the deferred build silently targeted a slot that might
+-- already be gone by the time it fired — which is why the prompt never
+-- appeared on first load. Resolving fresh means whichever apply() ends up
+-- live by fire-time is what gets the overlay, regardless of how many
+-- reapplies happened in between.
+--
+-- Reason framing:
 --
 --   "firstrun" — this profile has never acknowledged a map database version
 --                (internal map_db_version_applied == 0).  Shown once.
@@ -20,11 +39,7 @@
 -- Mux.settings._data write — not a registered f2t setting, since it's pure
 -- internal bookkeeping the user has no reason to edit directly).
 --
--- Decision is NOT based on live room count: mapping is enabled by default, so
--- the Mudlet map already has at least the current room the moment this fires,
--- making "is the map empty" useless as a first-run signal.
---
--- The acknowledgement is written only AFTER the dialog is actually shown, so a
+-- The acknowledgement is written only AFTER the overlay is actually shown, so a
 -- silent miss (bad timing, pane not ready) cannot permanently suppress the
 -- prompt.
 --
@@ -62,24 +77,33 @@ function f2tCheckMapImport()
         return
     end
 
-    if not f2tShowMapImportDialog then
-        f2t_debug_log("[map-import] f2tShowMapImportDialog missing — cannot prompt")
+    if not f2tShowMapImportOverlay then
+        f2t_debug_log("[map-import] f2tShowMapImportOverlay missing — cannot prompt")
         return
     end
 
-    f2t_debug_log("[map-import] offering import dialog (reason=%s)", reason)
+    f2t_debug_log("[map-import] offering import overlay (reason=%s)", reason)
 
-    -- Defer slightly so any onboarding dialog that just closed finishes animating.
+    -- Defer slightly so the mapper/movement/settings overlays built just above
+    -- this call finish laying out before the import overlay stacks on top.
     tempTimer(0.2, function()
-        local shown = f2tShowMapImportDialog(reason)
-        -- Only burn the acknowledgement once the dialog genuinely displayed, so a
+        local slotContent, gid
+        if f2tGetMapSlotInfo then
+            slotContent, gid = f2tGetMapSlotInfo()
+        end
+        if not slotContent then
+            f2t_debug_log("[map-import] no live map pane — skipping overlay")
+            return
+        end
+        local shown = f2tShowMapImportOverlay(slotContent, gid, reason)
+        -- Only burn the acknowledgement once the overlay genuinely displayed, so a
         -- failed show leaves the prompt armed for the next map load.
         if shown then
             f2t_settings_set("map", "show_import_prompt", false)
             markVersionApplied()
-            f2t_debug_log("[map-import] dialog shown — show_import_prompt off, version_applied=%d", MAP_DB_VERSION)
+            f2t_debug_log("[map-import] overlay shown — show_import_prompt off, version_applied=%d", MAP_DB_VERSION)
         else
-            f2t_debug_log("[map-import] dialog did not show — leaving prompt armed")
+            f2t_debug_log("[map-import] overlay did not show — leaving prompt armed")
         end
     end)
 end

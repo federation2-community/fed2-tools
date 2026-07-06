@@ -596,6 +596,7 @@ local function buildPanel(target, registry, idPrefix, cols, refreshFn)
     if target.contentBg then
         target.contentBg:echo("")
         target.contentBg:setStyleSheet("background-color: rgba(0,0,0,0); border: none;")
+        target.contentBg:hide()
     end
 
     if registry[gid] then

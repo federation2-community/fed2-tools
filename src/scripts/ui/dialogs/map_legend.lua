@@ -21,13 +21,13 @@ local function legendHtml()
         local textColor = entry.text_color or "#ddeeff"
         table.insert(rows, string.format(
             "<tr>"
-            .. "<td style='width:48px;text-align:center;padding:3px 2px'>"
-            ..   "<span style='background:%s;color:%s;padding:2px 6px;"
-            ..   "border-radius:2px;font-size:11px'>%s</span>"
+            .. "<td style='width:52px;text-align:center;padding:4px 2px'>"
+            ..   "<span style='background:%s;color:%s;padding:3px 7px;"
+            ..   "border-radius:2px;font-size:13px'>%s</span>"
             .. "</td>"
-            .. "<td style='padding:3px 8px;color:rgba(205,215,225,0.95);font-size:11px;"
+            .. "<td style='padding:4px 8px;color:rgba(205,215,225,0.95);font-size:13px;"
             ..   "white-space:nowrap'>%s</td>"
-            .. "<td style='padding:3px 6px;color:rgba(105,120,135,0.85);font-size:10px;'>%s</td>"
+            .. "<td style='padding:4px 6px;color:rgba(105,120,135,0.85);font-size:12px;'>%s</td>"
             .. "</tr>",
             entry.html_color, textColor, sym, entry.label, entry.note
         ))
@@ -71,8 +71,9 @@ function f2tShowMapLegend()
 
     local dialog = Mux.createDialog({
         title     = "Map Legend",
-        width     = 420,
-        height    = 380,
+        width     = 460,
+        height    = 440,
+        resizable = true,
         singleton = "f2t_map_legend",
     })
     Mux._applyContent(dialog, "f2t_map_legend")

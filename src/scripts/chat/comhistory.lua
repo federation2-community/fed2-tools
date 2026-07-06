@@ -7,10 +7,17 @@
 --
 -- Two permanent triggers drive capture (src/triggers/chat/):
 --   comhistory_capture → f2tChatComhistoryBegin()   (header line)
---   comhistory_line    → f2tChatComhistoryLine()    (message lines)
+--   comhistory_line    → f2tChatComhistoryLine()    (every line, catch-all)
 --
 -- Permanent triggers (rather than tempLineTrigger) avoid missing lines already
--- batched in the server's response when the request was sent from a timer.
+-- batched in the server's response when the request was sent from a timer —
+-- this applies just as much to wrapped continuation lines mid-capture as it
+-- does to the first entry, so comhistory_line's pattern is a catch-all and
+-- f2tChatComhistoryLine() itself branches on whether the line looks like a
+-- new entry header or a continuation of the one in progress. (An earlier
+-- version used a tempLineTrigger armed after each line to peek at the next
+-- one; armed mid-batch it registered one line too late, causing it to skip
+-- every other line for the rest of the capture.)
 --
 -- Ported from archive's ui_chat_comhistory.lua.
 
@@ -19,10 +26,11 @@ local state = {
     --       true  = capture consumed this session (prevents re-capture)
     sent    = false,
     active  = false,   -- true while collecting message lines
+    inEntry = false,   -- true if the most recent line could still take a wrapped continuation
+    current = nil,     -- buffer entry the next continuation line (if any) folds into
     refTime = nil,
     buffer  = {},      -- list of {name, ago, text}
     timerId = nil,
-    peekId  = nil,     -- tempLineTrigger id armed to catch a wrapped continuation line
 }
 
 -- Returns (estimatedUnixTime, toleranceSeconds).  "N hours ago" means the
@@ -47,15 +55,21 @@ local function isDuplicate(from, msg, t, tolerance)
     return false
 end
 
--- Merge new records into history preserving chronological order.  Same-second
--- entries get a +1s nudge so comhistory's own ordering survives the sort.
+-- Merge new records into history preserving chronological order. Same-bucket
+-- entries sort by original emission index (table.sort isn't stable) then get
+-- a +1s nudge so comhistory's own ordering survives.
 local function merge(newRecords)
-    table.sort(newRecords, function(a, b) return a.t < b.t end)
+    for i, r in ipairs(newRecords) do r._idx = i end
+    table.sort(newRecords, function(a, b)
+        if a.t ~= b.t then return a.t < b.t end
+        return a._idx < b._idx
+    end)
     for i = 2, #newRecords do
         if newRecords[i].t <= newRecords[i-1].t then
             newRecords[i].t = newRecords[i-1].t + 1
         end
     end
+    for _, r in ipairs(newRecords) do r._idx = nil end
     local merged, hi, ni = {}, 1, 1
     local hist = F2T_CHAT.history
     while hi <= #hist or ni <= #newRecords do
@@ -70,11 +84,7 @@ local function merge(newRecords)
     F2T_CHAT.history = merged
 end
 
-local finish, killPeek, resetFinishTimer, matchHeader, armPeek, recordEntry
-
-killPeek = function()
-    if state.peekId then killTrigger(state.peekId); state.peekId = nil end
-end
+local finish, resetFinishTimer, matchHeader
 
 resetFinishTimer = function()
     if state.timerId then killTimer(state.timerId) end
@@ -92,8 +102,9 @@ matchHeader = function(l)
 end
 
 finish = function()
-    killPeek()
     state.active  = false
+    state.inEntry = false
+    state.current = nil
     state.timerId = nil
 
     local buffer = state.buffer
@@ -117,52 +128,11 @@ finish = function()
     f2tChatSave()
     raiseEvent("f2tChatUpdated", "replay")
 
-    local s = #newRecords == 1 and "" or "s"
-    cecho(string.format("\n<dim_gray>[comhistory]<reset> %d missed message%s added to chat\n",
-        #newRecords, s))
-end
-
--- Records one entry (skipping our own messages — already in the live log) and
--- arms a peek for a possible wrapped continuation line.
-recordEntry = function(name, ago, text)
-    local entry = nil
-    if not (F2T_CHAR_NAME and name:lower() == F2T_CHAR_NAME:lower()) then
-        entry = { name = name, ago = ago, text = text }
-        table.insert(state.buffer, entry)
-    end
-    armPeek(entry)
-end
-
--- Fed2 wraps long comhistory lines the same way it wraps quoted chat messages
--- (chat_inbound.lua) — a continuation line repeats neither the sender name nor
--- the "X ago:" prefix, so comhistory_line's trigger pattern never matches it,
--- and it was previously left on screen, untouched and un-merged (the bug this
--- fixes). Peek the very next physical line with a temp line trigger, the same
--- technique chat_inbound.lua's captureContinuation uses (getCurrentLine(), not
--- the `line` global — temp line triggers don't populate that the same way a
--- pattern-matched trigger does): if it's a new entry's header, dispatch it as
--- one; otherwise fold it into the entry just captured and keep peeking.
--- `entry` is nil when the just-captured line was one of our own messages
--- (still consumed/hidden, just never buffered). killPeek() (called from
--- finish() and the disconnect handler) always tears this down so a still-armed
--- peek can never swallow an unrelated later line once capture is done.
-armPeek = function(entry)
-    killPeek()
-    state.peekId = tempLineTrigger(1, 1, function()
-        if not state.active then return end
-        local l = getCurrentLine()
-        local name, ago, text = matchHeader(l)
-        if name then
-            deleteLine()
-            resetFinishTimer()
-            recordEntry(name, ago, text)
-            return
-        end
-        deleteLine()
-        if entry then entry.text = entry.text .. " " .. l end
-        resetFinishTimer()
-        armPeek(entry)
-    end)
+    -- The chat panel isn't necessarily open/enabled, so this stays out of the
+    -- main console — the merged records show up in the chat log whenever the
+    -- user next looks at it.
+    f2t_debug_log("[comhistory] %d missed message%s added to chat",
+        #newRecords, #newRecords == 1 and "" or "s")
 end
 
 -- ── Trigger entry points ──────────────────────────────────────────────────────
@@ -184,6 +154,8 @@ function f2tChatComhistoryBegin()
 
     state.sent    = true
     state.active  = true
+    state.inEntry = false
+    state.current = nil
     state.refTime = os.time()
     state.buffer  = {}
 
@@ -191,29 +163,43 @@ function f2tChatComhistoryBegin()
     f2t_debug_log("[comhistory] capture started")
 end
 
+-- Fires on every line (catch-all pattern in triggers.json) while a backfill
+-- capture is active. Fed2 wraps long comhistory lines the same way it wraps
+-- quoted chat messages (chat_inbound.lua) — a continuation line repeats
+-- neither the sender name nor the "X ago:" prefix, so it never matches
+-- matchHeader(). Any such line is treated as a continuation of whatever entry
+-- is in progress (state.current, or none if the entry belonged to our own
+-- message — already in the live log) as long as state.inEntry is still true.
 function f2tChatComhistoryLine()
     if not state.active then return end
-    -- Once the first entry has armed a continuation peek (armPeek below), that
-    -- peek becomes the sole handler for every line that follows — permanent and
-    -- temp triggers both fire on the same incoming line, so acting here too
-    -- would double-delete/double-record it. This trigger only ever needs to
-    -- catch the very first entry line, which may already be batched with the
-    -- header before a temp trigger could be armed (hence a permanent trigger
-    -- for it, per the file-level comment).
-    if state.peekId then return end
 
     local name, ago, text = matchHeader(line)   -- `line` is Mudlet's global for the trigger's current line
-    if not name then return end
+
+    if name then
+        deleteLine()
+
+        -- Timer-based completion: any recognized line resets the window, and
+        -- the timer ALWAYS finishes the capture when it expires (even on
+        -- empty data).
+        resetFinishTimer()
+
+        state.inEntry = true
+        if F2T_CHAR_NAME and name:lower() == F2T_CHAR_NAME:lower() then
+            state.current = nil
+        else
+            state.current = { name = name, ago = ago, text = text }
+            table.insert(state.buffer, state.current)
+        end
+        return
+    end
+
+    if not state.inEntry then return end
 
     deleteLine()
-
-    -- Timer-based completion: any recognized line resets the window, and the
-    -- timer ALWAYS finishes the capture when it expires (even on empty data).
     resetFinishTimer()
-
-    -- Records the entry (skipping our own — already in the live log) and arms
-    -- a peek for a possible wrapped continuation line (see armPeek above).
-    recordEntry(name, ago, text)
+    if state.current then
+        state.current.text = state.current.text .. " " .. line
+    end
 end
 
 -- ── Session wiring ────────────────────────────────────────────────────────────
@@ -230,19 +216,28 @@ end
 
 -- gmcp.char.vitals fires repeatedly; the sent-flag makes this once per session.
 -- The 2s delay keeps the request clear of the login sequence output.
-registerAnonymousEventHandler("gmcp.char.vitals", function()
+local function onVitals()
     local name = gmcp.char and gmcp.char.vitals and gmcp.char.vitals.name
     if not name or name == "" then return end
     requestOnLogin()
-end)
+end
+
+registerAnonymousEventHandler("gmcp.char.vitals", onVitals)
+
+-- A script reload (e.g. dev-mode rebuild while still connected) re-executes
+-- this file, giving `state` a fresh sent=false with no gmcp.char.vitals event
+-- coming to re-trigger onVitals (Mudlet doesn't replay it; see char.lua for
+-- the same gap). Check for already-present vitals data immediately so the
+-- backfill still runs once after a reload instead of silently never firing.
+onVitals()
 
 registerAnonymousEventHandler("sysConnectionEvent", function()
     local _, _, connected = getConnectionInfo()
     if connected then return end
     -- Reset on disconnect so the next login fetches again.
     if state.timerId then killTimer(state.timerId) end
-    killPeek()
     state.sent, state.active, state.refTime = false, false, nil
+    state.inEntry, state.current = false, nil
     state.buffer, state.timerId = {}, nil
 end)
 

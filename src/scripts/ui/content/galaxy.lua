@@ -432,6 +432,7 @@ local function buildPanel(target)
     if target.contentBg then
         target.contentBg:echo("")
         target.contentBg:setStyleSheet("background-color: rgba(0,0,0,0); border: none;")
+        target.contentBg:hide()
     end
     if instances[gid] then populate(gid); return end
 

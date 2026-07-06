@@ -4,7 +4,7 @@
 -- bottom-right of the Fed2 Map pane.  Clicking it toggles a flyout menu with
 -- manual map-database actions:
 --
---   Import Map Database  — open the bundled-resource picker (f2tShowMapImportDialog)
+--   Import Map Database  — open the bundled-resource picker (f2tShowMapImportOverlay)
 --   Import from File     — file-dialog import of an external map JSON (f2t_map_import)
 --   Export Map           — file-dialog export of the current map (f2t_map_export)
 --
@@ -54,32 +54,38 @@ local _CSS_MENU_ITEM = [[
     }
 ]]
 
-local _MENU_ITEMS = {
-    {
-        label  = "  Map Legend…",
-        action = function()
-            if f2tShowMapLegend then f2tShowMapLegend() end
-        end,
-    },
-    {
-        label  = "  Import Map Database…",
-        action = function()
-            if f2tShowMapImportDialog then f2tShowMapImportDialog("manual") end
-        end,
-    },
-    {
-        label  = "  Import from File…",
-        action = function()
-            if f2t_map_import then f2t_map_import() end
-        end,
-    },
-    {
-        label  = "  Export Map…",
-        action = function()
-            if f2t_map_export then f2t_map_export() end
-        end,
-    },
-}
+-- Built per-call (inside f2tBuildMapSettings) rather than once at module
+-- scope, since the "Import Map Database…" action needs the live parent/gid
+-- to build the overlay into (f2tShowMapImportOverlay renders inside the map
+-- content's own slot, not a standalone dialog).
+local function _buildMenuItems(parent, gid)
+    return {
+        {
+            label  = "  Map Legend…",
+            action = function()
+                if f2tShowMapLegend then f2tShowMapLegend() end
+            end,
+        },
+        {
+            label  = "  Import Map Database…",
+            action = function()
+                if f2tShowMapImportOverlay then f2tShowMapImportOverlay(parent, gid, "manual") end
+            end,
+        },
+        {
+            label  = "  Import from File…",
+            action = function()
+                if f2t_map_import then f2t_map_import() end
+            end,
+        },
+        {
+            label  = "  Export Map…",
+            action = function()
+                if f2t_map_export then f2t_map_export() end
+            end,
+        },
+    }
+end
 
 local GEAR_PX = 22   -- exact square side in pixels after resize
 local MARGIN  = 3    -- gap from pane right/bottom borders in pixels
@@ -134,7 +140,8 @@ function f2tBuildMapSettings(parent, gid)
     end
 
     local function buildMenu()
-        local panelH = PAD * 2 + #_MENU_ITEMS * ITEM_H + (#_MENU_ITEMS - 1) * GAP
+        local menuItems = _buildMenuItems(parent, gid)
+        local panelH = PAD * 2 + #menuItems * ITEM_H + (#menuItems - 1) * GAP
 
         -- Right border of menu = right border of gear; bottom of menu = gear top - 3px.
         local menuX, menuY, menuW
@@ -162,7 +169,7 @@ function f2tBuildMapSettings(parent, gid)
         }, menu)
         bg:setStyleSheet(_CSS_MENU_BG)
 
-        for i, item in ipairs(_MENU_ITEMS) do
+        for i, item in ipairs(menuItems) do
             local itemY = PAD + (i - 1) * (ITEM_H + GAP)
             local btn = Geyser.Label:new({
                 name   = string.format("%smenuItem%d", pfx, i),

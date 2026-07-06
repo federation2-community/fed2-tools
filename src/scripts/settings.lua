@@ -133,6 +133,7 @@ end
 
 f2t_settings_register("f2t", "update_check_enabled", {
     tab         = "Fed2-Tools/General",
+    order       = 1,
     label       = "Auto-update check",
     description = "Check for fed2-tools updates automatically on session start",
     default     = true,

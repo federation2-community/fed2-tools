@@ -27,7 +27,7 @@ function f2t_get_char_persistent_dir()
     return PERSISTENT_BASE
 end
 
-registerAnonymousEventHandler("gmcp.char.vitals", function()
+local function onVitals()
     local name = gmcp.char and gmcp.char.vitals and gmcp.char.vitals.name
     if not name or name == "" then return end
     if loginDone and F2T_CHAR_NAME == name then return end
@@ -45,7 +45,18 @@ registerAnonymousEventHandler("gmcp.char.vitals", function()
     end
 
     f2t_debug_log("[char] logged in as %s", name)
-end)
+end
+
+registerAnonymousEventHandler("gmcp.char.vitals", onVitals)
+
+-- A script reload (e.g. dev-mode rebuild while still connected) re-executes
+-- this whole file, resetting F2T_CHAR_NAME/loginDone to their fresh-load
+-- defaults. Mudlet doesn't replay the GMCP event that originally set them, so
+-- without this check fed2-tools would stay "logged out" — silently falling
+-- back to the shared persistent path — until the next reconnect. gmcp.char
+-- itself survives a script reload (it's populated by Mudlet's core), so just
+-- check for already-present data immediately.
+onVitals()
 
 -- Reset so the next login after a reconnect is detected fresh.
 registerAnonymousEventHandler("sysConnectionEvent", function()

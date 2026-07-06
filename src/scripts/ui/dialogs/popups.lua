@@ -176,12 +176,14 @@ local function applyModeSelectToPane(target)
         target:close()
         if selectedMode == "full" then
             setAutostart(true)
+            -- Set before fullStart() so its own no-'current'-yet fallback
+            -- picks up "fed2-tools" directly — no separate apply call needed,
+            -- and no race with fullStart's own internal deferred setup.
+            Mux.configureHost({ defaultWorkspace = "fed2-tools" })
             Mux.fullStart()
-            tempTimer(0.1, function()
-                Mux.applyWorkspace("fed2-tools")
-            end)
         elseif selectedMode == "byow" then
             setAutostart(true)
+            Mux.configureHost({ defaultWorkspace = "default" })
             Mux.fullStart()
         else
             setAutostart(false)

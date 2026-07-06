@@ -1,11 +1,20 @@
--- fed2-tools — Map import dialog
+-- fed2-tools — Map import overlay
 --
--- f2tShowMapImportDialog() is called by map/import_check.lua when the Mudlet
--- map database is empty (first use) or a new map DB version shipped with an
--- upgrade.  Presents three pre-bundled map options and imports the selected one.
+-- f2tShowMapImportOverlay(slotContent, gid, reason) is called by
+-- map/import_check.lua (auto first-run/upgrade), map_settings.lua's gear
+-- menu, and the "map import db" alias (all three: manual). Presents three
+-- pre-bundled map options and imports the selected one.
 --
--- Uses Mux.registerContent + Mux._applyContent so the dialog integrates cleanly
--- with Muxlet's pane lifecycle (contentBg cleared, z-order, theme borders).
+-- Built directly as a Geyser overlay inside the map content's own slot
+-- (slotContent) rather than a separate floating Mux dialog. This matters:
+-- Mudlet's native mapper widget owns its own built-in "No map yet for this
+-- profile" empty-state overlay with no Lua hook to suppress it, and a
+-- separate top-level dialog pane competes with that native widget across
+-- unrelated branches of the Qt widget tree — an unwinnable z-order race that
+-- is exactly what caused this prompt to never visibly appear. Building this
+-- overlay as a sibling of the mapper/movement/settings widgets inside the
+-- SAME slotContent uses the same simple same-parent raise() stacking that
+-- those overlays already rely on successfully.
 
 -- ── Option definitions ────────────────────────────────────────────────────────
 
@@ -15,6 +24,12 @@ local _MAP_OPTIONS = {
     { file = "starter_map.json",               label = "Starter Map  (Basic)"        },
 }
 
+local _CSS_BG = "background-color: rgba(10,12,20,235); border: none;"
+local _CSS_PANEL = [[
+    background-color: rgba(16,20,34,235);
+    border: 1px solid rgba(80,95,140,200);
+    border-radius: 6px;
+]]
 local _CSS_BTN_OFF = [[
     QLabel {
         background-color: rgba(28,32,50,210);
@@ -53,6 +68,30 @@ local _CSS_BTN_DONE = [[
 local _CSS_STATUS_INFO = "background:transparent; color:rgba(105,125,180,255); font-size:9px; padding:0 14px;"
 local _CSS_STATUS_OK   = "background:transparent; color:rgba(115,222,148,255); font-size:9px; padding:0 14px;"
 local _CSS_STATUS_ERR  = "background:transparent; color:rgba(210,120,115,255); font-size:9px; padding:0 14px;"
+local _CSS_TITLE = "background:transparent; color:rgba(230,236,250,255); font-size:12px; font-weight:bold; padding:0 14px;"
+
+local _INTRO_BY_REASON = {
+    firstrun =
+        "<font color='#c6d2ee'>Install a map database to jumpstart navigation.<br>" ..
+        "You can skip this and build your map by exploring the galaxy.</font>",
+    upgrade =
+        "<font color='#c6d2ee'>This version ships an updated map database.<br>" ..
+        "Re-importing is recommended — it replaces your current map.</font>",
+    manual =
+        "<font color='#c6d2ee'>Choose a bundled map database to import.<br>" ..
+        "Importing replaces your current map.</font>",
+}
+
+local _TITLE_BY_REASON = {
+    firstrun = "Import Map Database",
+    upgrade  = "Map Database Update Recommended",
+    manual   = "Import Map Database",
+}
+
+-- Singleton: only one map pane exists at a time (fed2_map is singleton
+-- content), so a single module-level reference is enough to avoid stacking
+-- duplicate overlays if something calls this twice in a row.
+local _live = nil   -- { shell = Geyser.Container, slotContent = ... }
 
 -- ── Import logic ──────────────────────────────────────────────────────────────
 
@@ -74,53 +113,78 @@ local function _doImport(filePath, statusLbl, importBtn)
     end
 end
 
--- ── Content apply function ────────────────────────────────────────────────────
---
--- _pendingReason is set synchronously by f2tShowMapImportDialog() before
--- _applyContent runs, so apply can tailor its framing.  Values:
---   "firstrun" (default) — first map load on this profile
---   "upgrade"            — a newer bundled map database shipped
---   "manual"             — user opened the picker from the settings menu/command
+local function _dismiss()
+    if not _live then return end
+    local shell = _live.shell
+    _live = nil
+    if shell then
+        pcall(function()
+            if shell.delete then shell:delete() else shell:hide() end
+        end)
+    end
+end
 
-local _pendingReason = "firstrun"
+-- ── Public entry point ────────────────────────────────────────────────────────
 
-local _INTRO_BY_REASON = {
-    firstrun =
-        "<font color='#c6d2ee'>Install a map database to jumpstart navigation.<br>" ..
-        "You can skip this and build your map by exploring the galaxy.</font>",
-    upgrade =
-        "<font color='#c6d2ee'>This version ships an updated map database.<br>" ..
-        "Re-importing is recommended — it replaces your current map.</font>",
-    manual =
-        "<font color='#c6d2ee'>Choose a bundled map database to import.<br>" ..
-        "Importing replaces your current map.</font>",
-}
+-- reason: "firstrun" (default) | "upgrade" | "manual" — controls framing.
+-- Returns true if the overlay was actually created/shown, false otherwise, so
+-- callers (import_check.lua) can avoid burning the "seen" flag on a failed show.
+function f2tShowMapImportOverlay(slotContent, gid, reason)
+    if not slotContent then
+        cecho("\n<yellow>[fed2-tools]<reset> Map import: no map pane is open to show the picker in.\n")
+        return false
+    end
 
-local function applyMapImportToPane(target)
-    target.contentBg:echo("")
-    target.contentBg:setStyleSheet("background-color:rgba(0,0,0,0);border:none;")
+    reason = reason or "firstrun"
 
-    local c   = target.content
-    local pfx = target._gid .. "_mi_"
-    local IX  = "3%"
-    local IW  = "94%"
-    local y   = 10
+    -- Already showing (e.g. re-triggered while up) — just raise it.
+    if _live and _live.slotContent == slotContent then
+        pcall(function() _live.shell:raise() end)
+        return true
+    end
+    _dismiss()
 
-    -- Intro text
-    local intro = Geyser.Label:new({ name=pfx.."intro", x=IX, y=y, width=IW, height=46 }, c)
+    local pfx = (gid or "f2t_map") .. "_mi_"
+
+    local shell = Geyser.Container:new({ name = pfx.."shell", x=0, y=0, width="100%", height="100%" }, slotContent)
+    local bg = Geyser.Label:new({ name = pfx.."bg", x=0, y=0, width="100%", height="100%" }, shell)
+    bg:setStyleSheet(_CSS_BG)
+
+    -- Centered panel so the overlay reads as a modal card over the map,
+    -- not a full-bleed wall of controls. Height must fit: 12 top pad + title
+    -- (24) + intro (48) + div1 (10) + optLbl (18) + 3 options (32 each = 96)
+    -- + gap (4) + div2 (8) + status (22) + import btn (38) + div3 (8) + skip
+    -- btn (28) = 316, plus bottom padding.
+    local PANEL_W, PANEL_H = 380, 340
+    local panel = Geyser.Container:new({
+        name = pfx.."panel", x="50%-190", y="50%-170", width=PANEL_W, height=PANEL_H,
+    }, shell)
+    local panelBg = Geyser.Label:new({ name = pfx.."panelBg", x=0, y=0, width="100%", height="100%" }, panel)
+    panelBg:setStyleSheet(_CSS_PANEL)
+
+    local IX = "3%"
+    local IW = "94%"
+    local y  = 12
+
+    local titleLbl = Geyser.Label:new({ name=pfx.."title", x=IX, y=y, width=IW, height=18 }, panel)
+    titleLbl:setStyleSheet(_CSS_TITLE)
+    titleLbl:echo(_TITLE_BY_REASON[reason] or _TITLE_BY_REASON.firstrun)
+    y = y + 24
+
+    local intro = Geyser.Label:new({ name=pfx.."intro", x=IX, y=y, width=IW, height=42 }, panel)
     intro:setStyleSheet("background:transparent; color:rgba(198,210,238,255); font-size:10px; padding:4px 14px;")
-    intro:echo(_INTRO_BY_REASON[_pendingReason] or _INTRO_BY_REASON.firstrun)
-    y = y + 52
+    intro:echo(_INTRO_BY_REASON[reason] or _INTRO_BY_REASON.firstrun)
+    y = y + 48
 
-    local div1 = Geyser.Label:new({ name=pfx.."div1", x=0, y=y, width="100%", height=1 }, c)
-    div1:setStyleSheet(Mux.dialogCss.divider)
+    local div1 = Geyser.Label:new({ name=pfx.."div1", x=0, y=y, width="100%", height=1 }, panel)
+    div1:setStyleSheet(Mux and Mux.dialogCss and Mux.dialogCss.divider or "background-color: rgba(255,255,255,0.10); border: none;")
     y = y + 10
 
     -- Map option selector
-    local optLbl = Geyser.Label:new({ name=pfx.."optLbl", x=IX, y=y, width=IW, height=16 }, c)
+    local optLbl = Geyser.Label:new({ name=pfx.."optLbl", x=IX, y=y, width=IW, height=14 }, panel)
     optLbl:setStyleSheet("background:transparent; color:rgba(115,222,148,255); font-size:9px; font-weight:bold; padding:0 14px;")
     optLbl:echo("SELECT MAP DATABASE")
-    y = y + 20
+    y = y + 18
 
     local mapDir   = getMudletHomeDir() .. "/fed2-tools/"
     local selected = 1
@@ -146,7 +210,7 @@ local function applyMapImportToPane(target)
             and string.format("%s  (%d rooms)", opt.label, roomCount)
             or  opt.label
 
-        local btn = Geyser.Label:new({ name=pfx.."opt"..i, x=IX, y=y, width=IW, height=32 }, c)
+        local btn = Geyser.Label:new({ name=pfx.."opt"..i, x=IX, y=y, width=IW, height=28 }, panel)
         btn:echo("<center>" .. label .. "</center>")
         table.insert(optBtns, btn)
 
@@ -156,23 +220,23 @@ local function applyMapImportToPane(target)
             selected = capturedIdx
             refreshStyles()
         end)
-        y = y + 36
+        y = y + 32
     end
     refreshStyles()
 
-    y = y + 6
-    local div2 = Geyser.Label:new({ name=pfx.."div2", x=0, y=y, width="100%", height=1 }, c)
-    div2:setStyleSheet(Mux.dialogCss.divider)
-    y = y + 10
+    y = y + 4
+    local div2 = Geyser.Label:new({ name=pfx.."div2", x=0, y=y, width="100%", height=1 }, panel)
+    div2:setStyleSheet(Mux and Mux.dialogCss and Mux.dialogCss.divider or "background-color: rgba(255,255,255,0.10); border: none;")
+    y = y + 8
 
     -- Status label
-    local statusLbl = Geyser.Label:new({ name=pfx.."status", x=IX, y=y, width=IW, height=20 }, c)
+    local statusLbl = Geyser.Label:new({ name=pfx.."status", x=IX, y=y, width=IW, height=16 }, panel)
     statusLbl:setStyleSheet(_CSS_STATUS_INFO)
     statusLbl:echo("")
-    y = y + 28
+    y = y + 22
 
     -- Import button
-    local importBtn = Geyser.Label:new({ name=pfx.."import", x="10%", y=y, width="80%", height=34 }, c)
+    local importBtn = Geyser.Label:new({ name=pfx.."import", x="10%", y=y, width="80%", height=30 }, panel)
     importBtn:setStyleSheet([[
         QLabel {
             background-color: rgba(28,48,78,230);
@@ -189,6 +253,9 @@ local function applyMapImportToPane(target)
         }
     ]])
     importBtn:echo("<center>Import Selected Map</center>")
+
+    local skipBtn -- forward-declared so importBtn's callback can relabel it
+
     importBtn:setClickCallback(function()
         if done then return end
         local opt  = _MAP_OPTIONS[selected]
@@ -199,68 +266,24 @@ local function applyMapImportToPane(target)
             local ok2 = _doImport(path, statusLbl, importBtn)
             if ok2 then
                 done = true
-                for _, btn in ipairs(optBtns) do
-                    btn:setStyleSheet(_CSS_BTN_DONE)
-                    btn:setClickCallback(function() end)
-                end
+                tempTimer(0.6, function() _dismiss() end)
             end
         end)
     end)
-    y = y + 42
+    y = y + 38
 
-    local div3 = Geyser.Label:new({ name=pfx.."div3", x=0, y=y, width="100%", height=1 }, c)
-    div3:setStyleSheet(Mux.dialogCss.divider)
-    y = y + 10
+    local div3 = Geyser.Label:new({ name=pfx.."div3", x=0, y=y, width="100%", height=1 }, panel)
+    div3:setStyleSheet(Mux and Mux.dialogCss and Mux.dialogCss.divider or "background-color: rgba(255,255,255,0.10); border: none;")
+    y = y + 8
 
-    -- Skip / close button
-    local skipBtn = Geyser.Label:new({ name=pfx.."skip", x="25%", y=y, width="50%", height=32 }, c)
-    skipBtn:setStyleSheet(Mux.dialogCss.button)
+    -- Skip / close button — always available, per design: the user must deal
+    -- with this overlay, but skipping out of it is always on the table.
+    skipBtn = Geyser.Label:new({ name=pfx.."skip", x="25%", y=y, width="50%", height=28 }, panel)
+    skipBtn:setStyleSheet(Mux and Mux.dialogCss and Mux.dialogCss.button or _CSS_BTN_OFF)
     skipBtn:echo("<center>Skip</center>")
-    skipBtn:setClickCallback(function() target:close() end)
-end
+    skipBtn:setClickCallback(function() _dismiss() end)
 
--- ── Public entry point ────────────────────────────────────────────────────────
-
--- reason: "firstrun" (default) | "upgrade" | "manual" — controls framing.
--- Returns true if the dialog was actually created/shown, false otherwise, so
--- callers (import_check.lua) can avoid burning the "seen" flag on a failed show.
-function f2tShowMapImportDialog(reason)
-    _pendingReason = reason or "firstrun"
-
-    if not (Mux and Mux.createDialog and Mux.registerContent and Mux._applyContent) then
-        cecho("\n<yellow>[fed2-tools]<reset> Map import: run  <cyan>map import db<reset>  to load a map database.\n")
-        return false
-    end
-
-    if not Mux._content or not Mux._content["f2t_map_import"] then
-        Mux.registerContent("f2t_map_import", {
-            internal = true,
-            name     = "Map Import",
-            apply    = applyMapImportToPane,
-        })
-    end
-
-    local DIALOG_W = 480
-    local DIALOG_H = 360
-
-    local title = (_pendingReason == "upgrade")
-        and "Map Database Update Recommended"
-        or  "Import Map Database"
-
-    -- Singleton: without this, repeated triggers (e.g. re-testing the same
-    -- profile) each spawn a brand-new cascaded dialog and never close the old
-    -- ones, drifting further off the diagonal cascade each time until new
-    -- instances land off-screen. A singleton key reuses/raises the existing
-    -- dialog instead of piling up invisible duplicates.
-    local dialog = Mux.createDialog({
-        title     = title,
-        width     = DIALOG_W,
-        height    = DIALOG_H,
-        singleton = "f2t_map_import",
-    })
-    if dialog.setName then dialog:setName(title) end   -- refresh titlebar text on reuse
-    Mux._applyContent(dialog, "f2t_map_import")
-    dialog:show()
-    dialog:raise()
+    shell:raise()
+    _live = { shell = shell, slotContent = slotContent }
     return true
 end

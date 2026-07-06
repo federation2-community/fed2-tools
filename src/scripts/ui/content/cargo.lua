@@ -78,6 +78,7 @@ local function buildCargoDef()
             if target.contentBg then
                 target.contentBg:echo("")
                 target.contentBg:setStyleSheet("background-color: rgba(0,0,0,0); border: none;")
+                target.contentBg:hide()
             end
             local mc = consoles[target._gid]
             if not mc then

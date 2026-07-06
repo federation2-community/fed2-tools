@@ -42,8 +42,9 @@ local RANK_CARD_COLOR = {
 }
 local CARD_COLOR_DEFAULT = "rgba(120, 125, 155, 255)"
 
+-- Rank color persists whether the player is online or not — only the who
+-- list's own row grays out for offline; the card keeps identifying the rank.
 local function accentFor(player)
-    if player.is_online == false then return "rgba(90, 90, 100, 200)" end
     return RANK_CARD_COLOR[player.rank] or CARD_COLOR_DEFAULT
 end
 
@@ -105,7 +106,7 @@ local ICON_W  = 30
 local GAP     = 3
 local R_M     = 4
 local CMD_H   = 30
-local SEND_W  = 34
+local SEND_W  = 26
 local CMD_L_M = 4
 local CMD_R_M = 8
 
@@ -550,11 +551,11 @@ local function render(target, player)
             width  = FRAME_W,
             height = CMD_H + 4,
         }, _in)
-        cmdFrame:setStyleSheet(string.format([[
+        cmdFrame:setStyleSheet([[
             background: rgba(18, 20, 38, 235);
-            border: 2px solid %s;
+            border: 1px solid rgba(75, 90, 135, 190);
             border-radius: 4px;
-        ]], accent))
+        ]])
 
         local quickCmd = Geyser.CommandLine:new({
             name   = quickCmdName,
@@ -589,15 +590,16 @@ local function render(target, player)
         }, _in)
         sendBtn:setStyleSheet(string.format([[
             QLabel {
-                background-color: rgba(14, 17, 34, 245);
+                background-color: rgba(18, 20, 38, 235);
                 color: %s;
-                border: 2px solid %s;
+                border: 1px solid rgba(75, 90, 135, 190);
                 border-radius: 4px;
-                font-size: 18px; font-weight: bold;
+                font-size: 13px; font-weight: bold;
                 qproperty-alignment: AlignCenter;
             }
             QLabel::hover {
-                background-color: rgba(26, 30, 58, 255);
+                background-color: rgba(30, 34, 58, 245);
+                border-color: %s;
                 color: rgba(220, 235, 255, 255);
             }
         ]], accent, accent))
@@ -621,44 +623,62 @@ local function renderCard(target)
         or (f2t_player_db_get and f2t_player_db_get(name))
         or { name = name }
     local accent = accentFor(player)
-    target._tokens = target._tokens or {}
-    target._tokens["pane.border.color"]  = accent
-    target._tokens["titlebar.text.color"] = accent
-    if target.applyTheme then target:applyTheme() end
+    -- applyTheme() triggers a relayout that calls back into this content's
+    -- resize hook (renderCard again), so only call it when accent changed.
+    if accent ~= target._f2tCardAccent then
+        target._f2tCardAccent = accent
+        target._tokens = target._tokens or {}
+        target._tokens["pane.border.color"]  = accent
+        target._tokens["titlebar.text.color"] = accent
+        if target.applyTheme then target:applyTheme() end
+    end
     render(target, player)
     target._f2tCardFingerprint = fingerprint(player)
 end
 
-Mux.registerContent("f2t_player_card", {
-    name        = "Player Card",
-    description = "Rank-colored info card for a player, with quick-send.",
-    group       = "Fed2 Tools",
-    singleton   = false,
+-- Deferred to F2T_CONTENT_REGISTRARS like every other fed2-tools content module.
+function f2tRegisterPlayerCard()
+    if not (Mux and Mux.registerContent) then
+        if f2t_debug_log then f2t_debug_log("[player_card] Muxlet content API unavailable; skipping") end
+        return
+    end
 
-    apply = function(target)
-        target.contentBg:echo(""); target.contentBg:hide()
-        renderCard(target)
-    end,
+    Mux.registerContent("f2t_player_card", {
+        name        = "Player Card",
+        description = "Rank-colored info card for a player, with quick-send.",
+        group       = "Fed2 Tools",
+        internal    = true,
+        singleton   = false,
 
-    remove = function(target)
-        if target._f2tCardActionKey then
-            _G[target._f2tCardActionKey] = nil
-            target._f2tCardActionKey = nil
-        end
-        target._f2tCardSlot = nil   -- about to be destroyed with the rest of the content slot
-    end,
-
-    resize = function(target) renderCard(target) end,
-
-    serialize = function(target) return { name = target._f2tCardPlayerName } end,
-    restore   = function(target, data)
-        if data and data.name then
-            target._f2tCardPlayerName = data.name
-            target._f2tCardPlayerData = nil   -- force a fresh DB lookup
+        apply = function(target)
+            target.contentBg:echo(""); target.contentBg:hide()
             renderCard(target)
-        end
-    end,
-})
+        end,
+
+        remove = function(target)
+            if target._f2tCardActionKey then
+                _G[target._f2tCardActionKey] = nil
+                target._f2tCardActionKey = nil
+            end
+            target._f2tCardSlot = nil   -- about to be destroyed with the rest of the content slot
+        end,
+
+        resize = function(target) renderCard(target) end,
+
+        serialize = function(target) return { name = target._f2tCardPlayerName } end,
+        restore   = function(target, data)
+            if data and data.name then
+                target._f2tCardPlayerName = data.name
+                target._f2tCardPlayerData = nil   -- force a fresh DB lookup
+                renderCard(target)
+            end
+        end,
+    })
+    if f2t_debug_log then f2t_debug_log("[player_card] registered f2t_player_card content") end
+end
+
+F2T_CONTENT_REGISTRARS = F2T_CONTENT_REGISTRARS or {}
+table.insert(F2T_CONTENT_REGISTRARS, f2tRegisterPlayerCard)
 
 -- ── Public: show or raise ─────────────────────────────────────────────────────
 
@@ -682,6 +702,9 @@ local function showCard(player)
         floatW           = floatW,
         floatH           = floatH,
         propertiesButton = false,
+        contentable      = false,
+        zoomable         = false,
+        confirmClose     = false,
         convertible      = true,
         splittable       = false,
         swappable        = true,

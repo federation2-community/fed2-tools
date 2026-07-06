@@ -40,7 +40,7 @@ local RANK_CECHO = {
     ["Industrialist"] = "ansiGreen",
     ["Financier"]     = "ansiGreen",
     ["Plutocrat"]     = "ansiRed",
-    ["Syndicrat"]     = "olive",
+    ["Syndicrat"]     = "dark_khaki",
     ["Commander"]     = "dark_violet",
     ["Groundhog"]     = "dark_violet",
 }
@@ -241,6 +241,7 @@ local function buildContent(target)
     if target.contentBg then
         target.contentBg:echo("")
         target.contentBg:setStyleSheet("background-color: rgba(0,0,0,0); border: none;")
+        target.contentBg:hide()
     end
 
     if instances[gid] then

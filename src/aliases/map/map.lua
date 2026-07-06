@@ -899,11 +899,17 @@ elseif subcommand == "import" then
         f2t_map_import()
     elseif rest:lower() == "db" then
         -- Open the bundled-resource picker directly, regardless of the
-        -- first-run gate (useful for re-importing or testing).
-        if f2tShowMapImportDialog then
-            f2tShowMapImportDialog("manual")
+        -- first-run gate (useful for re-importing or testing). The picker
+        -- renders inside the live Fed2 Map pane's own slot (not a standalone
+        -- dialog), so it needs that pane to be open somewhere first.
+        local slotContent, gid
+        if f2tGetMapSlotInfo then
+            slotContent, gid = f2tGetMapSlotInfo()
+        end
+        if f2tShowMapImportOverlay and slotContent then
+            f2tShowMapImportOverlay(slotContent, gid, "manual")
         else
-            cecho("\n<yellow>[map]<reset> Map database picker unavailable (UI not loaded).\n")
+            cecho("\n<yellow>[map]<reset> Map database picker unavailable — open the Fed2 Map pane first.\n")
         end
     else
         cecho(string.format("\n<red>[map]<reset> Unknown import option: %s\n", rest))

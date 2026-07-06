@@ -29,6 +29,7 @@ local function chatPath()
 end
 
 function f2tChatSave()
+    if not F2T_CHAR_NAME or F2T_CHAR_NAME == "" then return end
     local cutoff = os.time() - (MAX_DAYS * 86400)
     local kept   = {}
     for _, r in ipairs(F2T_CHAT.history) do

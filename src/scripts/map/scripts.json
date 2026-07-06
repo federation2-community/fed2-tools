@@ -20,6 +20,7 @@
   {"name": "raw"},
   {"name": "route"},
   {"name": "import_export"},
+  {"name": "import_check"},
   {"name": "arg_parser"},
   {"name": "navigate"},
   {"name": "speedwalk"},

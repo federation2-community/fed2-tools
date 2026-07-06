@@ -3,6 +3,9 @@
 -- Routes inbound com/say/tell traffic into the chat history (f2tChatAdd), plus
 -- the "hum" confirmation that commits a staged outgoing tell.  Game output is
 -- never gagged here — the chat panel mirrors the console, it doesn't replace it.
+-- Wrapped (multi-line) messages are completed by the chat_inbound module's
+-- state machine (src/scripts/chat/chat_inbound.lua) — see
+-- f2tChatInboundBeginContinuation.
 
 -- "Hum" is the tb-send confirmation; commit the staged outgoing tell.
 if line:match("^There is a brief hum from your comm unit") then
@@ -39,23 +42,11 @@ else
     msg   = matches[4]
 end
 
--- Fed2 wraps long lines before the closing quote — capture continuations so the
--- chat panel receives the complete message.
+-- Fed2 wraps long lines before the closing quote — hand off to the
+-- state-machine peek in chat_inbound.lua so continuations are captured
+-- without desyncing across concurrent/interleaved messages.
 if not msg:match('"$') then
-    local pending = { mtype = mtype, name = name, msg = msg }
-    local captureContinuation
-    captureContinuation = function()
-        tempLineTrigger(1, 1, function()
-            local cont = getCurrentLine()
-            if cont:match('"$') then
-                f2tChatAdd(pending.mtype, pending.name, pending.msg .. " " .. cont:gsub('"$', ''))
-            else
-                pending.msg = pending.msg .. " " .. cont
-                captureContinuation()
-            end
-        end)
-    end
-    captureContinuation()
+    f2tChatInboundBeginContinuation(mtype, name, msg)
     return
 end
 

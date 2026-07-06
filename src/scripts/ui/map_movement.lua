@@ -122,14 +122,14 @@ function f2tBuildMapMovement(parent, gid)
             name   = pfx .. "pressPanel",
             x      = "86%",
             y      = "4%",
-            width  = "60%",
+            width  = "70%",
             height = "16%",
         }, shell)
         local btnLbl = Geyser.Label:new({
             name   = pfx .. "pressButton",
             x      = "0%",
             y      = "0%",
-            width  = "47%",
+            width  = "40%",
             height = "100%",
         }, pressPanel)
         btnLbl:setStyleSheet(_CSS_BTN)
@@ -139,11 +139,13 @@ function f2tBuildMapMovement(parent, gid)
             pressPanel:hide()
             pressPanel = nil
         end)
+        -- "Touchpad" is longer than "Button" — give it the larger share so its
+        -- label doesn't clip except at very small map pane sizes.
         local btnPad = Geyser.Label:new({
             name   = pfx .. "pressTouchpad",
-            x      = "52%",
+            x      = "44%",
             y      = "0%",
-            width  = "47%",
+            width  = "56%",
             height = "100%",
         }, pressPanel)
         btnPad:setStyleSheet(_CSS_BTN)

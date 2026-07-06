@@ -1,83 +1,172 @@
 -- local_players.lua — Players-in-room content for fed2-tools.
 --
 -- Renders gmcp.room.info.players — the players standing in the current room —
--- with rank-colored, clickable names (player card) and an examine link.
+-- as a stack of styled Geyser.Label rows (rank-colored clickable name + a
+-- separate eyeball "examine" button), no MiniConsole involved.
 --
 -- This module ONLY registers content; it does not manage visibility.  The
 -- archive showed/hid its dropdown as players came and went — to replicate
 -- that, place "fed2_local_players" in a pane and add a rule:
 --     Show when → GMCP has value → room.info.players
--- Muxlet's condition engine handles the dynamics from there.
+-- Muxlet's condition engine handles the dynamics from there.  When the
+-- hosting pane is floating, this content also asks Muxlet to keep the pane's
+-- height fitted to the row count live via Mux.requestAutoFit (grows/shrinks
+-- as players enter/leave, anchored at the pane's current position).
 --
--- Ported from archive's ui_local_players.lua.
+-- Ported from archive's ui_local_players.lua; redesigned as Label rows
+-- instead of per-row MiniConsoles.
 
--- Rank → cecho color for names (archive's LOCAL_RANK_COLOR).
-local RANK_CECHO = {
-    ["Trader"]        = "mint_cream",
-    ["Merchant"]      = "mint_cream",
-    ["Engineer"]      = "ansiCyan",
-    ["Mogul"]         = "ansiCyan",
-    ["Magnate"]       = "ansiCyan",
-    ["Technocrat"]    = "ansiCyan",
-    ["Gengineer"]     = "ansiCyan",
-    ["Founder"]       = "ansiCyan",
-    ["Manufacturer"]  = "ansiGreen",
-    ["Industrialist"] = "ansiGreen",
-    ["Financier"]     = "ansiGreen",
-    ["Plutocrat"]     = "ansiRed",
-    ["Syndicrat"]     = "olive",
-    ["Commander"]     = "dark_violet",
-    ["Groundhog"]     = "dark_violet",
+local H_HDR = 24   -- header strip height (px)
+local ROW_H = 26   -- player row height (px)
+
+-- Rank → HTML hex color (mirrors who.lua's RANK_COLOR palette).
+local RANK_COLOR = {
+    ["Trader"]        = "#f5fffa",
+    ["Merchant"]      = "#f5fffa",
+    ["Engineer"]      = "#00cccc",
+    ["Mogul"]         = "#00cccc",
+    ["Magnate"]       = "#00cccc",
+    ["Technocrat"]    = "#00cccc",
+    ["Gengineer"]     = "#00cccc",
+    ["Founder"]       = "#00cccc",
+    ["Manufacturer"]  = "#00cc44",
+    ["Industrialist"] = "#00cc44",
+    ["Financier"]     = "#00cc44",
+    ["Plutocrat"]     = "#ff5555",
+    ["Syndicrat"]     = "#808000",
+    ["Commander"]     = "#9932cc",
+    ["Groundhog"]     = "#9932cc",
 }
-local RANK_CECHO_DEFAULT = "ansi_white"
+local RC_DEFAULT = "#c8c8c8"
 
-local consoles = {}   -- target._gid → MiniConsole
+local NAME_CSS = [[
+    QLabel {
+        background: transparent; border: none;
+        font-size: 11px; font-weight: bold;
+        font-family: "Consolas","Monaco",monospace;
+        padding-left: 2px;
+    }
+    QLabel::hover { color: white; }
+]]
+
+local EYE_CSS = [[
+    QLabel {
+        background-color: rgba(28,32,50,210);
+        color: rgba(200,210,230,255);
+        border: 1px solid rgba(72,85,128,180);
+        border-radius: 3px;
+        font-size: 11px;
+        qproperty-alignment: AlignCenter;
+    }
+    QLabel::hover { background-color: rgba(42,48,78,230); }
+]]
+
+local headers = {}   -- target._gid → header Geyser.Label
+local rows    = {}   -- target._gid → list of row Geyser.Label widgets
+local targets = {}   -- target._gid → target (pane/tab), for live auto-fit requests
 
 local function roomPlayers()
     return gmcp and gmcp.room and gmcp.room.info and gmcp.room.info.players or nil
 end
 
-local function renderConsole(mc)
-    if not mc then return end
-    mc:clear()
+local function destroyWidget(w)
+    if not w then return end
+    if w.delete then w:delete() else w:hide() end
+end
+
+local function clearRows(gid)
+    if rows[gid] then
+        for _, w in ipairs(rows[gid]) do destroyWidget(w) end
+    end
+    rows[gid] = {}
+end
+
+-- Rebuild the header + row widgets for one pane's content area.  Returns the
+-- total pixel height needed to show every row without clipping/scrolling —
+-- feeds Mux.requestAutoFit so the hosting floating pane can track it live.
+local function render(target)
+    local gid = target._gid
+    clearRows(gid)
+
+    if headers[gid] then destroyWidget(headers[gid]) end
 
     local players = roomPlayers()
     local count   = players and #players or 0
 
-    mc:cecho(string.format("<ansiCyan><b>  Local Players</b><reset>  <grey>(%d)<reset>\n", count))
-    mc:cecho("  <grey>" .. string.rep("─", 30) .. "<reset>\n")
+    local header = Geyser.Label:new({
+        name = gid .. "_lphdr", x = 0, y = 0, width = "100%", height = H_HDR,
+    }, target.content)
+    header:setStyleSheet([[
+        background-color: rgba(15, 18, 30, 200);
+        border: none;
+        border-bottom: 1px solid rgba(70, 75, 110, 150);
+    ]])
+    header:echo(string.format(
+        "<font color='#8c96c3' size='2'>&nbsp;&nbsp;Local Players (%d)</font>", count))
+    headers[gid] = header
 
     if count == 0 then
-        mc:cecho("\n  <grey>No one else is here.<reset>\n")
-        return
+        local empty = Geyser.Label:new({
+            name = gid .. "_lpempty", x = 0, y = H_HDR, width = "100%", height = ROW_H,
+        }, target.content)
+        empty:setStyleSheet("background: transparent; border: none;")
+        empty:echo("<center><font color='#707070' size='2'>No one else is here.</font></center>")
+        rows[gid] = { empty }
+        return H_HDR + ROW_H
     end
 
-    for _, player in ipairs(players) do
+    for i, player in ipairs(players) do
         local name = player.name or "Unknown"
         local rank = player.rank or ""
-        local cc   = RANK_CECHO[rank] or RANK_CECHO_DEFAULT
+        local rc   = RANK_COLOR[rank] or RC_DEFAULT
         local hint = rank ~= "" and (rank .. " " .. name) or name
 
-        mc:cecho("  ")
-        mc:cechoLink(
-            "<" .. cc .. "><b>" .. name .. "</b><reset>",
-            function()
-                if f2tPlayerCardShowOrRaiseByName then f2tPlayerCardShowOrRaiseByName(name) end
-            end,
-            hint, true)
-        mc:cecho("  ")
-        mc:cechoLink(
-            "<dim_gray>[ex]<reset>",
-            function() send("ex " .. name, false) end,
-            "Examine " .. name, true)
-        mc:cecho("\n")
+        local rowBg = Geyser.Label:new({
+            name = string.format("%s_lprow_%d", gid, i),
+            x = 0, y = H_HDR + (i - 1) * ROW_H, width = "100%", height = ROW_H,
+        }, target.content)
+        rowBg:setStyleSheet(string.format([[
+            background-color: rgba(255,255,255,%s);
+            border: none;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        ]], (i % 2 == 0) and "0.015" or "0.0"))
+
+        local nameLbl = Geyser.Label:new({
+            name = string.format("%s_lpname_%d", gid, i),
+            x = 6, y = 2, width = "-32", height = ROW_H - 4,
+        }, rowBg)
+        nameLbl:setStyleSheet(NAME_CSS)
+        nameLbl:echo(string.format("<font color='%s'>%s</font>", rc, name))
+        nameLbl:setToolTip(hint)
+        nameLbl:setClickCallback(function()
+            if f2tPlayerCardShowOrRaiseByName then f2tPlayerCardShowOrRaiseByName(name) end
+        end)
+
+        local eyeLbl = Geyser.Label:new({
+            name = string.format("%s_lpeye_%d", gid, i),
+            x = "-26", y = 3, width = 20, height = ROW_H - 6,
+        }, rowBg)
+        eyeLbl:setStyleSheet(EYE_CSS)
+        eyeLbl:echo("👁")
+        eyeLbl:setToolTip("Examine " .. name)
+        eyeLbl:setClickCallback(function() send("ex " .. name, false) end)
+
+        table.insert(rows[gid], rowBg)
     end
+
+    return H_HDR + count * ROW_H
 end
 
 local function refreshAll()
-    for _, mc in pairs(consoles) do
-        if mc then pcall(renderConsole, mc) end
+    for gid, target in pairs(targets) do
+        local ok, height = pcall(render, target)
+        if ok and Mux and Mux.requestAutoFit then
+            Mux.requestAutoFit(target, height)
+        end
     end
+    -- Freshly recreated widgets land on top of the Qt stacking order, so
+    -- re-assert dialogs/floats above content every refresh.
+    if Mux and Mux.raiseFloatingPanes then Mux.raiseFloatingPanes() end
 end
 
 local function buildLocalPlayersDef()
@@ -91,29 +180,21 @@ local function buildLocalPlayersDef()
             if target.contentBg then
                 target.contentBg:echo("")
                 target.contentBg:setStyleSheet("background-color: rgba(0,0,0,0); border: none;")
+                target.contentBg:hide()
             end
-            local mc = consoles[target._gid]
-            if not mc then
-                mc = Geyser.MiniConsole:new({
-                    name = target._gid .. "_lpmc", x = 0, y = 0, width = "100%", height = "100%",
-                    scrollBar = false, fontSize = 9,
-                }, target.content)
-                mc:setColor(18, 18, 26)
-                consoles[target._gid] = mc
-            else
-                mc:show(); mc:raise()
-            end
-            renderConsole(mc)
+            targets[target._gid] = target
+            target._autoFitHeight = render(target)
         end,
         remove = function(target)
-            local mc = consoles[target._gid]
-            if mc then if mc.delete then mc:delete() else mc:hide() end end
-            consoles[target._gid] = nil
+            local gid = target._gid
+            clearRows(gid)
+            if headers[gid] then destroyWidget(headers[gid]); headers[gid] = nil end
+            targets[gid] = nil
         end,
-        resize    = function(target) renderConsole(consoles[target._gid]) end,
+        resize    = function(target) render(target) end,
         serialize = function(_t) return {} end,
         restore   = function(_t, _d) end,
-        onReveal  = function(target) renderConsole(consoles[target._gid]) end,
+        onReveal  = function(target) render(target) end,
     }
 end
 

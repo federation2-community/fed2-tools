@@ -19,8 +19,7 @@
   {
     "name": "comhistory_line",
     "patterns": [
-      {"pattern": "^(\\w+), (\\d+ \\w+ ago): .+$", "type": "regex"},
-      {"pattern": "^(\\w+), just now: .+$", "type": "regex"}
+      {"pattern": "^.*$", "type": "regex"}
     ]
   }
 ]

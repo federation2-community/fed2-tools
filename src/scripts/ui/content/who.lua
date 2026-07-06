@@ -173,6 +173,7 @@ local function buildContent(target)
     if target.contentBg then
         target.contentBg:echo("")
         target.contentBg:setStyleSheet("background-color: rgba(0,0,0,0); border: none;")
+        target.contentBg:hide()
     end
 
     -- Re-show if already built (e.g. apply called without prior remove)
