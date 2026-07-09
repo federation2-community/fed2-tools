@@ -20,6 +20,10 @@
 --             gmcp.exchange.commodities pushes.  Collapsible via the header
 --             button; cleared when you leave the exchange.
 --
+-- The exchange/console_spam setting (registered below, enforced by
+-- triggers/ui/exchange_spam.lua) controls whether the +++ ticker announcements
+-- still show in the main console.
+--
 -- Ported from archive's ui_exchange.lua ticker + rank-gated market, rebuilt on
 -- GMCP (the archive scraped the +++ ticker spam with triggers).
 
@@ -121,6 +125,10 @@ local function futuresRankQualifies()
     return f2t_is_rank_exactly("trader") or f2t_is_rank_exactly("financier")
 end
 
+local function iconsEnabled()
+    return f2t_settings_get("exchange", "show_icons") ~= false
+end
+
 local function fmtIg(n)
     if not n then return "?" end
     n = tonumber(n) or 0
@@ -214,7 +222,7 @@ local function priceCols()
             sort_value    = function(r) return (r.name or ""):lower() end,
             scrollbox_pct = 26,
             render_label  = function(v, row, cell)
-                local icon = COMMOD_ICONS[v]
+                local icon = iconsEnabled() and COMMOD_ICONS[v] or nil
                 local text = icon and (icon .. " " .. tostring(v or "")) or tostring(v or "")
                 cell:echo(spanRaw("left", coloredSpan(C_NM, text)))
                 local group = commodGroups()[v]
@@ -326,10 +334,13 @@ local function appendTicker(inst, e)
         inst.tickerIdle = false
     end
 
-    local icon   = COMMOD_ICONS[e.name] or "⬛"
-    local trail  = NARROW_ICONS[icon] and "  " or " "
-    local prefix = string.format(" %s%s<white>%s<reset> <gray>%-6s<reset> ",
-        icon, trail, truncateName(e.name or "?", 12),
+    local iconSlot = ""
+    if iconsEnabled() then
+        local icon = COMMOD_ICONS[e.name] or "⬛"
+        iconSlot = icon .. (NARROW_ICONS[icon] and "  " or " ")
+    end
+    local prefix = string.format(" %s<white>%s<reset> <gray>%-6s<reset> ",
+        iconSlot, truncateName(e.name or "?", 12),
         e.base and string.format("(%d)", e.base) or "(?)")
 
     if not e.buy and not e.sell then
@@ -364,9 +375,11 @@ local function renderTickerHeader(inst)
     local mc = inst.tickerHdrMc
     if not mc then return end
     mc:clear()
-    -- Offsets match appendTicker: 4 chars icon slot + name(12) + base(6).
+    -- Offsets match appendTicker: leading space + 3-char icon slot (when
+    -- enabled) + name(12) + base(6).
     mc:cecho(string.format(
-        "    <dim_grey>%-12s %-6s %-12s Selling<reset>\n", "Commodity", "Base", "Buying"))
+        "%s<dim_grey>%-12s %-6s %-12s Selling<reset>\n",
+        iconsEnabled() and "    " or " ", "Commodity", "Base", "Buying"))
 end
 
 local function renderTicker(inst)
@@ -769,5 +782,39 @@ registerAnonymousEventHandler("gmcp.room.info", function()
     end
     refreshAll()
 end)
+
+-- ── Settings ──────────────────────────────────────────────────────────────────
+
+f2t_settings_register("exchange", "console_spam", {
+    tab         = "Fed2-Tools/Exchange",
+    label       = "Ticker spam to console",
+    description = "Show the +++ exchange ticker announcements in the main console (the Exchange content gets them via GMCP either way)",
+    default     = true,
+})
+
+f2t_settings_register("exchange", "show_icons", {
+    tab         = "Fed2-Tools/Exchange",
+    label       = "Commodity icons",
+    description = "Show emoji icons next to commodity names in the prices table and ticker",
+    default     = true,
+})
+
+-- Re-render live when the icon setting flips.  Hooked once Mux is up; the
+-- f2t settings layer has no onChange passthrough.
+local function hookIconSetting()
+    if not (Mux and Mux.settings and Mux.settings.onChange) then return false end
+    Mux.settings.onChange("exchange", "show_icons", function()
+        for _, inst in pairs(instances) do
+            pcall(renderTickerHeader, inst)
+            pcall(renderTicker, inst)
+        end
+        refreshAll()
+    end)
+    return true
+end
+
+if not hookIconSetting() then
+    registerAnonymousEventHandler("muxletReady", hookIconSetting)
+end
 
 if f2t_debug_log then f2t_debug_log("[exchange] content module loaded") end

@@ -435,6 +435,13 @@ local function populate(gid)
     -- Height is max(rows, viewport): fills the viewport when short (no white gap,
     -- no phantom scroll) and grows to scroll when long.
     pcall(function() inst.content:resize(inst.contentW or 200, math.max(y + 4, viewportH)) end)
+
+    -- createRow() above just built brand-new row Labels (the whole tree is torn
+    -- down and rebuilt every populate()). Geyser shows a freshly created widget
+    -- unconditionally regardless of its parent's hidden state, so if this
+    -- pane/tab is condition-hidden (see targetHidden below), those new rows
+    -- would otherwise leak visible until the next full hide/show cycle.
+    if Mux and Mux.reassertHidden then Mux.reassertHidden(inst.content) end
 end
 
 -- True while the hosting pane/tab (or its owning pane) is condition-hidden;

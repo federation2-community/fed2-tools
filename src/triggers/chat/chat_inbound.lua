@@ -4,7 +4,8 @@
 -- the "hum" confirmation that commits a staged outgoing tell.  Game output is
 -- never gagged here — the chat panel mirrors the console, it doesn't replace it.
 -- Wrapped (multi-line) messages are completed by the chat_inbound module's
--- state machine (src/scripts/chat/chat_inbound.lua) — see
+-- state machine (src/scripts/chat/chat_inbound.lua) and its companion
+-- catch-all trigger (chat_inbound_line.lua) — see
 -- f2tChatInboundBeginContinuation.
 
 -- "Hum" is the tb-send confirmation; commit the staged outgoing tell.

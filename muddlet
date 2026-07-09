@@ -210,8 +210,9 @@ cp "$SRC_PACKAGE" "$DEST_PACKAGE"
 echo "Deployed      : $DEST_PACKAGE"
 
 STAMP_PATH="$PROFILE_DIR/fed2-tools-rebuild.stamp"
-date +%s > "$STAMP_PATH"
-echo "Stamp written : $STAMP_PATH"
+STAMP="$(date +%s)"
+echo "$STAMP" > "$STAMP_PATH"
+echo "Stamp written : $STAMP  ($STAMP_PATH)"
 
 if [[ $FRESH -eq 1 ]]; then
     FRESH_PATH="$PROFILE_DIR/fed2-tools-fresh.stamp"

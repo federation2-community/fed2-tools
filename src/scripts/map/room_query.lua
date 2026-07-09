@@ -283,7 +283,7 @@ function f2t_map_resolve_location(location)
     if #matching_rooms == 0 then
         if string.find(single_arg, " ", 1, true) then
             return nil, string.format(
-                "'%s' is not a recognized navigation command\nUse: nav <area> <flag>   valid flags: exchange, courier (ac), shuttlepad, bar, hospital, insure, repair, shipyard, weapons, link, orbit",
+                "'%s' not found in your map - may be a real location you haven't explored yet, or an invalid destination/flag\nUse: nav <area> <flag>   valid flags: exchange, courier (ac), shuttlepad, bar, hospital, insure, repair, shipyard, weapons, link, orbit\nIf this is a real location, explore there manually first to add it to your map",
                 location)
         elseif KNOWN_FLAGS[single_arg] then
             local area_display = (search_area_name and search_area_name ~= "") and ("'" .. search_area_name .. "'") or "this area"

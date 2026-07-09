@@ -181,6 +181,12 @@ local function refreshAll()
                 rendered[gid] = fp
                 anyRendered = true
                 if Mux and Mux.requestAutoFit then Mux.requestAutoFit(target, height) end
+                -- render() just rebuilt the header/row widgets. If this pane/tab
+                -- is condition-hidden (the documented use case in this module's
+                -- header comment), those freshly created widgets would otherwise
+                -- leak visible -- Geyser shows new widgets unconditionally,
+                -- regardless of the hidden ancestor. See Mux.reassertHidden.
+                if Mux and Mux.reassertHidden then Mux.reassertHidden(target.content) end
             end
         end
     end

@@ -24,6 +24,16 @@
     "patterns": [{"pattern": "^$", "type": "regex"}]
   },
   {
+    "name": "exchange_spam",
+    "patterns": [
+      {"pattern": "^\\+{3} The exchange display shows the prices for .+ \\+{3}", "type": "regex"},
+      {"pattern": "^\\+{3} The display shows the prices for .+ \\+{3}", "type": "regex"},
+      {"pattern": "^\\+{3} Exchange will buy \\d+ tons at \\d+.+ \\+{3}", "type": "regex"},
+      {"pattern": "^\\+{3} Exchange has .+ for sale \\+{3}", "type": "regex"},
+      {"pattern": "^\\+{3} Offer price is \\d+.+ for first \\d+ tons \\+{3}", "type": "regex"}
+    ]
+  },
+  {
     "name": "trading_search_hide",
     "patterns": [
       {"pattern": "^Your comm unit lights up as your brokers, Messrs Trum.*", "type": "regex"},

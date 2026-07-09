@@ -1,39 +1,46 @@
 -- fed2-tools chat — live inbound message continuation handling
 --
--- Mirrors comhistory.lua's state-machine architecture (module-level state +
--- killPeek/armPeek), adapted for live com/say/tell traffic.  The permanent
--- trigger in src/triggers/chat/chat_inbound.lua (patterns in triggers.json)
--- calls into this module's f2tChatInboundBeginContinuation rather than
--- holding continuation logic inline, so state survives across trigger fires
--- — a bare trigger-script body's locals do NOT persist call-to-call, which is
--- what let the previous per-call-closure implementation splice/desync
--- messages when several arrived close together.
+-- Mirrors comhistory.lua's proven design: a permanent catch-all trigger
+-- (src/triggers/chat/chat_inbound_line.lua, pattern ^.*$) feeds every line to
+-- f2tChatInboundLine() while a message is pending completion, instead of a
+-- tempLineTrigger armed to "peek" at just the next line.
+--
+-- The peek approach could silently drop a wrapped message entirely: when the
+-- game flushed several lines in one batch, a trigger armed mid-batch could
+-- register one line too late and never see the continuation. With nothing
+-- left listening, the pending message just sat there — flushed early (and
+-- incomplete) only if a later message happened to arrive, or never sent at
+-- all if it was the last message of the session. This is the same failure
+-- mode comhistory.lua was already rewritten to avoid (see its header
+-- comment); this module now uses the same fix.
+--
+-- comhistory.lua defers to this module (via F2T_CHAT_INBOUND_PENDING) whenever
+-- a message is pending here, so its backfill catch-all never treats a live
+-- message's lines as part of a comhistory entry.
 
-local MAX_CONTINUATION_LINES = 6   -- safety cap; see armPeek below
+local MAX_CONTINUATION_LINES = 6   -- safety cap; see f2tChatInboundLine below
 
 local state = {
     pending = nil,   -- { mtype, name, msg, lines } awaiting continuation, or nil
-    peekId  = nil,   -- tempLineTrigger id armed to catch the next physical line
 }
 
-local killPeek, armPeek, matchLiveHeader, dispatchPending
-
-killPeek = function()
-    if state.peekId then killTrigger(state.peekId); state.peekId = nil end
-end
+local matchLiveHeader, dispatchPending
 
 -- True if `l` looks like the START of a new, unrelated message (one of the
 -- three live chat header patterns from triggers.json) rather than a wrap
--- continuation of the pending one.  Does NOT consume/parse it — the
--- permanent chat_inbound trigger independently matches and dispatches it on
--- its own; this is purely a recognizer so the peek can bail out of the
--- continuation chain instead of swallowing an unrelated new message.
+-- continuation of the pending one. Does NOT consume/parse it — the permanent
+-- chat_inbound trigger independently matches and dispatches it on its own;
+-- this is purely a recognizer so continuation handling can bail out of the
+-- chain instead of swallowing an unrelated new message. Also exposed as
+-- F2T_CHAT_INBOUND_IS_HEADER so comhistory.lua's backfill capture can
+-- recognize the same boundary.
 matchLiveHeader = function(l)
     if l:find('^Your comm unit signals a tight beam message from %w+, "') then return true end
     if l:find('^Your comm unit crackles with a message from %w+, "')     then return true end
     if l:find('^%w+ says, "') or l:find('^%w+ asks, "')                  then return true end
     return false
 end
+F2T_CHAT_INBOUND_IS_HEADER = matchLiveHeader
 
 -- Dispatch whatever is pending as-is (normal completion / safe fallback).
 dispatchPending = function()
@@ -43,47 +50,51 @@ dispatchPending = function()
     f2tChatAdd(p.mtype, p.name, p.msg)
 end
 
-armPeek = function()
-    killPeek()
-    state.peekId = tempLineTrigger(1, 1, function()
-        local p = state.pending
-        if not p then return end   -- nothing awaiting continuation; stray fire
+-- True while a message is mid-continuation. comhistory.lua checks this to
+-- avoid stealing lines that belong to a live message.
+function F2T_CHAT_INBOUND_PENDING()
+    return state.pending ~= nil
+end
 
-        local l = getCurrentLine()
+-- Fires on every line (catch-all pattern in triggers.json); no-ops unless a
+-- message is currently pending, so this costs one cheap check per line the
+-- rest of the time.
+function f2tChatInboundLine()
+    local p = state.pending
+    if not p then return end
 
-        if l:match('^%s*$') then
-            -- Fed2 always delimits an output block with a blank line, even
-            -- for a wrapped message. Hitting one here means the block ended
-            -- without the closing quote we expected — dispatch what we have
-            -- instead of folding in whatever unrelated block comes next.
-            dispatchPending()
-            return
-        end
+    local l = line
 
-        if matchLiveHeader(l) then
-            -- Not a continuation — a new message header. Dispatch what we
-            -- have (no trailing continuation); do NOT consume `l`, the
-            -- permanent trigger handles it on its own.
-            dispatchPending()
-            return
-        end
+    if l:match('^%s*$') then
+        -- Fed2 always delimits an output block with a blank line, even for
+        -- a wrapped message. Hitting one here means the block ended without
+        -- the closing quote we expected — dispatch what we have instead of
+        -- folding in whatever unrelated block comes next.
+        dispatchPending()
+        return
+    end
 
-        if l:match('"$') then
-            p.msg = p.msg .. " " .. l:gsub('"$', '')
-            state.pending = nil
-            f2tChatAdd(p.mtype, p.name, p.msg)
-            return
-        end
+    if matchLiveHeader(l) then
+        -- Not a continuation — a new message header. Dispatch what we have
+        -- (no trailing continuation); do NOT consume `l`, the permanent
+        -- trigger handles it on its own.
+        dispatchPending()
+        return
+    end
 
-        -- Still wrapping. Fold in and re-arm, up to the safety cap.
-        p.lines = (p.lines or 1) + 1
-        p.msg = p.msg .. " " .. l
-        if p.lines > MAX_CONTINUATION_LINES then
-            dispatchPending()
-            return
-        end
-        armPeek()
-    end)
+    if l:match('"$') then
+        p.msg = p.msg .. " " .. l:gsub('"$', '')
+        state.pending = nil
+        f2tChatAdd(p.mtype, p.name, p.msg)
+        return
+    end
+
+    -- Still wrapping. Fold in and keep waiting, up to the safety cap.
+    p.lines = (p.lines or 1) + 1
+    p.msg = p.msg .. " " .. l
+    if p.lines > MAX_CONTINUATION_LINES then
+        dispatchPending()
+    end
 end
 
 -- Called by the chat_inbound trigger stub once it has parsed mtype/name/msg
@@ -94,11 +105,9 @@ function f2tChatInboundBeginContinuation(mtype, name, msg)
     -- dropping it or splicing the two together.
     if state.pending then dispatchPending() end
     state.pending = { mtype = mtype, name = name, msg = msg, lines = 1 }
-    armPeek()
 end
 
 registerAnonymousEventHandler("sysDisconnectionEvent", function()
-    killPeek()
     state.pending = nil
 end)
 

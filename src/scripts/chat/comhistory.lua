@@ -17,7 +17,16 @@
 -- new entry header or a continuation of the one in progress. (An earlier
 -- version used a tempLineTrigger armed after each line to peek at the next
 -- one; armed mid-batch it registered one line too late, causing it to skip
--- every other line for the rest of the capture.)
+-- every other line for the rest of the capture.) chat_inbound.lua now uses
+-- this same catch-all pattern for live message continuations.
+--
+-- A live com/say/tell message can arrive interleaved with this capture (e.g.
+-- another player messages you right after login) — f2tChatComhistoryLine()
+-- defers entirely while chat_inbound.lua has a message pending, and treats a
+-- live message header as an entry boundary, so the two catch-alls never
+-- fight over the same line (previously this could corrupt both: comhistory
+-- swallowing a live message into its buffer while also garbling its own
+-- in-progress entry with the live text).
 --
 -- Ported from archive's ui_chat_comhistory.lua.
 
@@ -193,6 +202,13 @@ function f2tChatComhistoryLine()
     -- with this capture at login; its lines belong to that capture, not here.
     if F2T_GALAXY and F2T_GALAXY.capture_active then return end
 
+    -- A live message can also interleave; once chat_inbound.lua has one
+    -- pending, every line belongs to it until dispatched — don't touch any
+    -- of it here (including a bare continuation line that wouldn't otherwise
+    -- be recognized as anything, and would otherwise get folded into
+    -- whatever comhistory entry happens to be in progress).
+    if F2T_CHAT_INBOUND_PENDING and F2T_CHAT_INBOUND_PENDING() then return end
+
     local name, ago, text = matchHeader(line)   -- `line` is Mudlet's global for the trigger's current line
 
     if name then
@@ -222,6 +238,16 @@ function f2tChatComhistoryLine()
     if line:match("^%s*$") then
         deleteLine()
         resetFinishTimer()
+        state.inEntry = false
+        state.current = nil
+        return
+    end
+
+    -- A live message header just started (chat_inbound.lua's own anchored
+    -- trigger fires on it independently) — close this entry out rather than
+    -- swallowing the header line as a bogus continuation. Don't consume it;
+    -- it isn't ours.
+    if F2T_CHAT_INBOUND_IS_HEADER and F2T_CHAT_INBOUND_IS_HEADER(line) then
         state.inEntry = false
         state.current = nil
         return

@@ -246,6 +246,15 @@ function f2tTableRenderScrollbox(tableId)
     for i = dataLen + 1, #sb.rows do sb.rows[i]:hide() end
     sb.contentLabel:resize(cw, math.max(dataLen * rowH + 4, minH))
     if sb.colHdrs then f2tTableUpdateScrollboxHeader(tableId, sb.colHdrs) end
+
+    -- A growing row count creates brand-new row/cell Labels above (the `if not
+    -- rowLbl` branch). Geyser shows a freshly created widget unconditionally
+    -- regardless of its parent's hidden state, so if this table's pane/tab is
+    -- condition-hidden when new rows appear, they'd otherwise leak visible
+    -- until the next full hide/show cycle. sb.contentLabel is the long-lived
+    -- container created once at apply() time, so its hidden/auto_hidden flags
+    -- reflect the real state.
+    if Mux and Mux.reassertHidden then Mux.reassertHidden(sb.contentLabel) end
 end
 
 if f2t_debug_log then f2t_debug_log("[table_system] module loaded") end

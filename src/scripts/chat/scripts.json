@@ -1,4 +1,5 @@
 [
   {"name": "history"},
+  {"name": "chat_inbound"},
   {"name": "comhistory"}
 ]
