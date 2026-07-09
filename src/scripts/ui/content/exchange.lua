@@ -125,8 +125,27 @@ local function futuresRankQualifies()
     return f2t_is_rank_exactly("trader") or f2t_is_rank_exactly("financier")
 end
 
+-- A commodity-name click sends a plain "check price" spot check so its result
+-- shows in the console as confirmation. The result line ("System: Planet is
+-- buying|selling N tons at Pig/ton") is the same shape the price_checker_line
+-- trigger captures/gags for its own panels, so that trigger checks this guard
+-- first and lets the spot-check line through untouched.
+function f2tExchangeSpotCheckActive()
+    return F2T_EXCHANGE_SPOT_CHECK_UNTIL ~= nil and os.time() < F2T_EXCHANGE_SPOT_CHECK_UNTIL
+end
+
 local function iconsEnabled()
     return f2t_settings_get("exchange", "show_icons") ~= false
+end
+
+-- Shared with content/futures.lua (loaded before this file — resolved lazily
+-- at call time, not chunk-load time) so its commodity column can show icons
+-- without duplicating the icon table.
+function f2tCommodityIconPrefix(name)
+    if not iconsEnabled() then return "" end
+    local icon = COMMOD_ICONS[name]
+    if not icon then return "" end
+    return icon .. (NARROW_ICONS[icon] and "  " or " ")
 end
 
 local function fmtIg(n)
@@ -226,8 +245,14 @@ local function priceCols()
                 local text = icon and (icon .. " " .. tostring(v or "")) or tostring(v or "")
                 cell:echo(spanRaw("left", coloredSpan(C_NM, text)))
                 local group = commodGroups()[v]
-                cell:setToolTip(group and string.format("%s — %s group", v, group) or tostring(v or ""))
-                cell:setClickCallback(function() end)
+                cell:setToolTip(string.format(
+                    "%s%s — click for a spot price check", tostring(v or ""),
+                    group and (" — " .. group .. " group") or ""))
+                local name = tostring(v or ""):lower()
+                cell:setClickCallback(function()
+                    F2T_EXCHANGE_SPOT_CHECK_UNTIL = os.time() + 2
+                    send("check price " .. name, false)
+                end)
             end,
         },
         {
@@ -789,7 +814,7 @@ f2t_settings_register("exchange", "console_spam", {
     tab         = "Fed2-Tools/Exchange",
     label       = "Ticker spam to console",
     description = "Show the +++ exchange ticker announcements in the main console (the Exchange content gets them via GMCP either way)",
-    default     = true,
+    default     = false,
 })
 
 f2t_settings_register("exchange", "show_icons", {

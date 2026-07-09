@@ -1,5 +1,11 @@
 [
   {
+    "name": "chat_inbound_line",
+    "patterns": [
+      {"pattern": "^.*$", "type": "regex"}
+    ]
+  },
+  {
     "name": "chat_inbound",
     "patterns": [
       {"pattern": "^Your comm unit signals a tight beam message from (\\w+), \"(.+)$", "type": "regex"},
@@ -7,12 +13,6 @@
       {"pattern": "^(\\w+) (says|asks), \"(.+)$", "type": "regex"},
       {"pattern": "^There is a brief hum from your comm unit\\.$", "type": "regex"},
       {"pattern": "^\\w+ doesn't seem to be around at the moment\\.$", "type": "regex"}
-    ]
-  },
-  {
-    "name": "chat_inbound_line",
-    "patterns": [
-      {"pattern": "^.*$", "type": "regex"}
     ]
   },
   {

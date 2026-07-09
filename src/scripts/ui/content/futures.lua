@@ -242,7 +242,8 @@ function f2tFuturesMarketCols()
             scrollbox_pct = 22,
             render_label  = function(v, row, cell)
                 cell:setStyleSheet(cellBg(row))
-                cell:echo(spanState("left", row, tostring(v or ""), C_W))
+                local icon = f2tCommodityIconPrefix and f2tCommodityIconPrefix(v) or ""
+                cell:echo(spanState("left", row, icon .. tostring(v or ""), C_W))
                 if row.suspended then
                     cell:setClickCallback(function() end)
                     cell:setToolTip("Trading suspended — price frozen until hour end.")
@@ -500,7 +501,8 @@ local function ownedCols()
             scrollbox_pct = 22,
             render_label  = function(v, row, cell)
                 cell:setStyleSheet(BG_NORMAL)
-                cell:echo(span("left", C_W, tostring(v or "?")))
+                local icon = f2tCommodityIconPrefix and f2tCommodityIconPrefix(v) or ""
+                cell:echo(span("left", C_W, icon .. tostring(v or "?")))
                 cell:setClickCallback(function() end)
             end,
         },
@@ -769,5 +771,20 @@ table.insert(F2T_CONTENT_REGISTRARS, f2tRegisterFutures)
 registerAnonymousEventHandler("gmcp.exchange",     function() refreshAllMarkets(); refreshAllOwned() end)
 registerAnonymousEventHandler("gmcp.room.info",    function() refreshAllMarkets() end)
 registerAnonymousEventHandler("gmcp.char.futures", function() refreshAllOwned(); refreshAllMarkets() end)
+
+-- Re-render live when the shared exchange/show_icons setting flips.  Hooked
+-- once Mux is up; the f2t settings layer has no onChange passthrough.
+local function hookIconSetting()
+    if not (Mux and Mux.settings and Mux.settings.onChange) then return false end
+    Mux.settings.onChange("exchange", "show_icons", function()
+        refreshAllMarkets()
+        refreshAllOwned()
+    end)
+    return true
+end
+
+if not hookIconSetting() then
+    registerAnonymousEventHandler("muxletReady", hookIconSetting)
+end
 
 if f2t_debug_log then f2t_debug_log("[futures] module loaded") end

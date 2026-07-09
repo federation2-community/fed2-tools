@@ -14,17 +14,27 @@
 -- NOT a Qt child of its Geyser container, so deleting the slot does not remove
 -- it, and reparenting an existing wrapper leaves it blank.
 --
--- So on release we hide the native mapper (0×0) and DELETE the disposable
--- Geyser wrapper; on acquire we create a fresh wrapper, which re-points the
+-- So on release we hide the native mapper (0×0) and drop our reference to the
+-- disposable Geyser wrapper (see releaseLive() below for why we don't call
+-- m:delete() on it); on acquire we create a fresh wrapper, which re-points the
 -- singleton at the new slot and always renders.  Nothing accumulates across
 -- add/remove cycles or package reloads, and none of this can touch the map
 -- database — that lives in Host::mpMap and is only affected by deleteMap().
 --
 -- f2tRegisterMapContent() is called from init.lua's muxletReady handler.
+--
+-- TEMP DIAGNOSTIC LOGGING (F2T_DEBUG): apply/remove/resize and every
+-- createMapper()/updateMap() pass are timed and counted via f2t_debug_log, to
+-- get hard numbers on how many times this content is torn down and rebuilt
+-- during a single login, and how expensive each native call actually is.
+-- Remove once the startup-cost investigation is done.
 
 -- ── Mapper management ───────────────────────────────────────────────────────────
 local liveMapper = nil    -- the wrapper currently shown in a pane (or nil)
 local mapperSeq  = 0      -- wrapper names are never reused (Qt caches by name)
+local applyCount  = 0     -- diagnostic: how many times apply() has fired this session
+local removeCount = 0     -- diagnostic: how many times remove() has fired this session
+local resizeCount = 0     -- diagnostic: how many times resize() has fired this session
 
 -- Slot container + gid of the currently live map pane, so code outside this
 -- apply() closure (settings gear menu, "map import db" alias) can build the
@@ -32,32 +42,57 @@ local mapperSeq  = 0      -- wrapper names are never reused (Qt caches by name)
 local liveSlotContent = nil
 local liveGid         = nil
 
--- Hide the native mapper and dispose of the current wrapper.
+-- Hide the native mapper and drop our reference to the wrapper.
+--
+-- Deliberately does NOT call m:delete(): Geyser.Mapper:type_delete() (Mudlet's
+-- GeyserMapper.lua) unconditionally calls closeMapWidget(self.windowname),
+-- unlike every other Mapper method (hide_impl/show_impl/move/resize), which
+-- branch on self.embedded and use createMapper(..., 0, 0) instead. Calling
+-- closeMapWidget() against an embedded mapper's windowname wedges the
+-- singleton native mapper (TMainConsole::mpMapper): the next createMapper()
+-- still produces a correctly-sized widget, but its room-graphics layer never
+-- paints again for the rest of the session -- a blank map with any sibling
+-- overlays (movement pad, gear icon) still visible. m:hide() alone already
+-- zeros the embedded mapper via Geyser's own embedded-aware path, and
+-- mapperSeq below guarantees each new wrapper gets a unique window name, so
+-- nothing depends on actually deleting the old one.
 local function releaseLive()
     if not liveMapper then return end
     local m = liveMapper
     liveMapper = nil
     pcall(function() m:hide() end)      -- sizes the singleton native mapper to 0×0
-    if m.delete then
-        pcall(function() m:delete() end)   -- drop the Geyser wrapper; map DB unaffected
-    end
 end
 
 -- Acquire a mapper into `slotContent`.  Always a FRESH wrapper (reparenting an
 -- existing one renders blank), with the prior one released first.
 local function mapperAcquire(slotContent)
+    local tAcquireStart = os.clock()
     releaseLive()
+
     mapperSeq = mapperSeq + 1
+    local tCreateStart = os.clock()
     liveMapper = Geyser.Mapper:new({
         name   = "f2t_mapper_" .. mapperSeq,
         x      = "0%", y = "0%",
         width  = "100%", height = "100%",
     }, slotContent)
+    f2t_debug_log("[map content] mapperAcquire #%d: Geyser.Mapper:new (createMapper) took %.0fms",
+        mapperSeq, (os.clock() - tCreateStart) * 1000)
+
     pcall(function()
         liveMapper:show()
         liveMapper:reposition()
     end)
-    if updateMap then pcall(updateMap) end
+
+    if updateMap then
+        local tUpdateStart = os.clock()
+        pcall(updateMap)
+        f2t_debug_log("[map content] mapperAcquire #%d: updateMap() took %.0fms",
+            mapperSeq, (os.clock() - tUpdateStart) * 1000)
+    end
+
+    f2t_debug_log("[map content] mapperAcquire #%d total: %.0fms",
+        mapperSeq, (os.clock() - tAcquireStart) * 1000)
     return liveMapper
 end
 
@@ -71,12 +106,19 @@ end
 -- Refit the live mapper to the current slot (called from resize()).
 local function mapperFit()
     if not liveMapper then return end
+    local tFitStart = os.clock()
     pcall(function()
         liveMapper:move("0%", "0%")
         liveMapper:resize("100%", "100%")
         liveMapper:reposition()
     end)
-    if updateMap then pcall(updateMap) end
+    if updateMap then
+        local tUpdateStart = os.clock()
+        pcall(updateMap)
+        f2t_debug_log("[map content] mapperFit: updateMap() took %.0fms",
+            (os.clock() - tUpdateStart) * 1000)
+    end
+    f2t_debug_log("[map content] mapperFit total: %.0fms", (os.clock() - tFitStart) * 1000)
 end
 
 local function buildContentDef()
@@ -92,6 +134,10 @@ local function buildContentDef()
         singleton   = true,
 
         apply = function(target)
+            applyCount = applyCount + 1
+            local tApplyStart = os.clock()
+            f2t_debug_log("[map content] apply() #%d called (epoch=%s)", applyCount, tostring(getEpoch and getEpoch() or os.time()))
+
             target.contentBg:echo("")
             target.contentBg:setStyleSheet("background-color: rgba(0,0,0,0); border: none;")
             target.contentBg:hide()
@@ -163,6 +209,9 @@ local function buildContentDef()
                 else
                     f2t_debug_log("[map content] f2tCheckMapImport missing — cannot offer import")
                 end
+
+                f2t_debug_log("[map content] apply() #%d deferred build total: %.0fms",
+                    applyCount, (os.clock() - tApplyStart) * 1000)
             end)
         end,
 
@@ -172,6 +221,8 @@ local function buildContentDef()
         -- settings overlays are real slot children and are removed by the slot
         -- delete automatically.
         remove = function(target)
+            removeCount = removeCount + 1
+            f2t_debug_log("[map content] remove() #%d called (epoch=%s)", removeCount, tostring(getEpoch and getEpoch() or os.time()))
             activeToken = nil
             mapperRelease()
             target._f2tHasMapper = nil
@@ -180,6 +231,9 @@ local function buildContentDef()
 
         -- Keep the mapper filling the slot as the pane/tab is resized.
         resize = function(target)
+            resizeCount = resizeCount + 1
+            f2t_debug_log("[map content] resize() #%d called, hasMapper=%s",
+                resizeCount, tostring(target._f2tHasMapper))
             if target._f2tHasMapper then mapperFit() end
         end,
     }

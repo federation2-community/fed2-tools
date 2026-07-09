@@ -8,7 +8,7 @@
   {"name": "local_players"},
   {"name": "commodities"},
   {"name": "hauling_jobs"},
-  {"name": "trading"},
+  {"name": "price_checker"},
   {"name": "company"},
   {"name": "futures"},
   {"name": "exchange"}

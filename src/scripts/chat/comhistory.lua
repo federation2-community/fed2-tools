@@ -31,6 +31,7 @@
 -- Ported from archive's ui_chat_comhistory.lua.
 
 local MAX_CONTINUATION_LINES = 6   -- per-entry safety cap, same as chat_inbound.lua
+local FINISH_TIMEOUT = 1.5   -- silence window before capture is considered done; wider than other captures since a long dump can span socket reads
 
 local state = {
     -- sent: false = not requested yet; "pending" = requested, header not seen;
@@ -111,7 +112,7 @@ local finish, resetFinishTimer, matchHeader
 
 resetFinishTimer = function()
     if state.timerId then killTimer(state.timerId) end
-    state.timerId = tempTimer(0.5, finish)
+    state.timerId = tempTimer(FINISH_TIMEOUT, finish)
 end
 
 -- Matches a comhistory entry header line ("Name, X ago: text" / "Name, just
@@ -184,7 +185,7 @@ function f2tChatComhistoryBegin()
     state.refTime = os.time()
     state.buffer  = {}
 
-    state.timerId = tempTimer(0.5, finish)
+    state.timerId = tempTimer(FINISH_TIMEOUT, finish)
     f2t_debug_log("[comhistory] capture started")
 end
 

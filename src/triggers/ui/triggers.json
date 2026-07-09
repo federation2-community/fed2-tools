@@ -16,11 +16,11 @@
     "patterns": [{"pattern": "^\\s+(\\d+)\\.\\s+From\\s+(.+?)\\s+to\\s+(.+?)\\s+-\\s+\\d+\\s+tons\\s+of\\s+\\S+\\s+-\\s+(\\d+)gtu\\s+(\\d+)ig", "type": "regex"}]
   },
   {
-    "name": "trading_line",
+    "name": "price_checker_line",
     "patterns": [{"pattern": "^([\\w\\s]+): ([\\w\\s]+) is (buying|selling) (\\d+) tons at (\\d+)ig/ton$", "type": "regex"}]
   },
   {
-    "name": "trading_profit_tick",
+    "name": "price_checker_profit_tick",
     "patterns": [{"pattern": "^$", "type": "regex"}]
   },
   {
@@ -34,7 +34,7 @@
     ]
   },
   {
-    "name": "trading_search_hide",
+    "name": "price_checker_search_hide",
     "patterns": [
       {"pattern": "^Your comm unit lights up as your brokers, Messrs Trum.*", "type": "regex"},
       {"pattern": "^requested spot market p.*", "type": "regex"},
