@@ -30,20 +30,30 @@ local _COL_HDR_CSS = [[
     QLabel::hover { color: white; }
 ]]
 
-local _BTN_CSS = [[
-    QLabel {
-        background-color: rgba(28,32,50,210);
-        color: rgba(150,165,205,255);
-        border: 1px solid rgba(72,85,128,180);
-        border-radius: 3px;
-        font-size: 10px; font-family: "Consolas","Monaco",monospace;
-        qproperty-alignment: AlignCenter;
-    }
-    QLabel::hover {
-        background-color: rgba(42,48,78,230);
-        color: rgba(200,215,255,255);
-    }
-]]
+-- Accent-colored action buttons: a left accent bar plus a tinted hover state,
+-- distinct per action so Work/Collect/Deliver read apart at a glance.
+local function actionBtnCss(accent, accentHover)
+    return string.format([[
+        QLabel {
+            background-color: rgba(26,30,46,220);
+            color: rgba(210,220,240,255);
+            border: 1px solid rgba(72,85,128,180);
+            border-left: 3px solid %s;
+            border-radius: 4px;
+            font-size: 10px; font-weight: bold; font-family: "Consolas","Monaco",monospace;
+            qproperty-alignment: AlignCenter;
+        }
+        QLabel::hover {
+            background-color: rgba(38,44,66,235);
+            border-left: 3px solid %s;
+            color: white;
+        }
+    ]], accent, accentHover)
+end
+
+local _BTN_WORK_CSS    = actionBtnCss("#3aa0ff", "#5cb8ff")
+local _BTN_COLLECT_CSS = actionBtnCss("#3ecf5e", "#5ce87c")
+local _BTN_DELIVER_CSS = actionBtnCss("#e0b84d", "#f0cc66")
 
 -- Per-pane state, keyed by target._gid
 local instances = {}
@@ -201,9 +211,20 @@ function f2tHaulingJobsLine(jobNumber, origin, dest, allowedMoves, payPerTon)
     local basePay      = (tonumber(payPerTon) or 0) * 75
     local allowedNum   = tonumber(allowedMoves) or 0
 
+    -- The cartel-bounded BFS is fast but depends on areas being tagged with
+    -- fed2_cartel (from the galaxy/cartel scraper); on a map that hasn't been
+    -- scraped yet it fails for every job, silently collapsing the GTU/Pay
+    -- color signal to plain white for every row. Fall back to the slower
+    -- whole-galaxy pathfinder so distance (and therefore the colors) still
+    -- resolve even when cartel tagging is missing or the route genuinely
+    -- crosses a cartel boundary.
     local distance
     if f2t_map_get_cartel_route_info then
         local info = f2t_map_get_cartel_route_info(origin, dest)
+        if info and info.success then distance = info.space_moves end
+    end
+    if not distance and f2t_map_get_route_info then
+        local info = f2t_map_get_route_info(origin, dest)
         if info and info.success then distance = info.space_moves end
     end
 
@@ -268,16 +289,16 @@ local function buildContent(target)
     ]])
 
     local buttons = {
-        { label = "Work",    cmd = "work",    tip = "List available AC jobs" },
-        { label = "Collect", cmd = "collect", tip = "Collect cargo for the accepted job" },
-        { label = "Deliver", cmd = "deliver", tip = "Deliver cargo at the destination" },
+        { label = "Work",    cmd = "work",    tip = "List available AC jobs",              css = _BTN_WORK_CSS },
+        { label = "Collect", cmd = "collect", tip = "Collect cargo for the accepted job",   css = _BTN_COLLECT_CSS },
+        { label = "Deliver", cmd = "deliver", tip = "Deliver cargo at the destination",     css = _BTN_DELIVER_CSS },
     }
-    local btnW = 64
+    local btnW = 76
     for i, b in ipairs(buttons) do
         local btn = Geyser.Label:new({
-            name = wid(), x = 6 + (i - 1) * (btnW + 6), y = 3, width = btnW, height = H_BAR - 6,
+            name = wid(), x = 6 + (i - 1) * (btnW + 8), y = 4, width = btnW, height = H_BAR - 8,
         }, bar)
-        btn:setStyleSheet(_BTN_CSS)
+        btn:setStyleSheet(b.css)
         btn:echo("<center>" .. b.label .. "</center>")
         btn:setToolTip(b.tip)
         local cmd = b.cmd

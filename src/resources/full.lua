@@ -288,7 +288,6 @@ Mux.registerWorkspace("fed2-tools", {
                             _activeContent = "fed2_price_checker",
                             closeable = true,
                             contentState = {
-                                mode = "cartel",
                                 selectedCommodity = "Alloys"
                             },
                             contentable = true,

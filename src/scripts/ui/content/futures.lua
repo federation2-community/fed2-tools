@@ -34,11 +34,16 @@ local C_G  = "#44cc44"
 local C_Y  = "#cccc44"
 local C_R  = "#cc4444"
 local C_CY = "#00cccc"
-local C_MA = "#993333"
+local C_MA = "#ffa366"   -- suspended-row text: warm/bright so it stays legible over BG_SUSPENDED's dark red
 
-local BG_NORMAL    = "background-color:transparent; border:none; padding:0;"
-local BG_OWNED     = "background-color:rgba(25,25,50,160); border:none; padding:0;"
-local BG_SUSPENDED = "background-color:rgba(60,12,12,140); border:none; padding:0;"
+-- Every cell background carries its own QToolTip rule — without one, a cell's
+-- own dark background can bleed into the native tooltip box (black text on a
+-- black/dark-red tooltip, unreadable) instead of Qt/OS tooltip defaults.
+local TOOLTIP_CSS = "QToolTip{background-color:#1d2030;color:#e8ebf5;border:1px solid rgba(255,255,255,0.18);padding:3px;}"
+
+local BG_NORMAL    = "background-color:transparent; border:none; padding:0;" .. TOOLTIP_CSS
+local BG_OWNED     = "background-color:rgba(25,25,50,160); border:none; padding:0;" .. TOOLTIP_CSS
+local BG_SUSPENDED = "background-color:rgba(60,12,12,140); border:none; padding:0;" .. TOOLTIP_CSS
 
 local _COL_HDR_CSS = [[
     QLabel {
@@ -121,6 +126,81 @@ local function cellBg(row)
     if     row.suspended then return BG_SUSPENDED
     elseif row.owned     then return BG_OWNED
     else                      return BG_NORMAL end
+end
+
+-- ── Dialogs (Muxlet primitives, mirrors content/company.lua) ─────────────────
+
+local _pendingDialog = nil
+
+local function openDialog(opts, buildFn)
+    if not (Mux and Mux.createDialog and Mux.registerContent and Mux._applyContent) then
+        cecho("\n<yellow>[futures]<reset> Dialogs require Muxlet.\n")
+        return
+    end
+    if not Mux._content or not Mux._content["f2t_futures_dialog"] then
+        Mux.registerContent("f2t_futures_dialog", {
+            internal = true,
+            name     = "Futures Action",
+            apply    = function(target)
+                target.contentBg:echo("")
+                target.contentBg:setStyleSheet("background-color:rgba(0,0,0,0);border:none;")
+                target.contentBg:hide()
+                local fn = _pendingDialog
+                _pendingDialog = nil
+                if fn then fn(target) end
+            end,
+        })
+    end
+    _pendingDialog = buildFn
+    local d = Mux.createDialog({
+        title     = opts.title,
+        width     = opts.width  or 420,
+        height    = opts.height or 210,
+        singleton = "f2t_futures_dialog",
+    })
+    Mux._applyContent(d, "f2t_futures_dialog")
+    d:show()
+    d:raise()
+    return d
+end
+
+local function dialogButtons(target, dlgW, dlgH, okLabel, okFn, danger)
+    local c = target.content
+    local w = dlgW - 4
+    local y = (dlgH - 26) - 42
+
+    local cancel = Geyser.Label:new({
+        name = target._gid .. "_fdlg_cancel", x = 14, y = y, width = 120, height = 32,
+    }, c)
+    cancel:setStyleSheet(Mux.dialogCss.button)
+    cancel:echo("<center>Cancel</center>")
+    Mux.wireDialogButton(cancel, Mux.dialogCss.button, Mux.dialogCss.buttonHover)
+    cancel:setClickCallback(function() target:close() end)
+
+    local okCss, okHover
+    if danger then okCss, okHover = Mux.dialogCss.buttonDanger,  Mux.dialogCss.buttonDangerHover
+    else           okCss, okHover = Mux.dialogCss.buttonPrimary, Mux.dialogCss.buttonPrimaryHover end
+    local ok = Geyser.Label:new({
+        name = target._gid .. "_fdlg_ok", x = w - 134, y = y, width = 120, height = 32,
+    }, c)
+    ok:setStyleSheet(okCss)
+    ok:echo("<center>" .. okLabel .. "</center>")
+    Mux.wireDialogButton(ok, okCss, okHover)
+    ok:setClickCallback(function()
+        target:close()
+        okFn()
+    end)
+end
+
+local function dialogConfirm(title, body, okLabel, okFn, danger)
+    openDialog({ title = title, width = 420, height = 210 }, function(target)
+        local msg = Geyser.Label:new({
+            name = target._gid .. "_fdlg_body", x = 0, y = 8, width = "100%", height = 104,
+        }, target.content)
+        msg:setStyleSheet(Mux.dialogCss.body)
+        msg:echo(body)
+        dialogButtons(target, 420, 210, okLabel, okFn, danger)
+    end)
 end
 
 -- ── Commodity display-name lookup (GMCP sends lowercase) ─────────────────────
@@ -251,7 +331,18 @@ function f2tFuturesMarketCols()
                     cell:setClickCallback(function() end)
                     cell:setToolTip("Already held at this exchange — one contract per commodity per exchange.")
                 else
-                    cell:setClickCallback(function() send("buy futures " .. (v or ""):lower(), false) end)
+                    cell:setClickCallback(function()
+                        local commodity = tostring(v or "")
+                        local typeLabel = row.type == "long" and "Long" or "Short"
+                        dialogConfirm("Buy Futures Contract",
+                            string.format(
+                                "<b>%s</b> — %s contract<br>Futures price: <b>%dig/ton</b>%s<br>" ..
+                                "Margin: <b>4,000ig</b> deposit from your bank account.",
+                                commodity, typeLabel, math.floor(tonumber(row.price) or 0),
+                                row.base and string.format("  (base %dig)", math.floor(row.base)) or ""),
+                            "Buy",
+                            function() send("buy futures " .. commodity:lower(), false) end)
+                    end)
                     cell:setToolTip(string.format("Buy %s futures contract", v))
                 end
             end,
@@ -483,7 +574,7 @@ local function ownedCols()
             label         = "Exchange",
             sortable      = true,
             sort_value    = function(r) return (r.exchange or ""):lower() end,
-            scrollbox_pct = 22,
+            scrollbox_pct = 19,
             render_label  = function(v, row, cell)
                 cell:setStyleSheet(BG_NORMAL)
                 cell:echo(span("left", C_CY, tostring(v or "?")))
@@ -498,7 +589,7 @@ local function ownedCols()
             label         = "Commodity",
             sortable      = true,
             sort_value    = function(r) return (r.commodity or ""):lower() end,
-            scrollbox_pct = 22,
+            scrollbox_pct = 19,
             render_label  = function(v, row, cell)
                 cell:setStyleSheet(BG_NORMAL)
                 local icon = f2tCommodityIconPrefix and f2tCommodityIconPrefix(v) or ""
@@ -525,7 +616,7 @@ local function ownedCols()
             label         = "Cost",
             sortable      = true,
             sort_value    = function(r) return r.cost or 0 end,
-            scrollbox_pct = 12,
+            scrollbox_pct = 10,
             render_label  = function(v, row, cell)
                 cell:setStyleSheet(BG_NORMAL)
                 cell:echo(span("right", C_GR, fmtIg(tonumber(v))))
@@ -538,7 +629,7 @@ local function ownedCols()
             label         = "Value",
             sortable      = true,
             sort_value    = function(r) return r.value or 0 end,
-            scrollbox_pct = 12,
+            scrollbox_pct = 10,
             render_label  = function(v, row, cell)
                 cell:setStyleSheet(BG_NORMAL)
                 local n    = tonumber(v) or 0
@@ -597,6 +688,32 @@ local function ownedCols()
                 cell:echo(span("center", d[2], d[1]))
                 cell:setClickCallback(function() end)
                 cell:setToolTip(tips[v] or "Unknown")
+            end,
+        },
+        {
+            key           = "close",
+            label         = "Close",
+            sortable      = false,
+            scrollbox_pct = 10,
+            render_label  = function(_v, row, cell)
+                cell:setStyleSheet(BG_NORMAL)
+                cell:echo(string.format(
+                    "<p style='text-align:center;margin:0;'><span style='%scolor:#ff8866;'>✕ Close</span></p>", SF))
+                cell:setToolTip("Liquidate this contract — you must be at the " ..
+                    tostring(row.exchange or "?") .. " exchange")
+                cell:setClickCallback(function()
+                    dialogConfirm("Liquidate Futures Contract",
+                        string.format(
+                            "<b>%s</b> — %s contract at <b>%s</b><br>" ..
+                            "Cost <b>%sig</b> &nbsp; Value <b>%sig</b> &nbsp; P&amp;L <b>%s</b><br>" ..
+                            "You must be standing in the %s exchange for this to work.",
+                            row.commodity, row.position == "long" and "Long" or "Short",
+                            tostring(row.exchange or "?"), fmtIg(row.cost), fmtIg(row.value),
+                            fmtIgSigned(row.pl), tostring(row.exchange or "?")),
+                        "Liquidate",
+                        function() send("liquidate " .. tostring(row.commodity or ""):lower(), false) end,
+                        true)
+                end)
             end,
         },
     }

@@ -15,9 +15,11 @@
 -- Mux.dialogCss + Mux.wireDialogButton for confirm/info flows, and
 -- Mux.ui.buildForm (number steppers) for wages / dividend / share amounts.
 --
--- The ↻ refresh action sends `di company` (or `di business` below
--- Manufacturer) with the raw output gagged; the game answers with a
--- gmcp.char.company push which re-renders every open panel.
+-- gmcp.char.company is realtime — the game pushes a fresh copy after every
+-- action that changes it (repair, wages, dividend, freeze, ...), so panels
+-- just re-render on that event; nothing here polls or force-refreshes it.
+-- The DI button is a separate, purely diagnostic action: it sends
+-- `di company`/`di business` visibly so the raw text shows in the console.
 --
 -- Ported from archive's ui_company.lua (its OVERVIEW/FACTORIES/FINANCIALS
 -- sections became these three contents).
@@ -107,32 +109,6 @@ end
 
 local function companyData()
     return gmcp and gmcp.char and gmcp.char.company or nil
-end
-
--- ── Refresh (di company / di business, output gagged) ─────────────────────────
-
-local _capture = { active = false, triggerId = nil, timerId = nil }
-
-local function captureEnd()
-    _capture.active = false
-    if _capture.triggerId then killTrigger(_capture.triggerId); _capture.triggerId = nil end
-    if _capture.timerId   then killTimer(_capture.timerId);     _capture.timerId   = nil end
-end
-
-function f2tCompanyRefresh()
-    captureEnd()
-    _capture.active = true
-    local function resetTimer()
-        if _capture.timerId then killTimer(_capture.timerId) end
-        -- Timer-based completion: always ends the capture when output goes quiet.
-        _capture.timerId = tempTimer(0.8, captureEnd)
-    end
-    _capture.triggerId = tempRegexTrigger("^.*$", function()
-        if _capture.active then deleteLine(); resetTimer() end
-    end)
-    resetTimer()
-    local cmd = f2t_is_rank_or_above("Manufacturer") and "di company" or "di business"
-    send(cmd, false)
 end
 
 -- ── Dialogs (Muxlet primitives) ───────────────────────────────────────────────
@@ -324,7 +300,6 @@ local function dialogWages(facNum, curWages)
         rangeError = "Wages must be at least 40ig",
         okFn = function(v)
             send(string.format("set factory %d wages %d", facNum, v), false)
-            tempTimer(0.5, f2tCompanyRefresh)
         end,
     })
 end
@@ -364,7 +339,6 @@ local function dialogDividend()
         rangeError = "Dividend must be 1–2000ig/share",
         okFn = function(v)
             send(string.format("issue dividend %d", v), false)
-            tempTimer(0.5, f2tCompanyRefresh)
         end,
     })
 end
@@ -391,7 +365,6 @@ local function dialogBuyShares(isTreasury, curQty)
                 and string.format("buy %d treasury", v)
                 or  string.format("buy %d shares", v)
             send(cmd, false)
-            tempTimer(0.5, f2tCompanyRefresh)
         end,
     })
 end
@@ -410,12 +383,11 @@ local function dialogFreeze()
         "Freeze",
         function()
             send("freeze company", false)
-            tempTimer(0.5, f2tCompanyRefresh)
         end,
         true)
 end
 
--- ── Shared chrome: header strip with title + DI + ↻ ──────────────────────────
+-- ── Shared chrome: header strip with title + DI ──────────────────────────────
 
 local function buildHeaderStrip(target, wid, title)
     local bar = Geyser.Label:new({
@@ -424,13 +396,13 @@ local function buildHeaderStrip(target, wid, title)
     bar:setStyleSheet(_HDR_STRIP_CSS)
 
     local lbl = Geyser.Label:new({
-        name = wid(), x = 6, y = 0, width = "-52", height = H_BAR,
+        name = wid(), x = 6, y = 0, width = "-28", height = H_BAR,
     }, bar)
     lbl:setStyleSheet(_HDR_TITLE_CSS)
     lbl:echo(title)
 
     local diBtn = Geyser.Label:new({
-        name = wid(), x = "-48", y = 2, width = 20, height = H_BAR - 4,
+        name = wid(), x = "-25", y = 2, width = 20, height = H_BAR - 4,
     }, bar)
     diBtn:setStyleSheet(_MINI_BTN_CSS)
     diBtn:echo("<center>DI</center>")
@@ -438,14 +410,6 @@ local function buildHeaderStrip(target, wid, title)
     diBtn:setClickCallback(function()
         send(f2t_is_rank_or_above("Manufacturer") and "di company" or "di business", false)
     end)
-
-    local refBtn = Geyser.Label:new({
-        name = wid(), x = "-25", y = 2, width = 20, height = H_BAR - 4,
-    }, bar)
-    refBtn:setStyleSheet(_MINI_BTN_CSS)
-    refBtn:echo("<center>↻</center>")
-    refBtn:setToolTip("Refresh company data (output hidden)")
-    refBtn:setClickCallback(function() f2tCompanyRefresh() end)
 
     return bar
 end
@@ -506,7 +470,7 @@ local function renderOverview(inst)
 
     local c = companyData()
     if not c then
-        w:cecho("\n\n<dim_grey>  No company data.  Click  ↻  to refresh.\n")
+        w:cecho("\n\n<dim_grey>  No company data yet.\n")
         return
     end
 
@@ -683,7 +647,6 @@ local function factoryCols()
                             "Repair",
                             function()
                                 send(string.format("repair factory %d", row.facNum), false)
-                                tempTimer(0.5, f2tCompanyRefresh)
                             end)
                     end)
                 else
@@ -713,7 +676,6 @@ local function factoryCols()
                         function()
                             send(string.format("set factory %d status %s",
                                 row.facNum, running and "stop" or "run"), false)
-                            tempTimer(0.5, f2tCompanyRefresh)
                         end)
                 end)
             end,
@@ -746,7 +708,6 @@ local function factoryCols()
                         "Destroy",
                         function()
                             send(string.format("destroy factory %d", row.facNum), false)
-                            tempTimer(0.5, f2tCompanyRefresh)
                         end,
                         true)
                 end)
@@ -773,6 +734,10 @@ local function renderFactories(inst)
     end
     f2tTableSetData(inst.tableId, rows)
 
+    if inst.noFactoriesLbl then
+        if #rows == 0 then inst.noFactoriesLbl:show() else inst.noFactoriesLbl:hide() end
+    end
+
     local w = inst.depotConsole
     if w then
         w:clear()
@@ -789,7 +754,6 @@ local function renderFactories(inst)
                             "Repair",
                             function()
                                 send("repair depot " .. pname, false)
-                                tempTimer(0.5, f2tCompanyRefresh)
                             end)
                     end,
                     "Click to repair depot on " .. pname, true)
@@ -822,6 +786,16 @@ local function buildFactories(target)
     local area = buildTableArea(target.content, wid, tableId, factoryCols(),
         H_BAR, (100 - DEPOT_PCT) .. "%-" .. (H_BAR + H_COL) .. "px")
 
+    -- Overlays the table area when there are no factories; f2tTableSetData
+    -- leaves an empty scrollbox with no message of its own.
+    local noFactoriesLbl = Geyser.Label:new({
+        name = wid(), x = 0, y = H_BAR + H_COL, width = "100%",
+        height = (100 - DEPOT_PCT) .. "%-" .. (H_BAR + H_COL) .. "px",
+    }, target.content)
+    noFactoriesLbl:setStyleSheet("background-color: rgba(18, 18, 26, 255); border: none;")
+    noFactoriesLbl:echo("<div style='padding:10px;color:#888888;font-size:10px;'>No factories.</div>")
+    noFactoriesLbl:hide()
+
     local depotConsole = Geyser.MiniConsole:new({
         name = wid(), x = 0, y = (100 - DEPOT_PCT) .. "%", width = "100%", height = DEPOT_PCT .. "%",
         fontSize = 9, scrollBar = true,
@@ -829,10 +803,11 @@ local function buildFactories(target)
     depotConsole:setColor(14, 14, 22)
 
     instances[gid] = {
-        kind         = "factories",
-        tableId      = tableId,
-        area         = area,
-        depotConsole = depotConsole,
+        kind            = "factories",
+        tableId         = tableId,
+        area            = area,
+        noFactoriesLbl  = noFactoriesLbl,
+        depotConsole    = depotConsole,
     }
     renderFactories(instances[gid])
 end
@@ -911,7 +886,7 @@ local function renderFinancials(inst)
 
     local c = companyData()
     if not c then
-        w:cecho("\n<dim_grey>  No company data.  Click  ↻  to refresh.\n")
+        w:cecho("\n<dim_grey>  No company data yet.\n")
         f2tTableSetData(inst.tableId, {})
         return
     end
@@ -1087,16 +1062,8 @@ end
 F2T_CONTENT_REGISTRARS = F2T_CONTENT_REGISTRARS or {}
 table.insert(F2T_CONTENT_REGISTRARS, f2tRegisterCompany)
 
--- Live re-render on every company GMCP push.
+-- Live re-render on every company GMCP push — the only data source; there is
+-- no polling or forced refresh.
 registerAnonymousEventHandler("gmcp.char.company", function() refreshAll() end)
-
--- Auto-refresh shortly after login for ranks with companies (archive behavior).
-registerAnonymousEventHandler("f2tCharacterChanged", function()
-    tempTimer(5, function()
-        if next(instances) and f2t_is_rank_or_above and f2t_is_rank_or_above("Industrialist") then
-            f2tCompanyRefresh()
-        end
-    end)
-end)
 
 if f2t_debug_log then f2t_debug_log("[company] module loaded") end
