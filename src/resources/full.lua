@@ -6,6 +6,40 @@
 -- Conditions used by this workspace
 Mux.createDeclarativeCondition({
     cond = {
+        path = "gmcp.char.vitals.rank",
+        type = "gmcp_contains",
+        values = "Industrialist,Manufacturer,Financier"
+    },
+    id = "CompanyRanks",
+    label = "CompanyRanks"
+})
+Mux.createDeclarativeCondition({
+    cond = {
+        path = "gmcp.char.vitals.rank",
+        type = "gmcp_contains",
+        values = "Industrialist,Manufacturer"
+    },
+    id = "FacilityRanks",
+    label = "FacilityRanks"
+})
+Mux.createDeclarativeCondition({
+    cond = {
+        path = "gmcp.char.ship",
+        type = "gmcp_exists"
+    },
+    id = "HaulingRanks",
+    label = "HaulingRanks"
+})
+Mux.createDeclarativeCondition({
+    cond = {
+        path = "gmcp.char.vitals.tools.remote-access-cert",
+        type = "gmcp_exists"
+    },
+    id = "RemoteAccessCert",
+    label = "RemoteAccessCert"
+})
+Mux.createDeclarativeCondition({
+    cond = {
         path = "gmcp.room.info.players",
         type = "gmcp_exists"
     },
@@ -67,6 +101,59 @@ Mux.registerWorkspace("fed2-tools", {
             showTitlebar = true,
             type = "pane",
             zoomable = false
+        },
+        {
+            activeContent = "fed2_galaxy",
+            anchor = {
+                alongV = 23.950000000001,
+                v = {
+                    myEdge = "right",
+                    ref = "output",
+                    targetEdge = "right"
+                }
+            },
+            anchorable = true,
+            atAnchor = true,
+            closeable = false,
+            contentState = {},
+            contentable = false,
+            convertible = false,
+            floatH = 1099,
+            floatW = 495,
+            floatX = 1550,
+            floatY = 79,
+            floating = true,
+            id = "pane_7",
+            mainConsoleHost = false,
+            name = "🔭 Galaxy Navigator",
+            nameAlign = "center",
+            propertiesButton = false,
+            renamable = false,
+            resizable = false,
+            rules = {
+                {
+                    act = "mux.overlay.disconnected.show",
+                    actElse = "mux.overlay.disconnected.hide",
+                    cond = {
+                        ref = "disconnected"
+                    },
+                    enabled = true,
+                    id = "r19"
+                },
+                {
+                    act = "mux.overlay.connecting.show",
+                    actElse = "mux.overlay.connecting.hide",
+                    cond = {
+                        ref = "connecting"
+                    },
+                    enabled = true,
+                    id = "r21"
+                }
+            },
+            showAnchorElement = false,
+            showTitlebar = true,
+            type = "pane",
+            zoomable = false
         }
     },
     name = "fed2-tools",
@@ -102,7 +189,27 @@ Mux.registerWorkspace("fed2-tools", {
                                 name = "Who",
                                 nameAlign = "center",
                                 propertiesButton = false,
-                                renamable = false
+                                renamable = false,
+                                rules = {
+                                    {
+                                        act = "mux.overlay.disconnected.show",
+                                        actElse = "mux.overlay.disconnected.hide",
+                                        cond = {
+                                            ref = "disconnected"
+                                        },
+                                        enabled = true,
+                                        id = "r8"
+                                    },
+                                    {
+                                        act = "mux.overlay.connecting.show",
+                                        actElse = "mux.overlay.connecting.hide",
+                                        cond = {
+                                            ref = "connecting"
+                                        },
+                                        enabled = true,
+                                        id = "r10"
+                                    }
+                                }
                             },
                             {
                                 closeable = true,
@@ -158,7 +265,27 @@ Mux.registerWorkspace("fed2-tools", {
                                 name = "Chat",
                                 nameAlign = "center",
                                 propertiesButton = false,
-                                renamable = false
+                                renamable = false,
+                                rules = {
+                                    {
+                                        act = "mux.overlay.disconnected.show",
+                                        actElse = "mux.overlay.disconnected.hide",
+                                        cond = {
+                                            ref = "disconnected"
+                                        },
+                                        enabled = true,
+                                        id = "r11"
+                                    },
+                                    {
+                                        act = "mux.overlay.connecting.show",
+                                        actElse = "mux.overlay.connecting.hide",
+                                        cond = {
+                                            ref = "connecting"
+                                        },
+                                        enabled = true,
+                                        id = "r13"
+                                    }
+                                }
                             }
                         },
                         tabsLocked = true,
@@ -170,23 +297,72 @@ Mux.registerWorkspace("fed2-tools", {
                 },
                 b = {
                     a = {
-                        activeContent = "fed2_player_info",
-                        anchorable = true,
-                        closeable = false,
-                        contentState = {},
-                        contentable = false,
-                        convertible = false,
-                        id = "pane_3",
-                        mainConsoleHost = false,
-                        movable = false,
-                        name = "Top",
-                        nameAlign = "center",
-                        renamable = false,
-                        showTitlebar = false,
-                        splittable = false,
-                        swappable = false,
-                        type = "pane",
-                        zoomable = false
+                        a = {
+                            activeContent = "fed2_player_info",
+                            anchorable = true,
+                            closeable = false,
+                            contentState = {},
+                            contentable = false,
+                            convertible = false,
+                            id = "pane_3",
+                            mainConsoleHost = false,
+                            movable = false,
+                            name = "Top",
+                            nameAlign = "center",
+                            renamable = false,
+                            showTitlebar = false,
+                            splittable = false,
+                            swappable = false,
+                            type = "pane",
+                            zoomable = false
+                        },
+                        b = {
+                            activeContent = "mux_buttons",
+                            anchorable = true,
+                            bordered = false,
+                            closeable = false,
+                            contentState = {
+                                buttons = {
+                                    {
+                                        action = {
+                                            actionId = "mux.toggleTarget",
+                                            targetId = "pane_7",
+                                            text = "Hello World",
+                                            type = "action"
+                                        },
+                                        bg = "#303030",
+                                        fg = "#ffffff",
+                                        fontSize = 14,
+                                        label = "🔭 Galaxy",
+                                        shape = "square",
+                                        width = 1
+                                    }
+                                },
+                                cols = 1,
+                                gapX = 5,
+                                gapY = 5,
+                                rowH = 20,
+                                vsizing = "fill"
+                            },
+                            contentable = false,
+                            convertible = false,
+                            id = "pane_8",
+                            mainConsoleHost = false,
+                            minimizable = false,
+                            movable = false,
+                            name = "Galaxy",
+                            nameAlign = "center",
+                            renamable = false,
+                            resizable = false,
+                            showTitlebar = false,
+                            splittable = false,
+                            swappable = false,
+                            type = "pane",
+                            zoomable = false
+                        },
+                        direction = "h",
+                        ratio = 0.93320235756385,
+                        type = "split"
                     },
                     b = {
                         activeContent = "mux_console",
@@ -249,7 +425,27 @@ Mux.registerWorkspace("fed2-tools", {
                             name = "Map",
                             nameAlign = "center",
                             propertiesButton = false,
-                            renamable = false
+                            renamable = false,
+                            rules = {
+                                {
+                                    act = "mux.overlay.disconnected.show",
+                                    actElse = "mux.overlay.disconnected.hide",
+                                    cond = {
+                                        ref = "disconnected"
+                                    },
+                                    enabled = true,
+                                    id = "r14"
+                                },
+                                {
+                                    act = "mux.overlay.connecting.show",
+                                    actElse = "mux.overlay.connecting.hide",
+                                    cond = {
+                                        ref = "connecting"
+                                    },
+                                    enabled = true,
+                                    id = "r16"
+                                }
+                            }
                         }
                     },
                     tabsLocked = true,
@@ -257,7 +453,7 @@ Mux.registerWorkspace("fed2-tools", {
                     zoomable = false
                 },
                 b = {
-                    activeTabName = "Company",
+                    activeTabName = "Hauling",
                     anchorable = true,
                     bordered = false,
                     closeable = false,
@@ -270,41 +466,145 @@ Mux.registerWorkspace("fed2-tools", {
                     name = "RightBottom",
                     nameAlign = "center",
                     renamable = false,
-                    showTitlebar = true,
+                    showTitlebar = false,
                     splittable = false,
                     swappable = false,
                     tabs = {
                         {
                             _activeContent = "fed2_hauling_jobs",
-                            closeable = true,
+                            closeable = false,
                             contentState = {},
-                            contentable = true,
+                            contentable = false,
                             movable = true,
                             name = "Hauling",
                             nameAlign = "center",
-                            renamable = false
+                            propertiesButton = false,
+                            renamable = false,
+                            rules = {
+                                {
+                                    act = "mux.showSelf",
+                                    actElse = "mux.hideSelf",
+                                    cond = {
+                                        ref = "HaulingRanks"
+                                    },
+                                    enabled = true,
+                                    id = "r6"
+                                }
+                            }
                         },
                         {
                             _activeContent = "fed2_price_checker",
-                            closeable = true,
+                            closeable = false,
                             contentState = {
                                 selectedCommodity = "Alloys"
                             },
-                            contentable = true,
+                            contentable = false,
                             movable = true,
                             name = "Price Checker",
                             nameAlign = "center",
-                            renamable = false
+                            propertiesButton = false,
+                            renamable = false,
+                            rules = {
+                                {
+                                    act = "mux.showSelf",
+                                    actElse = "mux.hideSelf",
+                                    cond = {
+                                        ref = "RemoteAccessCert"
+                                    },
+                                    enabled = true,
+                                    id = "r5"
+                                }
+                            }
                         },
                         {
+                            activeTabName = "Overview",
                             closeable = false,
-                            contentable = true,
+                            contentable = false,
                             movable = true,
                             name = "Company",
                             nameAlign = "center",
-                            renamable = false
+                            propertiesButton = false,
+                            renamable = false,
+                            rules = {
+                                {
+                                    act = "mux.showSelf",
+                                    actElse = "mux.hideSelf",
+                                    cond = {
+                                        ref = "CompanyRanks"
+                                    },
+                                    enabled = true,
+                                    id = "r7"
+                                },
+                                {
+                                    act = "mux.overlay.disconnected.show",
+                                    actElse = "mux.overlay.disconnected.hide",
+                                    cond = {
+                                        ref = "disconnected"
+                                    },
+                                    enabled = true,
+                                    id = "r17"
+                                },
+                                {
+                                    act = "mux.overlay.connecting.show",
+                                    actElse = "mux.overlay.connecting.hide",
+                                    cond = {
+                                        ref = "connecting"
+                                    },
+                                    enabled = true,
+                                    id = "r18"
+                                }
+                            },
+                            tabs = {
+                                {
+                                    _activeContent = "fed2_company_overview",
+                                    closeable = false,
+                                    contentState = {},
+                                    contentable = false,
+                                    movable = false,
+                                    name = "Overview",
+                                    nameAlign = "center",
+                                    propertiesButton = false,
+                                    renamable = false
+                                },
+                                {
+                                    _activeContent = "fed2_company_financials",
+                                    closeable = false,
+                                    contentState = {},
+                                    contentable = false,
+                                    movable = false,
+                                    name = "Financials",
+                                    nameAlign = "center",
+                                    propertiesButton = false,
+                                    renamable = false
+                                },
+                                {
+                                    _activeContent = "fed2_company_factories",
+                                    closeable = false,
+                                    contentState = {},
+                                    contentable = false,
+                                    movable = false,
+                                    name = "Facilities",
+                                    nameAlign = "center",
+                                    propertiesButton = false,
+                                    renamable = false,
+                                    rules = {
+                                        {
+                                            act = "mux.showSelf",
+                                            actElse = "mux.hideSelf",
+                                            cond = {
+                                                ref = "FacilityRanks"
+                                            },
+                                            enabled = true,
+                                            id = "r3"
+                                        }
+                                    },
+                                    visible = false
+                                }
+                            },
+                            tabsLocked = true
                         }
                     },
+                    tabsLocked = true,
                     type = "pane",
                     zoomable = false
                 },

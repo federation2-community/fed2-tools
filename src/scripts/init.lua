@@ -1,8 +1,11 @@
 -- fed2-tools — Bootstrap and initialization
 --
--- Installs/upgrades Muxlet via Mux.ensureVersion (see Muxlet's README,
--- "Bootstrapping from your own package") and drives our own initialization
--- from its callback.
+-- Installs/upgrades (or downgrades) Muxlet via Mux.bootHost (see Muxlet's
+-- update.lua, "Mux.bootHost") and drives our own initialization from its
+-- onReady callback. Muxlet is pinned to an exact version, not just a floor —
+-- if F2T_REQUIRED_MUXLET is ever set OLDER than what's installed (walking back
+-- a Muxlet release that broke fed2-tools), Mux.bootHost downgrades in place
+-- rather than treating the newer install as satisfying.
 --
 -- On first run, that init shows the mode-selection dialog (ui/popups.lua).
 -- The user's choice persists as mux_autostart in Mux.settings and governs all
@@ -12,15 +15,15 @@
 --   mux_autostart = false → Muxlet is installed but never auto-started (Minimal)
 --
 -- Two values are injected by the build script (never edit manually):
---   F2T_REQUIRED_MUXLET — minimum Muxlet version this build needs
---   MUXLET_URL          — GitHub release URL to install/upgrade from
+--   F2T_REQUIRED_MUXLET — exact Muxlet version this build is pinned to
+--   MUXLET_URL          — GitHub release URL to install/upgrade/downgrade from
 --
 -- Dev builds point MUXLET_URL at the prerelease tag (no "v" prefix).
 -- Production builds point at the production tag ("v" prefix).
 
 local MUXLET_PKG = "Muxlet"
 
--- build-injected: minimum Muxlet version required by this fed2-tools build
+-- build-injected: exact Muxlet version this fed2-tools build is pinned to
 local F2T_REQUIRED_MUXLET = nil
 -- build-injected: GitHub release URL (bare tag = prerelease; v-tag = production)
 local MUXLET_URL = nil
@@ -70,16 +73,31 @@ local function afterLogin(fn)
     end)
 end
 
--- True when the currently loaded Muxlet already meets F2T_REQUIRED_MUXLET.
--- Reuses Muxlet's own comparator rather than re-parsing versions here; only
--- exists so the boot sequence below can decide whether it needs to gate on
--- login before calling Mux.ensureVersion (which does the actual, possibly
--- disruptive, upgrade).
+-- True when the currently loaded Muxlet already meets F2T_REQUIRED_MUXLET
+-- (exact pin, not just a floor — see Mux._versionSatisfied). Reuses Muxlet's
+-- own comparator rather than re-parsing versions here; only exists so the boot
+-- sequence below can decide whether it needs to gate on login before calling
+-- Mux.bootHost (which does the actual, possibly disruptive, upgrade/downgrade).
 local function versionSatisfied()
-    if not (Mux and Mux._version) then return false end
-    if Mux._version == "unknown" then return true end
-    return not Mux._versionIsNewer(F2T_REQUIRED_MUXLET, Mux._version)
+    if not (Mux and Mux._version and Mux._versionSatisfied) then return false end
+    return Mux._versionSatisfied(F2T_REQUIRED_MUXLET, true)
 end
+
+-- Recover if Muxlet ever disappears mid-session for any reason other than our
+-- own devmode fresh-reload flow (muddlet --fresh, see devmode.lua) — that flow
+-- reinstalls fed2-tools itself and lets THIS package's own top-level bootstrap
+-- below notice Muxlet is absent and reinstall it, so it sets
+-- F2T_FRESH_UNINSTALL_PENDING first to keep this generic watchdog from also
+-- firing and racing it. A handler Muxlet registers on itself can't reliably
+-- outlive its own uninstall, so this has to live here, not in Muxlet.
+registerAnonymousEventHandler("sysUninstallPackage", function(_, name)
+    if name ~= MUXLET_PKG then return end
+    if F2T_FRESH_UNINSTALL_PENDING then return end
+    f2t_debug_log("Muxlet uninstalled unexpectedly; queuing reinstall")
+    if MUXLET_URL then
+        afterLogin(function() installPackage(MUXLET_URL) end)
+    end
+end)
 
 -- ── Initialization ────────────────────────────────────────────────────────────
 --
@@ -106,22 +124,11 @@ function f2tRegisterAllContent()
     end
 end
 
--- Callback passed to Mux.ensureVersion; runs once a satisfying Muxlet is
--- loaded and ready. Settings/content register immediately (so Muxlet's own
--- welcome/autostart timers are suppressed before they can fire); only the
--- mode-select/fullStart decision waits for login.
+-- onReady callback passed to Mux.bootHost; runs once a satisfying (exactly
+-- pinned) Muxlet is loaded and ready. Settings/content register immediately
+-- (so Muxlet's own welcome/autostart timers are suppressed before they can
+-- fire); only the mode-select/fullStart decision waits for login.
 function f2tInit()
-    -- defaultWorkspace is intentionally not set here: it depends on which mode
-    -- the user picks (full vs BYOW), so f2tShowModeSelect owns it, set once
-    -- at choice time — not re-asserted every session, which would silently
-    -- fight a BYOW user's choice of Muxlet's blank "default" workspace.
-    Mux.configureHost({
-        suppressWelcome = true,   -- fed2-tools shows its own onboarding (f2tShowModeSelect)
-        autoStart       = false,  -- fed2-tools exclusively decides when Mux.fullStart() runs
-        quietStart      = true,   -- fed2-tools prints its own startup output
-        checkForUpdates = false,  -- fed2-tools owns the Muxlet version pin
-    })
-
     if f2t_settings_flush_registrations then f2t_settings_flush_registrations() end
 
     f2tRegisterAllContent()
@@ -139,21 +146,55 @@ function f2tInit()
     end)
 end
 
+-- Options passed to Mux.bootHost (see Muxlet's update.lua) — combines the old
+-- separate Mux.configureHost call and Mux.ensureVersion boot gate into one.
+-- defaultWorkspace is intentionally not set here: it depends on which mode the
+-- user picks (full vs BYOW), so f2tShowModeSelect owns it, set once at choice
+-- time — not re-asserted every session, which would silently fight a BYOW
+-- user's choice of Muxlet's blank "default" workspace.
+local function bootHostOpts()
+    return {
+        suppressWelcome = true,   -- fed2-tools shows its own onboarding (f2tShowModeSelect)
+        autoStart       = false,  -- fed2-tools exclusively decides when Mux.fullStart() runs
+        quietStart      = true,   -- fed2-tools prints its own startup output
+        checkForUpdates = false,  -- irrelevant once updateRepo is set below, kept for older Muxlets
+
+        -- Let Muxlet's own update system check fed2-tools' releases instead of
+        -- (only) its own, and offer to bump Muxlet first if a newer release
+        -- needs it — same two values already computed above for the boot gate.
+        -- pinMuxletVersion = true makes that boot gate an exact pin instead of
+        -- a floor: if F2T_REQUIRED_MUXLET is ever set OLDER than what's
+        -- installed, Mux.bootHost downgrades rather than treating it as fine.
+        updateRepo              = "tmtocloud/fed2-tools",
+        requiredMuxletVersion   = F2T_REQUIRED_MUXLET,
+        requiredMuxletUrl       = MUXLET_URL,
+        pinMuxletVersion        = true,
+        -- Keep the "f2t" namespace (so "f2t settings set update_check_enabled
+        -- false" etc. keeps working), but give it its own dedicated "Update"
+        -- sub-tab under the existing "Fed2-Tools" top-level tab — the same
+        -- shape Muxlet's own "Muxlet/Update" tab has, just moved here instead
+        -- of living lumped into General.
+        updateSettingsNamespace = "f2t",
+        updateSettingsTab       = "Fed2-Tools/Update",
+        onReady                 = f2tInit,
+    }
+end
+
 -- ── Boot ──────────────────────────────────────────────────────────────────────
 -- Registered unconditionally so it's in place for every muxletReady this
 -- session, whether that's Muxlet's first load or a reload triggered below.
 local function onMuxletReady()
     if versionSatisfied() then
-        f2tInit()
+        Mux.bootHost(bootHostOpts())
         return
     end
     -- Wrong (or missing) version: gate the reinstall on login so it can never
-    -- land mid-login-prompt. Mux.ensureVersion handles the actual upgrade;
+    -- land mid-login-prompt. Mux.bootHost handles the actual upgrade/downgrade;
     -- its own fresh muxletReady re-invokes this handler once it's done.
-    f2t_debug_log("Muxlet upgrade queued: installed=%s required=%s",
+    f2t_debug_log("Muxlet upgrade/downgrade queued: installed=%s required=%s",
         tostring(Mux and Mux._version), tostring(F2T_REQUIRED_MUXLET))
     afterLogin(function()
-        Mux.ensureVersion(F2T_REQUIRED_MUXLET, MUXLET_URL, f2tInit)
+        Mux.bootHost(bootHostOpts())
     end)
 end
 

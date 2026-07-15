@@ -36,6 +36,7 @@ jobs:
             # Tagged release: use tag name (strip 'v' prefix)
             VERSION="${GITHUB_REF#refs/tags/v}"
             echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "pkg_version=$VERSION" >> $GITHUB_OUTPUT
             echo "is_release=true" >> $GITHUB_OUTPUT
             echo "release_name=v$VERSION" >> $GITHUB_OUTPUT
             echo "is_dispatch_release=false" >> $GITHUB_OUTPUT
@@ -43,6 +44,7 @@ jobs:
             # Manual promote: treat as a production release without needing a local tag push
             VERSION="${{ inputs.version }}"
             echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "pkg_version=$VERSION" >> $GITHUB_OUTPUT
             echo "is_release=true" >> $GITHUB_OUTPUT
             echo "release_name=v$VERSION" >> $GITHUB_OUTPUT
             echo "is_dispatch_release=true" >> $GITHUB_OUTPUT
@@ -50,9 +52,16 @@ jobs:
             # Branch push or unversioned dispatch: pre-release using mfile version.
             # Tag is bare version (e.g. "2.0.0", no "v" prefix) so it is visually
             # distinct from production tags ("v2.0.0") and never matches tags: ['v*'],
-            # preventing the production job from firing on CI-created pre tags.
+            # preventing the production job from firing on CI-created pre tags. The tag
+            # stays bare so the same rolling per-version release gets updated by every
+            # commit, but the *package* version (pkg_version, injected into mfile below)
+            # gets the short sha appended — that's what Muxlet's update.lua reads back
+            # via getPackageInfo("fed2-tools").version to identify the exact installed
+            # build and decide whether the "v" prefix belongs.
             VERSION=$(jq -r '.version' mfile)
+            SHORT_SHA=$(git rev-parse --short HEAD)
             echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "pkg_version=${VERSION}-${SHORT_SHA}" >> $GITHUB_OUTPUT
             echo "is_release=false" >> $GITHUB_OUTPUT
             echo "release_name=prerelease" >> $GITHUB_OUTPUT
             echo "is_dispatch_release=false" >> $GITHUB_OUTPUT
@@ -75,10 +84,10 @@ jobs:
 
       - name: Inject version into mfile
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          PKG_VERSION="${{ steps.version.outputs.pkg_version }}"
           tmp=$(mktemp)
-          jq --arg v "$VERSION" '.version = $v' mfile > "$tmp" && mv "$tmp" mfile
-          echo "Version set to $VERSION"
+          jq --arg v "$PKG_VERSION" '.version = $v' mfile > "$tmp" && mv "$tmp" mfile
+          echo "Version set to $PKG_VERSION"
 
       - name: Inject Muxlet variables into init.lua
         run: |
@@ -86,7 +95,12 @@ jobs:
           IS_RELEASE="${{ steps.version.outputs.is_release }}"
 
           if [[ "$IS_RELEASE" == "true" ]]; then
-            MUXLET_TAG="v${MUXLET_VERSION}"
+            # A production fed2-tools release always pins to Muxlet's own
+            # production release of this number, regardless of whatever a
+            # developer last left in mfile's muxlet_version for local testing —
+            # strip any "v" already there first so this can't double up into
+            # "vv2.1.0".
+            MUXLET_TAG="v${MUXLET_VERSION#v}"
           else
             MUXLET_TAG="${MUXLET_VERSION}"
           fi
@@ -95,8 +109,12 @@ jobs:
           echo "Muxlet version : $MUXLET_VERSION"
           echo "Muxlet URL     : $MUXLET_URL"
 
+          # F2T_REQUIRED_MUXLET uses the same MUXLET_TAG as the URL above — a
+          # "v" prefix means Muxlet's Mux._versionSatisfied must see an actual
+          # production build, not just a same-numbered pre-release; no
+          # separate bare-vs-tagged value needed, one tag drives both.
           sed -i \
-            -e "s|local F2T_REQUIRED_MUXLET = nil|local F2T_REQUIRED_MUXLET = \"${MUXLET_VERSION}\"|" \
+            -e "s|local F2T_REQUIRED_MUXLET = nil|local F2T_REQUIRED_MUXLET = \"${MUXLET_TAG}\"|" \
             -e "s|local MUXLET_URL = nil|local MUXLET_URL = \"${MUXLET_URL}\"|" \
             src/scripts/init.lua
 
@@ -160,49 +178,65 @@ jobs:
         id: release_notes
         env:
           INPUT_RELEASE_NOTES: ${{ inputs.release_notes }}
+          GH_TOKEN: ${{ github.token }}
         run: |
+          # "delta" = just this run's new note; "summary" = what the release body
+          # becomes (delta prepended onto whatever notes the release already has,
+          # so re-tagging v2.1.0 to add a fix never loses earlier notes).
           if [[ "${{ steps.version.outputs.is_dispatch_release }}" == "true" && -n "$INPUT_RELEASE_NOTES" ]]; then
-            echo "summary<<EOF" >> $GITHUB_OUTPUT
-            printf '%s\n' "$INPUT_RELEASE_NOTES" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            DELTA="$INPUT_RELEASE_NOTES"
           elif [[ "${{ steps.version.outputs.is_dispatch_release }}" == "true" ]]; then
+            # Auto-generate from git log since the last production tag
             PREV_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | tail -1)
             if [[ -n "$PREV_TAG" ]]; then
-              SUMMARY=$(git log "${PREV_TAG}..HEAD" --pretty=format:'- %s' | head -30)
+              DELTA=$(git log "${PREV_TAG}..HEAD" --pretty=format:'- %s' | head -30)
             else
-              SUMMARY=$(git log --pretty=format:'- %s' -30)
+              DELTA=$(git log --pretty=format:'- %s' -30)
             fi
-            echo "summary<<EOF" >> $GITHUB_OUTPUT
-            echo "$SUMMARY" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
           else
+            # Tag push: read the annotated tag message
             TAG="${GITHUB_REF_NAME}"
             echo "Processing tag: $TAG"
             git fetch --no-tags origin "+refs/tags/$TAG:refs/tags/$TAG"
             if git cat-file -t "$TAG" 2>/dev/null | grep -q '^tag$'; then
               echo "✓ Annotated tag detected"
-              SUMMARY=$(git tag -l --format='%(contents)' "$TAG")
+              DELTA=$(git tag -l --format='%(contents)' "$TAG")
             else
               echo "⚠ Not seeing annotated tag object, falling back"
-              SUMMARY=$(git log -1 --pretty=%B "$TAG^{commit}")
+              DELTA=$(git log -1 --pretty=%B "$TAG^{commit}")
             fi
-            echo "summary<<EOF" >> $GITHUB_OUTPUT
-            echo "$SUMMARY" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
           fi
 
-      - name: Delete pre-release for this version
+          PREV_BODY=$(gh release view "${{ steps.version.outputs.release_name }}" --json body --jq .body 2>/dev/null || true)
+          if [[ -n "$PREV_BODY" ]]; then
+            SUMMARY="${DELTA}"$'\n\n---\n\n'"${PREV_BODY}"
+          else
+            SUMMARY="$DELTA"
+          fi
+
+          echo "delta<<EOF" >> $GITHUB_OUTPUT
+          echo "$DELTA" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "summary<<EOF" >> $GITHUB_OUTPUT
+          echo "$SUMMARY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Delete all pre-releases
         if: steps.version.outputs.is_release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
-          if gh release view "$VERSION" &>/dev/null; then
-            gh release delete "$VERSION" --yes --cleanup-tag
-            echo "Deleted pre-release $VERSION and its tag"
-          else
-            echo "No pre-release found for $VERSION, nothing to delete"
-          fi
+          # A production release supersedes every pre-release that came before it,
+          # not just one matching this exact version number — mfile can jump ahead
+          # mid-development (e.g. a 2.1.1 pre-release whose scope grew into 2.2.0),
+          # so only pruning an exact-version match left those orphaned forever.
+          # At most one pre-release should exist at a time; wipe them all here.
+          PRERELEASES=$(gh release list --json tagName,isPrerelease \
+            --jq '.[] | select(.isPrerelease) | .tagName')
+          for tag in $PRERELEASES; do
+            gh release delete "$tag" --yes --cleanup-tag
+            echo "Deleted pre-release $tag and its tag"
+          done
 
       - name: Create tagged release
         if: steps.version.outputs.is_release == 'true'
@@ -222,6 +256,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.MUDLET_REPO_PAT }}
           RELEASE_SUMMARY: ${{ steps.release_notes.outputs.summary }}
+          RELEASE_DELTA: ${{ steps.release_notes.outputs.delta }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           OWNER="$GITHUB_REPOSITORY_OWNER"
@@ -230,32 +265,65 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
+          # Clone the pre-forked repo (fork must exist at $OWNER/mudlet-package-repository)
           git clone --depth=1 \
             "https://x-access-token:${GH_TOKEN}@github.com/${OWNER}/mudlet-package-repository.git" \
             mudlet-repo
 
           cd mudlet-repo
 
-          git remote add upstream https://github.com/Mudlet/mudlet-package-repository.git
-          git fetch upstream main
-          git checkout main
-          git reset --hard upstream/main
-          git push origin main --force
-
-          git checkout -b "$BRANCH"
-
-          cp "$GITHUB_WORKSPACE/build/fed2-tools.mpackage" "packages/fed2-tools.mpackage"
-
-          git add "packages/fed2-tools.mpackage"
-          git commit -m "Update fed2-tools to v${VERSION}"
-          git push origin "$BRANCH"
-
-          EXISTING=$(gh pr list \
+          # Re-pushing the same version tag (e.g. to address MPR review feedback) means
+          # the branch/PR from a prior run of this version may already be open. Detect
+          # that first: an open PR gets a fixup commit on its existing branch instead of
+          # main being reset and a fresh branch/PR being created underneath it, which
+          # would orphan the open PR's history and make the branch push non-fast-forward.
+          # --head takes a bare branch name here, not "owner:branch" (that form silently
+          # matches nothing).
+          EXISTING_PR=$(gh pr list \
             --repo Mudlet/mudlet-package-repository \
-            --head "${OWNER}:${BRANCH}" \
-            --json number --jq 'length')
+            --head "$BRANCH" --state open \
+            --json number --jq '.[0].number // empty')
 
-          if [ "$EXISTING" -eq 0 ]; then
+          if [ -n "$EXISTING_PR" ]; then
+            echo "Open PR #$EXISTING_PR already tracks $BRANCH — pushing a fixup commit."
+            # The clone is shallow/single-branch (implied by --depth=1), so it never
+            # populates refs/remotes/origin/$BRANCH — only FETCH_HEAD is usable here.
+            git fetch origin "$BRANCH"
+            git checkout -B "$BRANCH" FETCH_HEAD
+
+            cp "$GITHUB_WORKSPACE/build/fed2-tools.mpackage" "packages/fed2-tools.mpackage"
+            git add "packages/fed2-tools.mpackage"
+
+            if git diff --cached --quiet; then
+              echo "Package unchanged; nothing to push."
+            else
+              git commit -m "Update fed2-tools package (v${VERSION})"
+              git push origin "$BRANCH"
+              {
+                printf 'Pushed an updated build (re-run of the v%s release workflow).\n\n' "$VERSION"
+                printf '%s\n' "$RELEASE_DELTA"
+              } > /tmp/pr_comment.md
+              gh pr comment "$EXISTING_PR" --repo Mudlet/mudlet-package-repository \
+                --body-file /tmp/pr_comment.md
+            fi
+          else
+            # Sync fork main with upstream before branching
+            git remote add upstream https://github.com/Mudlet/mudlet-package-repository.git
+            git fetch upstream main
+            git checkout main
+            git reset --hard upstream/main
+            git push origin main --force
+
+            # Create a versioned branch so each release gets its own PR
+            git checkout -b "$BRANCH"
+
+            # Copy package using the canonical name (no version suffix in filename)
+            cp "$GITHUB_WORKSPACE/build/fed2-tools.mpackage" "packages/fed2-tools.mpackage"
+
+            git add "packages/fed2-tools.mpackage"
+            git commit -m "Update fed2-tools to v${VERSION}"
+            git push origin "$BRANCH"
+
             {
               printf '## fed2-tools v%s\n\n' "$VERSION"
               printf 'Release Notes:\n%s\n\n' "$RELEASE_SUMMARY"

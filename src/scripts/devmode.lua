@@ -1,18 +1,20 @@
--- fed2-tools — Dev Mode: local build auto-reload and manual reload helpers
+-- fed2-tools — Dev Mode: local build auto-reload
 --
--- Auto-reload: muddlet --profile <name> writes a stamp file to the profile
--- directory after every build. A 30-second timer watches for stamp changes
--- and reloads via uninstallPackage + installPackage.
--- When --fresh is passed to muddlet it also writes a fresh flag file; the
--- watcher detects it and calls f2t_devmode_reload(true) instead of (false),
--- triggering a full clean-install simulation without closing Mudlet.
+-- muddlet --profile <name> writes a stamp file to the profile directory after
+-- every build:
+--     fed2-tools-rebuild.stamp   contents: unix timestamp
+-- A recursive 30-second timer watches the stamp. When it changes, fed2-tools
+-- reinstalls itself from the deployed package. The new code is active
+-- immediately; Mux._promptRestartRequired then offers a profile close/reopen
+-- for a fully clean UI (stale widgets from the prior session), but doesn't
+-- force one.
 --
--- Manual reload:
---   f2t reload        — upgrade path (preserves settings, workspaces, player data)
---   f2t reload fresh  — simulate a first-time install: wipes all persistent data,
---                       removes Muxlet and fed2-tools from the profile XML, then
---                       reinstalls fed2-tools; init.lua downloads a fresh Muxlet.
---                       Works while connected — no disconnect required.
+-- muddlet --fresh additionally writes a fresh flag file alongside the stamp.
+-- The watcher picks this up and, instead of a plain reinstall, wipes
+-- Muxlet_persistent and fed2-tools_persistent, uninstalls Muxlet from the
+-- profile XML, then reinstalls fed2-tools — whose own top-level bootstrap
+-- notices Muxlet is missing and downloads a clean copy — simulating a
+-- first-time install without closing Mudlet.
 
 -- Stamp value seen at last check. nil = not yet observed this session.
 local _devLastStamp = nil
@@ -33,17 +35,67 @@ local function rmDir(path)
     end
 end
 
+-- CRITICAL: deferred to a runtime tempTimer(0) so the uninstall does NOT run
+-- while a package-owned timer callback (the watcher below) is still on the
+-- Lua stack. Uninstalling the very script that is executing frees it mid-run
+-- and crashes Mudlet — the same bug Muxlet hit and fixed in
+-- Mux._reinstallPackage (see Muxlet's update.lua).
+--
+-- Reinstalling only reloads fed2-tools' Lua; Muxlet keeps running and never
+-- re-fires "muxletReady", so nothing re-triggers content registration on its
+-- own. Clear the registrar list so reloaded modules repopulate it fresh, then
+-- run it explicitly once the new package has loaded.
 local function f2tDevmodeDoReload(pkgPath)
-    if table.contains(getPackages(), "fed2-tools") then
-        uninstallPackage("fed2-tools")
+    tempTimer(0, function()
+        if table.contains(getPackages(), "fed2-tools") then
+            uninstallPackage("fed2-tools")
+        end
+        local ok, err = installPackage(pkgPath)
+        if ok then
+            F2T_CONTENT_REGISTRARS = {}
+            if f2tRegisterAllContent then f2tRegisterAllContent() end
+            cecho("\n<green>[fed2-tools]<reset> Reinstalled.\n")
+            if Mux and Mux._promptRestartRequired then Mux._promptRestartRequired() end
+        else
+            cecho(string.format(
+                "\n<red>[fed2-tools]<reset> Reinstall failed (%s). Install manually from: %s\n",
+                tostring(err or "unknown error"), pkgPath))
+        end
+    end)
+end
+
+-- Wipes persisted state and removes Muxlet from the profile before handing off
+-- to f2tDevmodeDoReload, simulating a brand-new install without closing Mudlet.
+local function f2tDevmodeFreshReload(pkgPath)
+    local home = getMudletHomeDir()
+
+    cecho("\n<yellow>[fed2-tools]<reset> --fresh: deleting Muxlet_persistent...\n")
+    rmDir(home .. "/Muxlet_persistent")
+
+    cecho("\n<yellow>[fed2-tools]<reset> --fresh: deleting fed2-tools_persistent...\n")
+    rmDir(home .. "/fed2-tools_persistent")
+
+    if table.contains(getPackages(), "Muxlet") then
+        cecho("\n<yellow>[fed2-tools]<reset> --fresh: removing Muxlet from profile...\n")
+        -- Tell init.lua's generic sysUninstallPackage watchdog to stand down for
+        -- this uninstall — it's ours, and f2tDevmodeDoReload below already
+        -- re-triggers Muxlet's reinstall via fed2-tools' own top-level bootstrap.
+        -- Global (not local) because it must survive into the handler below,
+        -- and it's cleared there before anything else can race it.
+        F2T_FRESH_UNINSTALL_PENDING = true
+        local waitId
+        waitId = registerAnonymousEventHandler("sysUninstallPackage", function(_, name)
+            if name ~= "Muxlet" then return end
+            killAnonymousEventHandler(waitId)
+            F2T_FRESH_UNINSTALL_PENDING = false
+            cecho("\n<cyan>[fed2-tools]<reset> Reloading fed2-tools...\n")
+            f2tDevmodeDoReload(pkgPath)
+        end)
+        uninstallPackage("Muxlet")
+    else
+        cecho("\n<cyan>[fed2-tools]<reset> Reloading fed2-tools...\n")
+        f2tDevmodeDoReload(pkgPath)
     end
-    -- Reinstalling only reloads fed2-tools' Lua; Muxlet keeps running and never
-    -- re-fires "muxletReady", so nothing re-triggers content registration on
-    -- its own. Clear the registrar list so reloaded modules repopulate it
-    -- fresh, then run it explicitly once the new package has loaded.
-    F2T_CONTENT_REGISTRARS = {}
-    installPackage(pkgPath)
-    if f2tRegisterAllContent then f2tRegisterAllContent() end
 end
 
 -- Recursive 30-second timer. Does nothing when the stamp file is absent
@@ -85,6 +137,7 @@ local function f2tDevmodeCheck()
 
     -- Stamp changed: a new build was deployed; check for the fresh flag.
     _devLastStamp = stamp
+    local pkgPath   = home .. "/fed2-tools.mpackage"
     local freshPath = home .. "/fed2-tools-fresh.stamp"
     local freshFile = io.open(freshPath, "r")
 
@@ -92,56 +145,12 @@ local function f2tDevmodeCheck()
         freshFile:close()
         os.remove(freshPath)
         cecho("\n<yellow>[fed2-tools]<reset> New local build detected (fresh) — wiping and reloading...\n")
-        f2t_devmode_reload(true)
+        f2tDevmodeFreshReload(pkgPath)
     else
         cecho("\n<cyan>[fed2-tools]<reset> New local build detected — reloading...\n")
-        f2tDevmodeDoReload(home .. "/fed2-tools.mpackage")
-    end
-    -- No reschedule: the freshly installed package starts its own timer on load.
-end
-
--- Called by "f2t reload [fresh]".
-function f2t_devmode_reload(fresh)
-    local pkgPath = getMudletHomeDir() .. "/fed2-tools.mpackage"
-    local f = io.open(pkgPath, "r")
-    if not f then
-        cecho(string.format("\n<red>[fed2-tools]<reset> No deployed build found at: %s\n", pkgPath))
-        cecho("\n<yellow>[fed2-tools]<reset> Run: ./muddlet --profile <name>\n")
-        return
-    end
-    f:close()
-
-    if fresh then
-        local home = getMudletHomeDir()
-
-        -- Wipe all persistent data so the reinstalled packages start from scratch.
-        cecho("\n<yellow>[fed2-tools]<reset> --fresh: deleting Muxlet_persistent...\n")
-        rmDir(home .. "/Muxlet_persistent")
-
-        cecho("\n<yellow>[fed2-tools]<reset> --fresh: deleting fed2-tools_persistent...\n")
-        rmDir(home .. "/fed2-tools_persistent")
-
-        -- Remove Muxlet from the profile XML. Chain through the uninstall event so
-        -- getPackages() no longer lists Muxlet by the time fed2-tools reinstalls and
-        -- init.lua decides whether to download a fresh copy.
-        if table.contains(getPackages(), "Muxlet") then
-            cecho("\n<yellow>[fed2-tools]<reset> --fresh: removing Muxlet from profile...\n")
-            local waitId
-            waitId = registerAnonymousEventHandler("sysUninstallPackage", function(_, name)
-                if name ~= "Muxlet" then return end
-                killAnonymousEventHandler(waitId)
-                cecho("\n<cyan>[fed2-tools]<reset> Reloading fed2-tools...\n")
-                f2tDevmodeDoReload(pkgPath)
-            end)
-            uninstallPackage("Muxlet")
-        else
-            cecho("\n<cyan>[fed2-tools]<reset> Reloading fed2-tools...\n")
-            f2tDevmodeDoReload(pkgPath)
-        end
-    else
-        cecho("\n<cyan>[fed2-tools]<reset> Reloading fed2-tools...\n")
         f2tDevmodeDoReload(pkgPath)
     end
+    -- No reschedule: the freshly installed package starts its own timer on load.
 end
 
 -- Only start the polling timer if a stamp file already exists in the profile

@@ -9,7 +9,6 @@
   {"name": "char"},
   {"name": "player_db"},
   {"name": "rank"},
-  {"name": "version"},
   {"name": "status"},
   {"name": "devmode"},
   {"name": "init"}

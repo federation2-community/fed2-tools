@@ -20,6 +20,19 @@ local SB_W   = 17
 
 local CELL_FONT = "font-size:10pt;font-family:Consolas,Monaco,monospace;"
 
+-- Same vertical gradient as Galaxy Navigator's header strip, for a
+-- consistent header look across content types.
+local _HDR_BAR_CSS = [[
+    background-color: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #2a2a3a, stop:0.4 #1e1e2a, stop:1 #16161e);
+    border: none;
+    border-bottom: 1px solid rgba(70, 75, 110, 150);
+]]
+
+local function emptyStateHtml(text)
+    return string.format(
+        "<div style='padding:10px 6px;color:#888888;%s'>%s</div>", CELL_FONT, text)
+end
+
 local _COL_HDR_CSS = [[
     QLabel {
         background-color: transparent; border: none;
@@ -243,6 +256,14 @@ local function setStatus(text)
     end
 end
 
+-- Shown when there are no rows and no scan is running (the search console
+-- overlays the table area on its own while a scan is active).
+local function updateEmptyState(inst)
+    if not inst.noRowsLbl then return end
+    local empty = #F2T_PRICE_CHECKER.rows == 0 and not F2T_PRICE_CHECKER.profitSearch.active
+    if empty then inst.noRowsLbl:show() else inst.noRowsLbl:hide() end
+end
+
 local _renderTimer = nil
 local function refreshAllDebounced()
     if _renderTimer then killTimer(_renderTimer) end
@@ -250,6 +271,7 @@ local function refreshAllDebounced()
         _renderTimer = nil
         for _, inst in pairs(instances) do
             pcall(f2tTableSetData, inst.tableId, F2T_PRICE_CHECKER.rows)
+            updateEmptyState(inst)
         end
     end)
 end
@@ -507,6 +529,7 @@ local function buildContent(target)
     if instances[gid] then
         f2tTableSetData(instances[gid].tableId, F2T_PRICE_CHECKER.rows)
         updateSelectorButtons()
+        updateEmptyState(instances[gid])
         return
     end
 
@@ -520,11 +543,7 @@ local function buildContent(target)
     local bar = Geyser.Label:new({
         name = wid(), x = 0, y = 0, width = "100%", height = H_BAR,
     }, target.content)
-    bar:setStyleSheet([[
-        background-color: rgba(15, 18, 30, 200);
-        border: none;
-        border-bottom: 1px solid rgba(70, 75, 110, 150);
-    ]])
+    bar:setStyleSheet(_HDR_BAR_CSS)
 
     local dropBtn = Geyser.Label:new({
         name = wid(), x = 5, y = 4, width = "48%", height = H_BAR - 8,
@@ -536,7 +555,7 @@ local function buildContent(target)
         name = wid(), x = "51%", y = 4, width = "24%", height = H_BAR - 8,
     }, bar)
     checkBtn:setStyleSheet(_CHECK_BTN_CSS)
-    checkBtn:echo("<center>Check</center>")
+    checkBtn:echo("<center>🔍 Check</center>")
     checkBtn:setToolTip("Check cartel prices for the selected commodity")
     checkBtn:setClickCallback(function() f2tPriceCheckerCheck() end)
 
@@ -544,7 +563,7 @@ local function buildContent(target)
         name = wid(), x = "77%", y = 4, width = "22%", height = H_BAR - 8,
     }, bar)
     bestBtn:setStyleSheet(_FIND_BTN_CSS)
-    bestBtn:echo("<center>Find Best</center>")
+    bestBtn:echo("<center>💹 Find Best</center>")
     bestBtn:setToolTip("Scan every commodity for the best cartel profit spread")
     bestBtn:setClickCallback(function()
         if not F2T_PRICE_CHECKER.profitSearch.active then findBestProfit() end
@@ -593,6 +612,15 @@ local function buildContent(target)
     searchConsole:setColor(18, 18, 26)
     searchConsole:hide()
 
+    -- Overlays the table area when there are no prices yet; f2tTableSetData
+    -- leaves an empty scrollbox with no message of its own.
+    local noRowsLbl = Geyser.Label:new({
+        name = wid(), x = 0, y = scrollTop, width = "100%", height = "100%-" .. scrollTop .. "px",
+    }, target.content)
+    noRowsLbl:setStyleSheet("background-color: rgba(18, 18, 26, 255); border: none;")
+    noRowsLbl:echo(emptyStateHtml("No prices yet — pick a commodity and Check."))
+    noRowsLbl:hide()
+
     local tableId = "price_checker_" .. gid
     local cols    = buildCols()
     f2tTableCreate(tableId, cols)
@@ -626,6 +654,7 @@ local function buildContent(target)
         contentLabel  = contentLabel,
         contentW      = contentW,
         searchConsole = searchConsole,
+        noRowsLbl     = noRowsLbl,
         dropdown      = nil,
     }
     instances[gid] = inst
@@ -634,6 +663,7 @@ local function buildContent(target)
 
     updateSelectorButtons()
     f2tTableSetData(tableId, F2T_PRICE_CHECKER.rows)
+    updateEmptyState(inst)
 end
 
 -- ── Content registration ──────────────────────────────────────────────────────
@@ -681,7 +711,10 @@ local function buildPriceCheckerDef()
         end,
         onReveal = function(target)
             local inst = instances[target._gid]
-            if inst then f2tTableSetData(inst.tableId, F2T_PRICE_CHECKER.rows) end
+            if inst then
+                f2tTableSetData(inst.tableId, F2T_PRICE_CHECKER.rows)
+                updateEmptyState(inst)
+            end
         end,
     }
 end

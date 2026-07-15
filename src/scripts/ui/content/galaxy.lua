@@ -130,6 +130,28 @@ local function parseSystemLine(line)
     return system_name, syndicate_name, cartel_name, planets
 end
 
+-- Expand the syndicate → cartel → system chain the player currently stands in,
+-- so opening (or refreshing) the navigator reveals their location immediately
+-- instead of a fully collapsed tree. A no-op until F2T_GALAXY.cartels is
+-- populated, so this is safe to call before the "di systems" scrape finishes —
+-- callers should also re-call it once loading completes (see
+-- f2t_galaxy_finish_capture below), otherwise a navigator opened before the
+-- scrape lands never gets its cartel/syndicate expanded even though the
+-- system-level key (sourced straight from gmcp, not the scrape) already is.
+local function autoExpandCurrentLocation()
+    local ri = gmcp and gmcp.room and gmcp.room.info
+    if not (ri and ri.cartel and ri.cartel ~= "") then return end
+    local cd  = F2T_GALAXY.cartels[ri.cartel]
+    local syn = cd and cd.syndicate
+    if syn then
+        F2T_GALAXY.expanded[syn] = true
+        F2T_GALAXY.expanded[syn .. ":" .. ri.cartel] = true
+    end
+    if ri.system and ri.system ~= "" then
+        F2T_GALAXY.expanded[ri.cartel .. ":" .. ri.system] = true
+    end
+end
+
 -- Called when the 0.5s silence timer (resetFinishTimer) expires.
 function f2t_galaxy_finish_capture()
     if not F2T_GALAXY.capture_active then return end
@@ -164,6 +186,7 @@ function f2t_galaxy_finish_capture()
     local nc = 0; for _ in pairs(cartels) do nc = nc + 1 end
     f2t_debug_log("[galaxy] di systems → %d cartels", nc)
     raiseEvent("f2tGalaxyIndexed", nc)
+    autoExpandCurrentLocation()
     f2t_galaxy_refresh_open()
 end
 
@@ -264,6 +287,9 @@ local CSS_ICONBTN = [[
         qproperty-alignment: AlignCenter; }
     QLabel::hover{ background-color: rgba(60,60,70,230); border-color: rgba(120,180,255,210); color:white; }
 ]]
+-- Header/footer strip heights, shared between buildPanel (which builds them)
+-- and populate (which reports total content height to Mux.requestAutoFit).
+local TOPBAR_H, FOOTER_H = 86, 24
 
 -- ScrollBox chrome (copied from the gmcp viewer fix): dark viewport, no horizontal
 -- bar, a fixed 8px dark vertical bar, and a dark corner.  Combined with content
@@ -353,6 +379,17 @@ local function createRow(inst, parent, name, row_type, indent_level, y_px, data,
     return row
 end
 
+-- Ask the hosting floating pane to track total content height (topbar + rows +
+-- footer). Mux.requestAutoFit clamps to its own shared 85%-of-screen ceiling —
+-- beyond that, the ScrollBox's own scrollbar takes over (same pattern as
+-- local_players.lua's row-count-driven auto-fit).
+local function reportAutoFit(inst, contentH)
+    if not inst.target then return end
+    local h = TOPBAR_H + contentH + FOOTER_H
+    inst.target._autoFitHeight = h
+    if Mux and Mux.requestAutoFit then Mux.requestAutoFit(inst.target, h) end
+end
+
 -- ── Populate one instance's scroll tree (with search filtering) ───────────────
 local function populate(gid)
     local inst = instances[gid]
@@ -371,10 +408,6 @@ local function populate(gid)
     pcall(function() inst.stateLbl:resize(inst.contentW, viewportH) end)
     pcall(function() inst.content:resize(inst.contentW, viewportH) end)
 
-    if inst.refreshIcon then
-        inst.refreshIcon:setToolTip("Refresh — last: " .. ageStr(F2T_GALAXY.builtAt))
-    end
-
     for _, r in ipairs(inst.rows) do pcall(function() r:delete() end) end
     inst.rows = {}
 
@@ -387,9 +420,11 @@ local function populate(gid)
         inst.stateLbl:show()
     end
 
-    if g.loading then showState("Loading galaxy data…"); return end
+    if g.loading then showState("Loading galaxy data…"); reportAutoFit(inst, 120); return end
     if not g.loaded or not g.cartels or next(g.cartels) == nil then
-        showState("Galaxy data is not loaded.<br/>Click ⟳ in the header to load it."); return
+        showState("Galaxy data is not loaded.<br/>Click ⟳ in the header to load it.")
+        reportAutoFit(inst, 120)
+        return
     end
 
     inst.stateLbl:hide()
@@ -474,6 +509,7 @@ local function populate(gid)
     -- Height is max(rows, viewport): fills the viewport when short (no white gap,
     -- no phantom scroll) and grows to scroll when long.
     pcall(function() inst.content:resize(inst.contentW or 200, math.max(y + 4, viewportH)) end)
+    reportAutoFit(inst, y + 4)
 
     -- createRow() above just built brand-new row Labels (the whole tree is torn
     -- down and rebuilt every populate()). Geyser shows a freshly created widget
@@ -494,6 +530,22 @@ local function targetHidden(target)
     return false
 end
 
+-- The "Galaxy Navigator" title label is redundant once the hosting pane/tab is
+-- renamed to say the same thing in its own titlebar; the "galaxy.heading"
+-- titlebarElement below (in buildGalaxyDef) toggles it via this.
+local function applyHeadingVisibility(inst)
+    if not inst.title then return end
+    if inst.showHeading then inst.title:show() else inst.title:hide() end
+end
+
+-- Resolve the instance state for a titlebarElements callback's ctx. Galaxy
+-- Navigator is a singleton, but content still lives on a specific pane/tab —
+-- see Muxlet's README "Publishing to the titlebar and menu".
+local function galaxyInstFor(ctx)
+    local surf = ctx and (ctx.tab or ctx.pane)
+    return surf and instances[surf._gid]
+end
+
 -- ── Build the header / scroll / footer panel into a content target ────────────
 local function buildPanel(target)
     local gid = target._gid
@@ -508,22 +560,21 @@ local function buildPanel(target)
     local inst = { gid = gid, epoch = 0, rows = {}, target = target }
     instances[gid] = inst
 
-    local topbar_h, footer_h = 86, 24
-
-    -- Header bar (three rows: title+refresh / search+clear / collapse-all)
-    local topbar = Geyser.Label:new({ name = gid .. "_gx_top", x = 0, y = 0, width = "100%", height = topbar_h }, C)
+    -- Header bar (three rows: title / search+clear / collapse-all). Refresh and
+    -- the heading-hide toggle publish to the hosting pane/tab's own titlebar
+    -- instead (see buildGalaxyDef's titlebarElements).
+    local topbar = Geyser.Label:new({ name = gid .. "_gx_top", x = 0, y = 0, width = "100%", height = TOPBAR_H }, C)
     topbar:setStyleSheet(CSS_HEADER)
 
-    -- Row 1: title (left) + refresh (small square, top-right of the content)
-    local title = Geyser.Label:new({ name = gid .. "_gx_title", x = 8, y = 6, width = "100%-44px", height = 22 }, topbar)
-    title:setStyleSheet("background-color:transparent; color:#c8c8d0; font-size:11px; font-weight:bold;")
-    title:echo("🔭 Galaxy Navigator")
+    -- Row 1: title
+    inst.title = Geyser.Label:new({ name = gid .. "_gx_title", x = 8, y = 6, width = "100%-16px", height = 22 }, topbar)
+    inst.title:setStyleSheet("background-color:transparent; color:#c8c8d0; font-size:11px; font-weight:bold;")
+    inst.title:echo("🔭 Galaxy Navigator")
 
-    inst.refreshIcon = Geyser.Label:new({ name = gid .. "_gx_ref", x = "-30", y = 6, width = 24, height = 24 }, topbar)
-    inst.refreshIcon:setStyleSheet(CSS_ICONBTN)
-    inst.refreshIcon:echo("<center>🔄</center>")
-    inst.refreshIcon:setToolTip("Refresh (di systems)")
-    inst.refreshIcon:setClickCallback(function() f2t_galaxy_scrape() end)
+    local showHeadingInit = f2t_settings_get("galaxy", "show_heading")
+    if showHeadingInit == nil then showHeadingInit = true end
+    inst.showHeading = showHeadingInit
+    applyHeadingVisibility(inst)
 
     -- Row 2: search box (fills) + clear (✕) square on the far right
     inst.searchCmd = Geyser.CommandLine:new({ name = gid .. "_gx_search", x = 8, y = 34, width = "100%-44px", height = 24 }, topbar)
@@ -554,8 +605,8 @@ local function buildPanel(target)
     collapse:setClickCallback(function() F2T_GALAXY.expanded = {}; f2t_galaxy_refresh_open() end)
 
     -- Scroll area (styled chrome so no white strip appears beside the scrollbar)
-    inst.scroll = Geyser.ScrollBox:new({ name = gid .. "_gx_scroll", x = 0, y = topbar_h,
-        width = "100%", height = "100%-" .. (topbar_h + footer_h) .. "px" }, C)
+    inst.scroll = Geyser.ScrollBox:new({ name = gid .. "_gx_scroll", x = 0, y = TOPBAR_H,
+        width = "100%", height = "100%-" .. (TOPBAR_H + FOOTER_H) .. "px" }, C)
     pcall(function() inst.scroll:setStyleSheet(CSS_SCROLL) end)
     -- Content fills the FULL scrollbox width; the 8px scrollbar overlaps only the
     -- right edge (rows are left-anchored), so there is no uncovered white column.
@@ -571,23 +622,16 @@ local function buildPanel(target)
     inst.content:setStyleSheet(CSS_BG)
 
     -- Footer legend (a little taller so the text isn't cramped)
-    local footer = Geyser.Label:new({ name = gid .. "_gx_foot", x = 0, y = "-" .. footer_h, width = "100%", height = footer_h }, C)
+    local footer = Geyser.Label:new({ name = gid .. "_gx_foot", x = 0, y = "-" .. FOOTER_H, width = "100%", height = FOOTER_H }, C)
     footer:setStyleSheet(CSS_HEADER)
     local legend = Geyser.Label:new({ name = gid .. "_gx_legend", x = "1%", y = 0, width = "98%", height = "100%" }, footer)
     legend:setStyleSheet("background-color:transparent; color:rgba(160,160,170,190); font-size:9px;")
     legend:echo("<center>🏛️ Syndicate&nbsp;&nbsp;&nbsp;🌌 Cartel&nbsp;&nbsp;&nbsp;⭐ System&nbsp;&nbsp;&nbsp;🌍 Planet</center>")
 
-    -- Auto-expand current syndicate/cartel/system on open.
-    local ri = gmcp and gmcp.room and gmcp.room.info
-    if ri and ri.cartel and ri.cartel ~= "" then
-        local cd  = F2T_GALAXY.cartels[ri.cartel]
-        local syn = cd and cd.syndicate
-        if syn then
-            F2T_GALAXY.expanded[syn] = true
-            F2T_GALAXY.expanded[syn .. ":" .. ri.cartel] = true
-        end
-        if ri.system and ri.system ~= "" then F2T_GALAXY.expanded[ri.cartel .. ":" .. ri.system] = true end
-    end
+    -- Auto-expand current syndicate/cartel/system on open (a no-op if the
+    -- scrape hasn't finished yet — f2t_galaxy_finish_capture re-runs this
+    -- once data lands, so an early-opened navigator still catches up).
+    autoExpandCurrentLocation()
 
     populate(gid)
 
@@ -640,6 +684,49 @@ local function buildGalaxyDef()
         -- (def._activeTargetRef), which f2t_galaxy_show_nav/hide_nav below use to
         -- find "the" navigator without fed2-tools keeping its own pane reference.
         singleton   = true,
+
+        -- Refresh and the heading-hide toggle publish to the hosting pane/tab's
+        -- own titlebar + right-click menu (mirrors Muxlet's own Button Grid
+        -- wrench icon) instead of drawing in-content icon buttons. Muxlet's
+        -- per-element "hide from titlebar" (right-click > Properties) already
+        -- covers hiding either of these individually — nothing extra needed here.
+        titlebarElements = {
+            {
+                id = "galaxy.refresh", side = "left", group = "content", order = 0, priority = 100,
+                icon = "🔄", tooltip = "Refresh (di systems)",
+                onClick = function(_ctx, event)
+                    if event and event.button ~= "LeftButton" then return end
+                    f2t_galaxy_scrape()
+                end,
+                menuText = function() return "🔄  Refresh — last: " .. ageStr(F2T_GALAXY.builtAt) end,
+                menuGroup = "info", menuOrder = 90,
+                run = function() f2t_galaxy_scrape() end,
+            },
+            {
+                id = "galaxy.heading", side = "left", group = "content", order = 1, priority = 101,
+                icon = "🏷", tooltip = "Toggle the in-panel title",
+                onClick = function(ctx, event)
+                    if event and event.button ~= "LeftButton" then return end
+                    local inst = galaxyInstFor(ctx)
+                    if not inst then return end
+                    inst.showHeading = not inst.showHeading
+                    f2t_settings_set("galaxy", "show_heading", inst.showHeading)
+                    applyHeadingVisibility(inst)
+                end,
+                menuText = function(ctx)
+                    local inst = galaxyInstFor(ctx)
+                    return (inst and inst.showHeading) and "🏷  Heading ON" or "🏷  Heading OFF"
+                end,
+                menuGroup = "info", menuOrder = 91,
+                run = function(ctx)
+                    local inst = galaxyInstFor(ctx)
+                    if not inst then return end
+                    inst.showHeading = not inst.showHeading
+                    f2t_settings_set("galaxy", "show_heading", inst.showHeading)
+                    applyHeadingVisibility(inst)
+                end,
+            },
+        },
 
         apply = function(target)
             local ok, err = pcall(buildPanel, target)

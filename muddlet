@@ -20,7 +20,7 @@
 #   watcher — no further manual steps needed.
 #
 # --fresh writes a fresh flag file alongside the stamp file. The in-session
-#   stamp watcher picks up both files and calls f2t reload fresh, which wipes
+#   stamp watcher picks up both files and does a fresh reload, which wipes
 #   Muxlet_persistent and fed2-tools_persistent, uninstalls Muxlet from the
 #   profile XML, then reinstalls fed2-tools so init.lua downloads a clean
 #   Muxlet. Mudlet does not need to be closed.
@@ -110,10 +110,10 @@ echo "mfile         : version set to $VERSION"
 ORIGINAL_INIT="$(cat "$INIT_LUA")"
 
 sed -i.bak \
-    -e "s|local F2T_REQUIRED_MUXLET = nil|local F2T_REQUIRED_MUXLET = \"$MUXLET_VERSION\"|" \
+    -e "s|local F2T_REQUIRED_MUXLET = nil|local F2T_REQUIRED_MUXLET = \"$MUXLET_TAG\"|" \
     -e "s|local MUXLET_URL = nil|local MUXLET_URL = \"$MUXLET_URL\"|" \
     "$INIT_LUA"
-echo "init.lua      : injected F2T_REQUIRED_MUXLET=$MUXLET_VERSION, MUXLET_URL"
+echo "init.lua      : injected F2T_REQUIRED_MUXLET=$MUXLET_TAG, MUXLET_URL"
 
 # ── Run muddler ───────────────────────────────────────────────────────────────
 

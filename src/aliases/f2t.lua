@@ -57,12 +57,10 @@ elseif subcommand == "chat" then
     end
 
 elseif subcommand == "version" then
-    f2t_check_latest_version()
-
-elseif subcommand == "reload" then
-    local reload_args = args:match("^reload%s*(.*)") or ""
-    local is_fresh = reload_args:match("^fresh") ~= nil
-    f2t_devmode_reload(is_fresh)
+    local info = getPackageInfo("fed2-tools")
+    cecho(string.format(
+        "\n<green>[fed2-tools]<reset> Version: <white>%s<reset>\n", (info and info.version) or "unknown"))
+    if Mux and Mux.checkForUpdates then Mux.checkForUpdates(false) end
 
 else
     cecho(string.format("\n<red>[f2t]<reset> Unknown command: %s\n", subcommand))

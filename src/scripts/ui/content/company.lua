@@ -1,6 +1,6 @@
 -- company.lua — Company / business management content for fed2-tools.
 --
--- Three SEPARATE registered contents, all rendered from gmcp.char.company, so
+-- Four SEPARATE registered contents, all rendered from gmcp.char.company, so
 -- each can be placed in its own Muxlet pane or subtab (Muxlet owns the tab
 -- chrome — no internal section nav here):
 --
@@ -8,8 +8,10 @@
 --                             alerts, financial and investor key figures
 --   fed2_company_factories  — sortable factory table with inline repair /
 --                             start-stop / wages / destroy actions + depot list
---   fed2_company_financials — share stats, dividend and share-purchase
---                             actions, and the shareholder table
+--   fed2_company_financials — share stats, dividend/share-purchase actions,
+--                             the shareholder table, and derived analysis
+--   fed2_company_portfolio  — your holdings in OTHER companies (Financier
+--                             rank and above), a sortable scrollbox table
 --
 -- Action dialogs use Muxlet primitives throughout: Mux.createDialog +
 -- Mux.dialogCss + Mux.wireDialogButton for confirm/info flows, and
@@ -18,17 +20,20 @@
 -- gmcp.char.company is realtime — the game pushes a fresh copy after every
 -- action that changes it (repair, wages, dividend, freeze, ...), so panels
 -- just re-render on that event; nothing here polls or force-refreshes it.
--- The DI button is a separate, purely diagnostic action: it sends
--- `di company`/`di business` visibly so the raw text shows in the console.
+-- Each panel's header strip carries a small icon button — a purely
+-- diagnostic action that sends `di company`/`di business` (or `di accounts`
+-- on Financials) visibly, so the raw text shows in the console. It's drawn
+-- in-content (not a titlebar element) so it's always visible regardless of
+-- how the hosting pane/tab chrome is configured.
 --
 -- Ported from archive's ui_company.lua (its OVERVIEW/FACTORIES/FINANCIALS
--- sections became these three contents).
+-- sections became these contents; Portfolio is new).
 
-local H_BAR = 22    -- header strip height (px)
+local H_BAR = 24    -- header strip height (px): houses the report/accounts icon button
 local H_COL = 20    -- column header bar height (px)
 local ROW_H = 20    -- table row height (px)
 local SB_W  = 17    -- scrollbar pixel allowance
-local H_FIN = 96    -- financials stats block height (px)
+local H_FIN = 210   -- financials stats block height (px): stats + analysis, sized to fit without scrolling
 local DEPOT_PCT = 26 -- depot console share of the factories panel (%)
 
 local CELL_FONT = "font-size:10pt;font-family:Consolas,Monaco,monospace;"
@@ -50,31 +55,6 @@ local _COL_HDR_CSS = [[
     }
     QLabel::hover { color: white; }
 ]]
-local _HDR_STRIP_CSS = [[
-    background-color: rgba(15, 18, 30, 200);
-    border: none;
-    border-bottom: 1px solid rgba(70, 75, 110, 150);
-]]
-local _HDR_TITLE_CSS = [[
-    background: transparent; border: none;
-    color: rgba(140, 150, 195, 255);
-    font-size: 10px; font-family: "Consolas","Monaco",monospace;
-]]
-local _MINI_BTN_CSS = [[
-    QLabel {
-        background-color: rgba(28,32,50,210);
-        color: rgba(150,165,205,255);
-        border: 1px solid rgba(72,85,128,180);
-        border-radius: 3px;
-        font-size: 10px;
-        qproperty-alignment: AlignCenter;
-    }
-    QLabel::hover {
-        background-color: rgba(42,48,78,230);
-        color: rgba(200,215,255,255);
-    }
-]]
-
 -- Per-pane state, keyed by target._gid.  Each entry carries `kind`
 -- ("overview" | "factories" | "financials") so refreshAll can dispatch.
 local instances = {}
@@ -425,31 +405,65 @@ local function dialogFreeze()
         true)
 end
 
--- ── Shared chrome: header strip with title + DI ──────────────────────────────
+local function reportCommand()
+    return f2t_is_rank_or_above("Manufacturer") and "di company" or "di business"
+end
 
-local function buildHeaderStrip(target, wid, title)
+-- Icon button CSS (mirrors player_card.lua's _CSS_ICON, used there for the
+-- same "view accounts" action) — a bordered square with a hover state.
+local _HDR_STRIP_CSS = [[
+    background-color: rgba(15, 18, 30, 200);
+    border: none;
+    border-bottom: 1px solid rgba(70, 75, 110, 150);
+]]
+local _HDR_TITLE_CSS = [[
+    background: transparent; border: none;
+    color: rgba(140, 150, 195, 255);
+    font-size: 10px; font-family: "Consolas","Monaco",monospace;
+]]
+local _ICON_BTN_CSS = [[
+    QLabel {
+        background-color: rgba(32, 36, 58, 220);
+        color: rgba(165, 180, 220, 255);
+        border: 1px solid rgba(80, 92, 140, 210);
+        border-radius: 4px;
+        font-size: 14px;
+        qproperty-alignment: AlignCenter;
+    }
+    QLabel::hover {
+        background-color: rgba(50, 58, 95, 240);
+        border-color: rgba(120, 150, 220, 230);
+        color: white;
+    }
+]]
+
+-- Slim header strip: optional left-aligned status text + a right-aligned
+-- icon button that sends `cmdFn()` (evaluated at click time, since the
+-- report command depends on the player's live rank). Visible in-content —
+-- NOT a titlebar element — so it always shows regardless of pane chrome.
+-- Returns the bar and the title label (the latter used by Portfolio to show
+-- a live holdings summary).
+local function buildHeaderStrip(target, wid, icon, tooltip, cmdFn, titleText)
     local bar = Geyser.Label:new({
         name = wid(), x = 0, y = 0, width = "100%", height = H_BAR,
     }, target.content)
     bar:setStyleSheet(_HDR_STRIP_CSS)
 
-    local lbl = Geyser.Label:new({
+    local titleLbl = Geyser.Label:new({
         name = wid(), x = 6, y = 0, width = "-28", height = H_BAR,
     }, bar)
-    lbl:setStyleSheet(_HDR_TITLE_CSS)
-    lbl:echo(title)
+    titleLbl:setStyleSheet(_HDR_TITLE_CSS)
+    if titleText then titleLbl:echo(titleText) end
 
-    local diBtn = Geyser.Label:new({
+    local btn = Geyser.Label:new({
         name = wid(), x = "-25", y = 2, width = 20, height = H_BAR - 4,
     }, bar)
-    diBtn:setStyleSheet(_MINI_BTN_CSS)
-    diBtn:echo("<center>DI</center>")
-    diBtn:setToolTip("Show raw di company / di business output")
-    diBtn:setClickCallback(function()
-        send(f2t_is_rank_or_above("Manufacturer") and "di company" or "di business", false)
-    end)
+    btn:setStyleSheet(_ICON_BTN_CSS)
+    btn:echo("<center>" .. icon .. "</center>")
+    btn:setToolTip(tooltip)
+    btn:setClickCallback(function() send(cmdFn(), false) end)
 
-    return bar
+    return bar, titleLbl
 end
 
 -- Column bar + scrollbox table below yTop within `parent`.
@@ -499,98 +513,286 @@ local function buildTableArea(parent, wid, tableId, cols, yTop, heightSpec)
     return { scroll = scroll, contentLabel = contentLabel, contentW = contentW }
 end
 
+-- ── Stat tile grid (shared by Overview, Financials, Portfolio) ──────────────
+-- Widget-based stat display, NOT text-in-a-console: every tile's x/y/width/
+-- height is a percentage of its container, so a grid of N tiles always
+-- exactly fills whatever space it's given — nothing is ever clipped and
+-- nothing ever needs a scrollbar. Panels rebuild their grid every render
+-- (delete old tiles, create new ones) since item count varies with the data,
+-- the same delete/recreate approach galaxy.lua uses for its row tree.
+
+local _TILE_CSS = [[
+    QLabel {
+        background-color: rgba(24, 28, 46, 220);
+        border: 1px solid rgba(72, 85, 128, 160);
+        border-radius: 5px;
+    }
+]]
+local TILE_GUTTER = 1.5   -- percent gap between tiles, both axes
+
+local function tileHtml(icon, value, valueColor, caption)
+    return string.format(
+        "<div style='text-align:center;padding-top:5px;'>" ..
+        "<span style='font-size:16px;font-weight:bold;color:%s;'>%s %s</span><br>" ..
+        "<span style='font-size:9px;color:#888899;letter-spacing:1px;'>%s</span></div>",
+        valueColor, icon, value, caption)
+end
+
+-- Lays out `items` ({icon,value,color,caption,tooltip,onClick}) as a grid of
+-- tile Labels filling `container`, `cols` wide. Returns the created tiles;
+-- callers own their own widget-list bookkeeping (delete last render's tiles
+-- before calling this again).
+local function buildTileGrid(container, wid, items, cols)
+    local made = {}
+    local n = #items
+    if n == 0 then return made end
+    local rows  = math.max(1, math.ceil(n / cols))
+    local tileW = 100 / cols
+    local tileH = 100 / rows
+    for i, item in ipairs(items) do
+        local col = (i - 1) % cols
+        local row = math.floor((i - 1) / cols)
+        local tile = Geyser.Label:new({
+            name   = wid(),
+            x      = (col * tileW + TILE_GUTTER) .. "%",
+            y      = (row * tileH + TILE_GUTTER) .. "%",
+            width  = (tileW - 2 * TILE_GUTTER) .. "%",
+            height = (tileH - 2 * TILE_GUTTER) .. "%",
+        }, container)
+        tile:setStyleSheet(_TILE_CSS)
+        tile:echo(tileHtml(item.icon, item.value, item.color or "#e8e8f0", item.caption))
+        if item.tooltip then tile:setToolTip(item.tooltip) end
+        if item.onClick then tile:setClickCallback(item.onClick) end
+        made[#made + 1] = tile
+    end
+    return made
+end
+
+local _BADGE_RUN_CSS = [[
+    QLabel {
+        background-color: rgba(20, 50, 30, 200);
+        border: 1px solid rgba(60, 180, 90, 180);
+        border-radius: 4px;
+        color: #6bffa0;
+        font-size: 11px; font-weight: bold;
+        qproperty-alignment: AlignCenter;
+    }
+    QLabel::hover { background-color: rgba(30, 70, 40, 230); }
+]]
+local _BADGE_FROZEN_CSS = [[
+    QLabel {
+        background-color: rgba(55, 45, 15, 200);
+        border: 1px solid rgba(200, 160, 60, 180);
+        border-radius: 4px;
+        color: #ffd980;
+        font-size: 11px; font-weight: bold;
+        qproperty-alignment: AlignCenter;
+    }
+    QLabel::hover { background-color: rgba(70, 58, 20, 230); }
+]]
+local _ALERT_CSS = [[
+    QLabel {
+        background-color: rgba(60, 24, 24, 210);
+        border: 1px solid rgba(200, 80, 80, 200);
+        border-radius: 5px;
+        color: #ff9a9a;
+        font-size: 11px; font-weight: bold;
+        qproperty-alignment: AlignCenter;
+    }
+    QLabel::hover { background-color: rgba(80, 30, 30, 230); }
+]]
+
+-- Accent-colored action buttons (same left-accent-bar pattern as
+-- hauling_jobs.lua / price_checker.lua's Work/Collect/Check buttons) —
+-- used by Financials' Issue Dividend / Buy Shares / Buy Treasury row.
+local function actionBtnCss(accent, accentHover)
+    return string.format([[
+        QLabel {
+            background-color: rgba(26,30,46,220);
+            color: rgba(210,220,240,255);
+            border: 1px solid rgba(72,85,128,180);
+            border-left: 3px solid %s;
+            border-radius: 4px;
+            font-size: 10px; font-weight: bold; font-family: "Consolas","Monaco",monospace;
+            qproperty-alignment: AlignCenter;
+        }
+        QLabel::hover {
+            background-color: rgba(38,44,66,235);
+            border-left: 3px solid %s;
+            color: white;
+        }
+    ]], accent, accentHover)
+end
+local _BTN_DIVIDEND_CSS = actionBtnCss("#e0b84d", "#f0cc66")
+local _BTN_BUY_CSS      = actionBtnCss("#3aa0ff", "#5cb8ff")
+local _BTN_TREASURY_CSS = actionBtnCss("#8888aa", "#aaaacc")
+
 -- ── Overview panel ────────────────────────────────────────────────────────────
 
+-- Company name (left) + running/frozen status badge (right, click to freeze).
+local function buildStatusRow(inst, box, wid, c)
+    local nameLbl = Geyser.Label:new({ name = wid(), x = "2%", y = 0, width = "64%", height = "100%" }, box)
+    nameLbl:setStyleSheet("background: transparent; border: none; color: #ffffff; font-size: 15px; font-weight: bold;")
+    nameLbl:echo(c.name or "Unknown Company")
+    inst.widgets[#inst.widgets + 1] = nameLbl
+
+    local running = (c.status == "running")
+    local badge = Geyser.Label:new({ name = wid(), x = "67%", y = "12%", width = "31%", height = "76%" }, box)
+    badge:setStyleSheet(running and _BADGE_RUN_CSS or _BADGE_FROZEN_CSS)
+    badge:echo(running and "<center>● RUNNING</center>" or "<center>⊘ FROZEN</center>")
+    badge:setToolTip("Click to freeze/unfreeze")
+    badge:setClickCallback(function() dialogFreeze() end)
+    inst.widgets[#inst.widgets + 1] = badge
+end
+
 local function renderOverview(inst)
-    local w = inst.console
-    if not w then return end
-    w:clear()
+    local body = inst.body
+    if not body then return end
+
+    for _, w2 in ipairs(inst.widgets or {}) do pcall(function() w2:delete() end) end
+    inst.widgets = {}
 
     local c = companyData()
     if not c then
-        w:cecho("\n\n<dim_grey>  No company data yet.\n")
+        inst.emptyLbl:show()
         return
     end
+    inst.emptyLbl:hide()
 
-    local isMfr = f2t_is_rank_or_above("Manufacturer")
-    local HR    = "<dim_grey>  ──────────────────────────────────────<reset>\n"
-
-    local statusColor = (c.status == "running") and "ansiGreen" or "ansiYellow"
-    local statusText  = (c.status == "running") and "● RUNNING" or "⊘ FROZEN"
-    w:cecho(string.format("\n  <white><b>%s</b><reset>\n", c.name or "Unknown Company"))
-    w:cecho("  ")
-    w:cechoLink(string.format("[<%s>%s<reset>]", statusColor, statusText),
-        function() dialogFreeze() end, "Click to freeze/unfreeze", true)
-    w:cecho("\n" .. HR)
-
-    if c.ceo    then w:cecho(string.format("  <dim_grey>CEO          <reset><white>%s<reset>\n", c.ceo)) end
-    if c.planet then w:cecho(string.format("  <dim_grey>HQ Planet    <reset><white>%s<reset>\n", c.planet)) end
-    if c.formed then w:cecho(string.format("  <dim_grey>Founded      <reset><white>%s<reset>\n", c.formed)) end
-    w:cecho(string.format("  <dim_grey>Cycles Run   <reset><white>%d<reset>\n", c.total_cycles or 0))
-    if c.days_left then
-        local dc = c.days_left < 10 and "ansiRed" or "ansiYellow"
-        w:cecho(string.format("  <dim_grey>Days Left    <reset><%s>%d days<reset>\n", dc, c.days_left))
+    inst.epoch = (inst.epoch or 0) + 1
+    local wc = 0
+    local function wid()
+        wc = wc + 1
+        return string.format("%s_covd_%d_%d", inst.gid, inst.epoch, wc)
     end
 
-    if isMfr and c.factories then
-        local alerts = {}
-        for _, fac in ipairs(c.factories) do
-            local pct = effPct(fac)
-            if pct < 80 then
-                table.insert(alerts, string.format("  <ansiRed>⚠  Factory #%d  (%s)  —  %d%% eff<reset>",
-                    fac.number, stripThe(fac.planet or "?"), pct))
-            end
-        end
-        if #alerts > 0 then
-            w:cecho("\n" .. HR)
-            w:cecho("  <ansiRed><b>⚠  REPAIR ALERTS<reset>\n")
-            for _, a in ipairs(alerts) do w:cecho(a .. "\n") end
-        end
-    end
-
+    local isMfr  = f2t_is_rank_or_above("Manufacturer")
     local profit = c.profit or 0
-    local pc     = profit >= 0 and "ansiGreen" or "ansiRed"
-    w:cecho("\n" .. HR)
-    w:cecho("  <dim_grey><b>FINANCIALS<reset>\n")
-    w:cecho(string.format("  <dim_grey>Cash         <reset><ansiCyan>%sig<reset>\n", fmtComma(c.cash)))
-    w:cecho(string.format("  <dim_grey>Profit       <reset><%s>%sig<reset>\n", pc, fmtComma(profit)))
-    if c.tax then
-        w:cecho(string.format("  <dim_grey>Tax Paid     <reset><white>%sig<reset>\n", fmtComma(c.tax)))
-    end
-    if c.revenue then
-        if c.revenue.income   then w:cecho(string.format("  <dim_grey>Revenue      <reset><ansiGreen>+%sig<reset>\n", fmtComma(c.revenue.income))) end
-        if c.revenue.expenses then w:cecho(string.format("  <dim_grey>Expenses     <reset><ansiRed>-%sig<reset>\n",   fmtComma(c.revenue.expenses))) end
-    end
-    if c.capital then
-        local ce = tonumber(c.capital.expenditure) or 0
-        local cr = tonumber(c.capital.receipts)    or 0
-        if ce > 0 then w:cecho(string.format("  <dim_grey>Capital Exp  <reset><ansiRed>-%sig<reset>\n",   fmtComma(ce))) end
-        if cr > 0 then w:cecho(string.format("  <dim_grey>Capital Rec  <reset><ansiGreen>+%sig<reset>\n", fmtComma(cr))) end
-    end
 
-    if isMfr then
-        local shares = sumShares(c)
-        local sv     = c.share_value  or 0
-        local div    = c.dividend     or 0
-        local da     = c.disaffection or 0
-        local eps    = shares > 0 and math.floor(profit / shares) or 0
-        local peStr  = (sv > 0 and eps > 0) and string.format("%.1f", sv / eps) or "N/A"
-        local pdStr  = div > 0 and string.format("%.1f", sv / div) or "<ansiRed>none<reset>"
-        local daCol  = da < 20 and "ansiGreen" or (da < 50 and "ansiYellow" or "ansiRed")
-
-        w:cecho("\n" .. HR)
-        w:cecho("  <dim_grey><b>INVESTORS<reset>\n")
-        w:cecho(string.format("  <dim_grey>Disaffection <reset><%s>%d%%<reset>\n", daCol, da))
-        w:cecho(string.format("  <dim_grey>Share Price  <reset><white>%sig<reset>\n", fmtComma(sv)))
-        w:cecho(string.format("  <dim_grey>Dividend     <reset><white>%sig/sh<reset>  <dim_grey>  P/D <reset><white>%s<reset>\n", fmtComma(div), pdStr))
-        w:cecho(string.format("  <dim_grey>EPS          <reset><white>%sig/sh<reset>  <dim_grey>  P/E <reset><white>%s<reset>\n", fmtComma(eps), peStr))
-        w:cecho(string.format("  <dim_grey>Shares       <reset><white>%s<reset>\n", fmtComma(shares)))
-        w:cecho(string.format("  <dim_grey>Market Cap   <reset><white>%s<reset>\n", fmtCompact(sv * shares)))
-
-        if (c.total_cycles or 0) >= 4 and profit > 0 then
-            w:cecho("\n  <ansiGreen>★ Eligible for Financier promotion<reset>\n")
+    local alertCount = 0
+    if isMfr and c.factories then
+        for _, fac in ipairs(c.factories) do
+            if effPct(fac) < 80 then alertCount = alertCount + 1 end
         end
     end
+
+    -- Vertical sections, weighted so the body always sums to exactly 100% —
+    -- nothing is ever clipped or needs to scroll, regardless of which
+    -- optional sections (alerts, investors) are present this render.
+    local sections = { { key = "status", weight = 1.2 }, { key = "identity", weight = 1.0 } }
+    if alertCount > 0 then sections[#sections + 1] = { key = "alerts", weight = 0.9 } end
+    sections[#sections + 1] = { key = "financials", weight = 2.4 }
+    if isMfr then sections[#sections + 1] = { key = "investors", weight = 2.4 } end
+
+    local totalWeight = 0
+    for _, s in ipairs(sections) do totalWeight = totalWeight + s.weight end
+    local yPct = 0
+    for _, s in ipairs(sections) do
+        s.yPct = yPct
+        s.hPct = s.weight / totalWeight * 100
+        yPct = yPct + s.hPct
+    end
+
+    local function sectionBox(s)
+        local box = Geyser.Label:new({
+            name = wid(), x = 0, y = s.yPct .. "%", width = "100%", height = s.hPct .. "%",
+        }, body)
+        box:setStyleSheet("background-color: transparent; border: none;")
+        inst.widgets[#inst.widgets + 1] = box
+        return box
+    end
+
+    for _, s in ipairs(sections) do
+        if s.key == "status" then
+            buildStatusRow(inst, sectionBox(s), wid, c)
+
+        elseif s.key == "identity" then
+            local box = sectionBox(s)
+            local rank  = f2t_get_rank()
+            local items = {}
+            if c.ceo then
+                items[#items + 1] = { icon = "👤", value = rank and (rank .. " " .. c.ceo) or c.ceo, caption = "CEO" }
+            end
+            items[#items + 1] = { icon = "🔄", value = tostring(c.total_cycles or 0), caption = "CYCLES RUN" }
+            if c.ac_cycle then
+                local col = c.ac_cycle <= 1 and "#ff5555" or (c.ac_cycle <= 3 and "#cccc44" or "#00cc44")
+                items[#items + 1] = { icon = "📅", value = c.ac_cycle .. " days", color = col, caption = "ACCOUNTS DUE" }
+            end
+            local tiles = buildTileGrid(box, wid, items, 3)
+            for _, t in ipairs(tiles) do inst.widgets[#inst.widgets + 1] = t end
+
+        elseif s.key == "alerts" then
+            local box = sectionBox(s)
+            local badge = Geyser.Label:new({ name = wid(), x = "2%", y = "10%", width = "96%", height = "80%" }, box)
+            badge:setStyleSheet(_ALERT_CSS)
+            badge:echo(string.format("<center>⚠  %d factor%s under 80%% efficiency — click for detail</center>",
+                alertCount, alertCount == 1 and "y" or "ies"))
+            badge:setToolTip("Show raw report for full factory list")
+            badge:setClickCallback(function() send(reportCommand(), false) end)
+            inst.widgets[#inst.widgets + 1] = badge
+
+        elseif s.key == "financials" then
+            local box = sectionBox(s)
+            local pc = profit >= 0 and "#00cc44" or "#ff5555"
+            local items = {
+                { icon = "💰", value = fmtComma(c.cash) .. "ig", color = "#00cccc", caption = "CASH" },
+                { icon = "📈", value = fmtComma(profit) .. "ig", color = pc, caption = "PROFIT" },
+            }
+            if c.tax then
+                items[#items + 1] = { icon = "🏛️", value = fmtComma(c.tax) .. "ig", caption = "TAX PAID" }
+            end
+            if c.revenue and c.revenue.income then
+                items[#items + 1] = { icon = "⬆", value = "+" .. fmtComma(c.revenue.income) .. "ig",
+                    color = "#00cc44", caption = "REVENUE" }
+            end
+            if c.revenue and c.revenue.expenses then
+                items[#items + 1] = { icon = "⬇", value = "-" .. fmtComma(c.revenue.expenses) .. "ig",
+                    color = "#ff5555", caption = "EXPENSES" }
+            end
+            if c.capital then
+                local ce = tonumber(c.capital.expenditure) or 0
+                local cr = tonumber(c.capital.receipts)    or 0
+                items[#items + 1] = { icon = "📤", value = (ce > 0 and "-" or "") .. fmtComma(ce) .. "ig",
+                    color = ce > 0 and "#ff5555" or nil, caption = "CAPITAL EXP" }
+                items[#items + 1] = { icon = "📥", value = (cr > 0 and "+" or "") .. fmtComma(cr) .. "ig",
+                    color = cr > 0 and "#00cc44" or nil, caption = "CAPITAL REC" }
+            end
+            local tiles = buildTileGrid(box, wid, items, 4)
+            for _, t in ipairs(tiles) do inst.widgets[#inst.widgets + 1] = t end
+
+        elseif s.key == "investors" then
+            local box = sectionBox(s)
+            local shares = sumShares(c)
+            local sv, div, da = c.share_value or 0, c.dividend or 0, c.disaffection or 0
+            local eps   = shares > 0 and math.floor(profit / shares) or 0
+            local peStr = (sv > 0 and eps > 0) and string.format("%.1f", sv / eps) or "N/A"
+            local daCol = da < 20 and "#00cc44" or (da < 50 and "#cccc44" or "#ff5555")
+            local items = {
+                { icon = "😠", value = da .. "%", color = daCol, caption = "DISAFFECTION" },
+                { icon = "💹", value = fmtComma(sv) .. "ig", caption = "SHARE PRICE" },
+                { icon = "📊", value = fmtComma(eps) .. "ig/sh", caption = "EPS" },
+                { icon = "⚖", value = peStr, caption = "P/E" },
+                { icon = "🎁", value = fmtComma(div) .. "ig/sh", caption = "DIVIDEND" },
+                { icon = "🧾", value = fmtComma(shares), caption = "SHARES" },
+                { icon = "🏦", value = fmtCompact(sv * shares), caption = "MARKET CAP" },
+            }
+            if (c.total_cycles or 0) >= 4 and profit > 0 then
+                items[#items + 1] = { icon = "★", value = "Eligible", color = "#00cc44", caption = "FIN. PROMOTION" }
+            end
+            local tiles = buildTileGrid(box, wid, items, 4)
+            for _, t in ipairs(tiles) do inst.widgets[#inst.widgets + 1] = t end
+        end
+    end
+
+    -- This render is independent of Mux._applyContent's own apply-time
+    -- rebuild — it re-fires on every gmcp.char.company push, regardless of
+    -- whether this panel's tab is currently active. Geyser shows freshly
+    -- created widgets unconditionally, ignoring an ancestor's hidden state
+    -- (see Mux.reassertHidden's docstring in Muxlet's content.lua, and
+    -- table_system.lua / galaxy.lua for the same pattern), so a rebuild
+    -- while hidden would otherwise leak the new tiles visible over whatever
+    -- tab actually is showing.
+    if Mux and Mux.reassertHidden then Mux.reassertHidden(body) end
 end
 
 local function buildOverview(target)
@@ -612,16 +814,19 @@ local function buildOverview(target)
         return string.format("%s_cov_%d", gid, wc)
     end
 
-    buildHeaderStrip(target, wid, "🏢  Company Overview")
+    buildHeaderStrip(target, wid, "📋", "Show raw company report (di company / di business)", reportCommand)
 
-    local console = Geyser.MiniConsole:new({
+    local body = Geyser.Label:new({
         name = wid(), x = 0, y = H_BAR, width = "100%", height = "100%-" .. H_BAR .. "px",
-        fontSize = 9, scrollBar = true,
     }, target.content)
-    console:setColor(18, 18, 26)
-    console:enableAutoWrap()
+    body:setStyleSheet("background-color: rgba(18, 18, 26, 255); border: none;")
 
-    instances[gid] = { kind = "overview", console = console }
+    local emptyLbl = Geyser.Label:new({ name = wid(), x = 0, y = 0, width = "100%", height = "100%" }, body)
+    emptyLbl:setStyleSheet("background-color: rgba(18, 18, 26, 255); border: none;")
+    emptyLbl:echo(emptyStateHtml("No company data yet."))
+    emptyLbl:hide()
+
+    instances[gid] = { kind = "overview", gid = gid, body = body, emptyLbl = emptyLbl, widgets = {}, epoch = 0 }
     renderOverview(instances[gid])
 end
 
@@ -827,7 +1032,7 @@ local function buildFactories(target)
         return string.format("%s_cfa_%d", gid, wc)
     end
 
-    buildHeaderStrip(target, wid, "🏭  Factories")
+    buildHeaderStrip(target, wid, "📋", "Show raw company report (di company / di business)", reportCommand)
 
     local tableId = "co_factories_" .. gid
     local area = buildTableArea(target.content, wid, tableId, factoryCols(),
@@ -941,15 +1146,25 @@ local function shareholderCols()
 end
 
 local function renderFinancials(inst)
-    local w = inst.console
-    if not w then return end
-    w:clear()
+    local statsBox = inst.statsBox
+    if not statsBox then return end
+
+    for _, w2 in ipairs(inst.widgets or {}) do pcall(function() w2:delete() end) end
+    inst.widgets = {}
 
     local c = companyData()
     if not c then
-        w:cecho("\n<dim_grey>  No company data yet.\n")
+        inst.emptyLbl:show()
         f2tTableSetData(inst.tableId, {})
         return
+    end
+    inst.emptyLbl:hide()
+
+    inst.epoch = (inst.epoch or 0) + 1
+    local wc = 0
+    local function wid()
+        wc = wc + 1
+        return string.format("%s_cfid_%d_%d", inst.gid, inst.epoch, wc)
     end
 
     local shares = sumShares(c)
@@ -958,28 +1173,47 @@ local function renderFinancials(inst)
     local profit = c.profit      or 0
     local eps    = shares > 0 and math.floor(profit / shares) or 0
     local pd     = div > 0 and string.format("%.1f", sv / div) or "∞"
+    local pdCol  = div > 0 and nil or "#ff5555"
     local pe     = (sv > 0 and eps > 0) and string.format("%.1f", sv / eps) or "N/A"
 
-    w:cecho(string.format(
-        "\n  <dim_grey>Share Price  <reset><ansiCyan>%sig<reset>    <dim_grey>Market Cap  <reset><ansiCyan>%s<reset>\n",
-        fmtComma(sv), fmtCompact(sv * shares)))
-    w:cecho(string.format(
-        "  <dim_grey>EPS  <reset><white>%sig/sh<reset>    <dim_grey>P/E  <reset><white>%s<reset>    <dim_grey>P/D  <reset><white>%s<reset>\n",
-        fmtComma(eps), pe, pd))
-    w:cecho(string.format(
-        "  <dim_grey>Dividend  <reset><white>%sig/sh<reset>    <dim_grey>Total Shares  <reset><white>%s<reset>\n",
-        fmtComma(div), fmtComma(shares)))
+    local payout    = profit > 0 and (div * shares / profit * 100) or nil
+    local payoutStr = payout and string.format("%.0f%%", payout) or "N/A"
+    local payoutCol
+    if payout then
+        payoutCol = payout > 100 and "#ff5555" or (payout > 50 and "#cccc44" or "#00cc44")
+    end
 
-    w:cecho("  ")
-    w:cechoLink("<ansiYellow>[ Issue Dividend ]<reset>",
-        function() dialogDividend() end, "Issue a dividend to all shareholders", true)
-    w:cecho("  ")
-    w:cechoLink("<ansiCyan>[ Buy Shares ]<reset>",
-        function() dialogBuyShares(false, nil) end, "Buy personal shares", true)
-    w:cecho("  ")
-    w:cechoLink("<dim_grey>[ Buy Treasury ]<reset>",
-        function() dialogBuyShares(true, nil) end, "Buy treasury shares", true)
-    w:cecho("\n")
+    local tax     = c.tax or 0
+    local pretax  = profit + tax
+    local taxRate = pretax > 0 and (tax / pretax * 100) or nil
+    local taxStr  = taxRate and string.format("%.0f%%", taxRate) or "N/A"
+
+    local netCapStr, netCapCol = "N/A", nil
+    if c.capital then
+        local netCap = (tonumber(c.capital.receipts) or 0) - (tonumber(c.capital.expenditure) or 0)
+        netCapStr = fmtComma(netCap) .. "ig"
+        netCapCol = netCap < 0 and "#ff5555" or "#00cc44"
+    end
+
+    local items = {
+        { icon = "💹", value = fmtComma(sv) .. "ig", caption = "SHARE PRICE" },
+        { icon = "🏦", value = fmtCompact(sv * shares), caption = "MARKET CAP" },
+        { icon = "📊", value = fmtComma(eps) .. "ig/sh", caption = "EPS" },
+        { icon = "⚖", value = pe, caption = "P/E" },
+        { icon = "🎁", value = fmtComma(div) .. "ig/sh", caption = "DIVIDEND" },
+        { icon = "🔁", value = pd, color = pdCol, caption = "P/D" },
+        { icon = "🧾", value = fmtComma(shares), caption = "TOTAL SHARES" },
+        { icon = "💵", value = payoutStr, color = payoutCol, caption = "PAYOUT RATIO" },
+        { icon = "🏛️", value = taxStr, caption = "TAX RATE" },
+        { icon = "📤", value = netCapStr, color = netCapCol, caption = "NET CAPITAL" },
+    }
+    local tiles = buildTileGrid(statsBox, wid, items, 5)
+    for _, t in ipairs(tiles) do inst.widgets[#inst.widgets + 1] = t end
+
+    -- See the matching comment in renderOverview: a live gmcp.char.company
+    -- rebuild must reassert hidden state or freshly created tiles leak
+    -- visible over whatever tab is actually active.
+    if Mux and Mux.reassertHidden then Mux.reassertHidden(statsBox) end
 
     local rows = {}
     if c.shareholders then
@@ -1021,26 +1255,210 @@ local function buildFinancials(target)
         return string.format("%s_cfi_%d", gid, wc)
     end
 
-    buildHeaderStrip(target, wid, "💰  Financials")
+    buildHeaderStrip(target, wid, "📊", "View accounts (di accounts)", function() return "di accounts" end)
 
-    local console = Geyser.MiniConsole:new({
-        name = wid(), x = 0, y = H_BAR, width = "100%", height = H_FIN,
-        fontSize = 9, scrollBar = false,
+    local statsH = math.floor(H_FIN * 0.76)
+    local btnH   = H_FIN - statsH
+
+    local statsBox = Geyser.Label:new({
+        name = wid(), x = 0, y = H_BAR, width = "100%", height = statsH,
     }, target.content)
-    console:setColor(18, 18, 26)
-    console:enableAutoWrap()
+    statsBox:setStyleSheet("background-color: rgba(18, 18, 26, 255); border: none;")
+
+    local emptyLbl = Geyser.Label:new({ name = wid(), x = 0, y = 0, width = "100%", height = "100%" }, statsBox)
+    emptyLbl:setStyleSheet("background-color: rgba(18, 18, 26, 255); border: none;")
+    emptyLbl:echo(emptyStateHtml("No company data yet."))
+    emptyLbl:hide()
+
+    -- Action buttons: built once (static — dialogDividend/dialogBuyShares
+    -- pull live data themselves), same accent-bar hover style as
+    -- hauling_jobs.lua / price_checker.lua's action buttons.
+    local btnBox = Geyser.Label:new({
+        name = wid(), x = 0, y = H_BAR + statsH, width = "100%", height = btnH,
+    }, target.content)
+    btnBox:setStyleSheet("background-color: rgba(18, 18, 26, 255); border: none;")
+
+    local buttons = {
+        { label = "🎁 Issue Dividend", css = _BTN_DIVIDEND_CSS, fn = function() dialogDividend() end,
+          tip = "Issue a dividend to all shareholders" },
+        { label = "📈 Buy Shares",     css = _BTN_BUY_CSS,      fn = function() dialogBuyShares(false, nil) end,
+          tip = "Buy personal shares" },
+        { label = "🏦 Buy Treasury",   css = _BTN_TREASURY_CSS, fn = function() dialogBuyShares(true, nil) end,
+          tip = "Buy treasury shares" },
+    }
+    for i, b in ipairs(buttons) do
+        local btn = Geyser.Label:new({
+            name = wid(), x = ((i - 1) * 100 / 3 + 1) .. "%", y = "10%", width = (100 / 3 - 2) .. "%", height = "80%",
+        }, btnBox)
+        btn:setStyleSheet(b.css)
+        btn:echo("<center>" .. b.label .. "</center>")
+        btn:setToolTip(b.tip)
+        btn:setClickCallback(b.fn)
+    end
 
     local tableId = "co_shareholders_" .. gid
     local area = buildTableArea(target.content, wid, tableId, shareholderCols(),
         H_BAR + H_FIN, "100%-" .. (H_BAR + H_FIN + H_COL) .. "px")
 
     instances[gid] = {
-        kind    = "financials",
-        console = console,
-        tableId = tableId,
-        area    = area,
+        kind      = "financials",
+        gid       = gid,
+        statsBox  = statsBox,
+        emptyLbl  = emptyLbl,
+        tableId   = tableId,
+        area      = area,
+        widgets   = {},
+        epoch     = 0,
     }
     renderFinancials(instances[gid])
+end
+
+-- ── Portfolio panel ───────────────────────────────────────────────────────────
+-- Your holdings in OTHER companies (gmcp.char.company.portfolio) — a
+-- Financier-rank concept, so gated separately from the other three panels
+-- (Industrialist/Manufacturer companies don't carry this data).
+
+local H_SUM = 60    -- portfolio summary strip height (px): two stat tiles
+
+local function portfolioCols()
+    return {
+        {
+            key           = "company",
+            label         = "Company",
+            sortable      = true,
+            sort_value    = function(r) return r.company:lower() end,
+            scrollbox_pct = 70,
+            render_label  = function(v, row, cell)
+                cell:echo(string.format(
+                    "<span style='%scolor:#00cccc;text-decoration:underline;'>%s</span>", CELL_FONT, v))
+                cell:setToolTip("di company " .. tostring(v))
+                cell:setClickCallback(function() send("di company " .. row.company, false) end)
+            end,
+        },
+        {
+            key           = "quantity",
+            label         = "Shares",
+            sortable      = true,
+            default_sort  = "desc",
+            sort_value    = function(r) return r.quantity or 0 end,
+            scrollbox_pct = 30,
+            render_label  = function(v, row, cell)
+                cell:echo(string.format("<span style='%scolor:#ffffff;'>%s</span>", CELL_FONT, fmtComma(v)))
+            end,
+        },
+    }
+end
+
+local function renderPortfolio(inst)
+    local summaryBar = inst.summaryBar
+    if not summaryBar then return end
+
+    for _, w2 in ipairs(inst.widgets or {}) do pcall(function() w2:delete() end) end
+    inst.widgets = {}
+
+    local c     = companyData()
+    local isFin = f2t_is_rank_or_above("Financier")
+
+    local rows, total = {}, 0
+    if isFin and c and c.portfolio then
+        for _, h in ipairs(c.portfolio) do
+            rows[#rows + 1] = { company = h.company, quantity = h.quantity }
+            total = total + (h.quantity or 0)
+        end
+    end
+    f2tTableSetData(inst.tableId, rows)
+
+    inst.epoch = (inst.epoch or 0) + 1
+    local wc = 0
+    local function wid()
+        wc = wc + 1
+        return string.format("%s_cpfd_%d_%d", inst.gid, inst.epoch, wc)
+    end
+
+    local items
+    if not isFin then
+        items = {
+            { icon = "💼", value = "—", color = "#666677", caption = "TOTAL SHARES" },
+            { icon = "🔒", value = "—", color = "#666677", caption = "FINANCIER RANK" },
+        }
+    else
+        items = {
+            { icon = "💼", value = fmtComma(total), color = "#00cccc", caption = "TOTAL SHARES" },
+            { icon = "🏢", value = tostring(#rows), color = "#00cc44",
+              caption = #rows == 1 and "COMPANY" or "COMPANIES" },
+        }
+    end
+    local tiles = buildTileGrid(summaryBar, wid, items, 2)
+    for _, t in ipairs(tiles) do inst.widgets[#inst.widgets + 1] = t end
+
+    -- See the matching comment in renderOverview: a live gmcp.char.company
+    -- rebuild must reassert hidden state or freshly created tiles leak
+    -- visible over whatever tab is actually active.
+    if Mux and Mux.reassertHidden then Mux.reassertHidden(summaryBar) end
+
+    if inst.emptyLbl then
+        if #rows == 0 then
+            inst.emptyLbl:echo(emptyStateHtml(isFin
+                and "No portfolio holdings."
+                or  "Portfolio holdings are shown here at Financier rank and above."))
+            inst.emptyLbl:show()
+        else
+            inst.emptyLbl:hide()
+        end
+    end
+end
+
+local function buildPortfolio(target)
+    local gid = target._gid
+    primeCompanyDataIfMissing()
+    if target.contentBg then
+        target.contentBg:echo("")
+        target.contentBg:setStyleSheet("background-color: rgba(0,0,0,0); border: none;")
+        target.contentBg:hide()
+    end
+    if instances[gid] then
+        renderPortfolio(instances[gid])
+        return
+    end
+
+    local wc = 0
+    local function wid()
+        wc = wc + 1
+        return string.format("%s_cpf_%d", gid, wc)
+    end
+
+    buildHeaderStrip(target, wid, "📋",
+        "Show raw company report (di company / di business)", reportCommand)
+
+    local summaryBar = Geyser.Label:new({
+        name = wid(), x = 0, y = H_BAR, width = "100%", height = H_SUM,
+    }, target.content)
+    summaryBar:setStyleSheet("background-color: rgba(18, 18, 26, 255); border: none;")
+
+    local tableId = "co_portfolio_" .. gid
+    local area = buildTableArea(target.content, wid, tableId, portfolioCols(),
+        H_BAR + H_SUM, "100%-" .. (H_BAR + H_SUM + H_COL) .. "px")
+
+    -- Overlays the table area when there are no holdings (or below Financier
+    -- rank); f2tTableSetData leaves an empty scrollbox with no message of its own.
+    local emptyLbl = Geyser.Label:new({
+        name = wid(), x = 0, y = H_BAR + H_SUM + H_COL, width = "100%",
+        height = "100%-" .. (H_BAR + H_SUM + H_COL) .. "px",
+    }, target.content)
+    emptyLbl:setStyleSheet("background-color: rgba(18, 18, 26, 255); border: none;")
+    emptyLbl:hide()
+
+    instances[gid] = {
+        kind        = "portfolio",
+        gid         = gid,
+        summaryBar  = summaryBar,
+        tableId     = tableId,
+        area        = area,
+        emptyLbl    = emptyLbl,
+        widgets     = {},
+        epoch       = 0,
+    }
+    renderPortfolio(instances[gid])
 end
 
 -- ── Render dispatch + registration ────────────────────────────────────────────
@@ -1049,6 +1467,7 @@ local RENDERERS = {
     overview   = renderOverview,
     factories  = renderFactories,
     financials = renderFinancials,
+    portfolio  = renderPortfolio,
 }
 
 local function renderInstance(inst)
@@ -1122,10 +1541,14 @@ function f2tRegisterCompany()
         buildFactories))
     Mux.registerContent("fed2_company_financials", makeDef(
         "Company Financials",
-        "Share stats, dividend and share actions, and the shareholder table.",
+        "Share stats, dividend/share actions, and the shareholder table.",
         buildFinancials))
+    Mux.registerContent("fed2_company_portfolio", makeDef(
+        "Company Portfolio",
+        "Your shareholdings in other companies (Financier rank and above).",
+        buildPortfolio))
     if f2t_debug_log then
-        f2t_debug_log("[company] registered fed2_company_overview/_factories/_financials")
+        f2t_debug_log("[company] registered fed2_company_overview/_factories/_financials/_portfolio")
     end
 end
 

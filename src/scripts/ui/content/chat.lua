@@ -9,9 +9,12 @@
 -- chat tab, place "fed2_chat" in any pane or tab; visibility/layout is
 -- Muxlet's job.  Filter and timestamp state serialize with the workspace.
 --
+-- The console fills the whole content area — no in-content header — since the
+-- filter/timestamp controls publish to the hosting pane/tab's own titlebar
+-- and right-click menu via titlebarElements (see buildChatDef below), the
+-- same mechanism Muxlet's own Button Grid content uses for its wrench icon.
+--
 -- Ported from archive's ui_chat.lua (rendering half) + chatInbound wiring.
-
-local H_BAR = 24    -- control strip height (px)
 
 -- ── Style per message type ────────────────────────────────────────────────────
 -- gutterHex: hecho #RRGGBB for the continuation pipe / direction arrows
@@ -46,38 +49,10 @@ local RANK_CECHO = {
 }
 
 local FILTERS = {
-    {
-        id = "all", label = "A", matches = nil, tip = "Show all messages",
-        css = [[QLabel{
-            background-color:rgba(28,28,32,200); border-style:solid; border-width:1px;
-            border-radius:3px; border-color:rgba(100,100,110,180);
-            color:rgba(160,160,170,255); font-size:10px; font-weight:bold;
-        } QLabel::hover{ background-color:rgba(60,60,70,220); color:white; }]],
-    },
-    {
-        id = "com", label = "C", matches = { com = true, self_com = true }, tip = "Com channel only",
-        css = [[QLabel{
-            background-color:rgba(15,50,50,220); border-style:solid; border-width:1px;
-            border-radius:3px; border-color:rgba(50,120,120,200);
-            color:rgba(60,170,170,255); font-size:10px; font-weight:bold;
-        } QLabel::hover{ background-color:rgba(25,75,75,240); color:white; }]],
-    },
-    {
-        id = "tell", label = "T", matches = { tell_in = true, self_tell = true }, tip = "Tells only",
-        css = [[QLabel{
-            background-color:rgba(52,18,18,220); border-style:solid; border-width:1px;
-            border-radius:3px; border-color:rgba(140,50,50,200);
-            color:rgba(210,80,80,255); font-size:10px; font-weight:bold;
-        } QLabel::hover{ background-color:rgba(75,25,25,240); color:white; }]],
-    },
-    {
-        id = "say", label = "S", matches = { say = true, self_say = true }, tip = "Say only",
-        css = [[QLabel{
-            background-color:rgba(18,30,52,220); border-style:solid; border-width:1px;
-            border-radius:3px; border-color:rgba(50,90,150,200);
-            color:rgba(70,130,210,255); font-size:10px; font-weight:bold;
-        } QLabel::hover{ background-color:rgba(25,45,75,240); color:white; }]],
-    },
+    { id = "all",  label = "A", matches = nil,                                tip = "Show all messages" },
+    { id = "com",  label = "C", matches = { com = true, self_com = true },    tip = "Com channel only" },
+    { id = "tell", label = "T", matches = { tell_in = true, self_tell = true }, tip = "Tells only" },
+    { id = "say",  label = "S", matches = { say = true, self_say = true },    tip = "Say only" },
 }
 
 -- Per-pane state, keyed by target._gid
@@ -212,25 +187,14 @@ local function appendLatest(inst)
     renderRecord(inst, r, isCont)
 end
 
--- ── Control strip ─────────────────────────────────────────────────────────────
+-- ── Titlebar element helpers ──────────────────────────────────────────────────
 
-local function updateTsButton(inst)
-    if not inst.tsBtn then return end
-    if inst.showTs then
-        inst.tsBtn:echo("<center><font color='#78c8c8'>⏱</font></center>")
-        inst.tsBtn:setToolTip("Timestamps ON — click to hide")
-    else
-        inst.tsBtn:echo("<center><font color='#3a3a3a'>⏱</font></center>")
-        inst.tsBtn:setToolTip("Timestamps OFF — click to show")
-    end
-end
-
-local function updateFilterButton(inst)
-    if not inst.filterBtn then return end
-    local f = FILTERS[inst.filterIdx]
-    inst.filterBtn:setStyleSheet(f.css)
-    inst.filterBtn:echo("<center>" .. f.label .. "</center>")
-    inst.filterBtn:setToolTip(f.tip)
+-- Resolve the instance state for a titlebarElements callback's ctx (a tab's
+-- content publishes to its owning pane's titlebar, but keys off the tab's own
+-- _gid — see Muxlet's README "Publishing to the titlebar and menu").
+local function chatInstFor(ctx)
+    local surf = ctx and (ctx.tab or ctx.pane)
+    return surf and instances[surf._gid]
 end
 
 -- ── Content build ─────────────────────────────────────────────────────────────
@@ -249,43 +213,8 @@ local function buildContent(target)
         return
     end
 
-    local bar = Geyser.Label:new({
-        name = gid .. "_chatbar", x = 0, y = 0, width = "100%", height = H_BAR,
-    }, target.content)
-    bar:setStyleSheet([[
-        background-color: rgba(15, 18, 30, 200);
-        border: none;
-        border-bottom: 1px solid rgba(70, 75, 110, 150);
-    ]])
-
-    local title = Geyser.Label:new({
-        name = gid .. "_chattitle", x = 6, y = 0, width = "-60", height = H_BAR,
-    }, bar)
-    title:setStyleSheet([[
-        background: transparent; border: none;
-        color: rgba(140, 150, 195, 255);
-        font-size: 10px; font-family: "Consolas","Monaco",monospace;
-    ]])
-    title:echo("💬  Chat")
-
-    local filterBtn = Geyser.Label:new({
-        name = gid .. "_chatfilter", x = "-52", y = 3, width = 22, height = H_BAR - 6,
-    }, bar)
-
-    local tsBtn = Geyser.Label:new({
-        name = gid .. "_chatts", x = "-26", y = 3, width = 22, height = H_BAR - 6,
-    }, bar)
-    tsBtn:setStyleSheet([[
-        QLabel{
-            background-color:rgba(28,28,32,200); border-style:solid; border-width:1px;
-            border-radius:3px; border-color:rgba(100,100,110,180);
-            font-size:11px;
-        } QLabel::hover{ background-color:rgba(60,60,70,220); }
-    ]])
-
     local mc = Geyser.MiniConsole:new({
-        name = gid .. "_chatmc", x = 0, y = H_BAR,
-        width = "100%", height = "100%-" .. H_BAR .. "px",
+        name = gid .. "_chatmc", x = 0, y = 0, width = "100%", height = "100%",
         fontSize = 9,
     }, target.content)
     mc:setColor(18, 18, 26)
@@ -293,30 +222,12 @@ local function buildContent(target)
 
     local inst = {
         console   = mc,
-        bar       = bar,
-        tsBtn     = tsBtn,
-        filterBtn = filterBtn,
         showTs    = f2t_settings_get("chat", "show_timestamps") or false,
         filterIdx = 1,
         lastKey   = nil,
     }
     instances[gid] = inst
 
-    tsBtn:setClickCallback(function()
-        inst.showTs = not inst.showTs
-        f2t_settings_set("chat", "show_timestamps", inst.showTs)
-        updateTsButton(inst)
-        replay(inst)
-    end)
-
-    filterBtn:setClickCallback(function()
-        inst.filterIdx = (inst.filterIdx % #FILTERS) + 1
-        updateFilterButton(inst)
-        replay(inst)
-    end)
-
-    updateTsButton(inst)
-    updateFilterButton(inst)
     replay(inst)
 end
 
@@ -329,6 +240,62 @@ local function buildChatDef()
         group       = "Fed2 Tools",
         internal    = false,
         singleton   = false,
+
+        -- Filter/timestamp controls publish to the hosting pane/tab's own
+        -- titlebar + right-click menu instead of drawing an in-content header
+        -- strip (mirrors Muxlet's own Button Grid wrench icon). Muxlet's
+        -- per-element "hide from titlebar" (right-click > Properties) already
+        -- covers hiding either of these individually — nothing extra needed here.
+        titlebarElements = {
+            {
+                id = "chat.timestamps", side = "left", group = "content", order = 0, priority = 100,
+                icon = "⏱", tooltip = "Toggle timestamps",
+                onClick = function(ctx, event)
+                    if event and event.button ~= "LeftButton" then return end
+                    local inst = chatInstFor(ctx)
+                    if not inst then return end
+                    inst.showTs = not inst.showTs
+                    f2t_settings_set("chat", "show_timestamps", inst.showTs)
+                    replay(inst)
+                end,
+                menuText = function(ctx)
+                    local inst = chatInstFor(ctx)
+                    return (inst and inst.showTs) and "⏱  Timestamps ON" or "⏱  Timestamps OFF"
+                end,
+                menuGroup = "info", menuOrder = 90,
+                run = function(ctx)
+                    local inst = chatInstFor(ctx)
+                    if not inst then return end
+                    inst.showTs = not inst.showTs
+                    f2t_settings_set("chat", "show_timestamps", inst.showTs)
+                    replay(inst)
+                end,
+            },
+            {
+                id = "chat.filter", side = "left", group = "content", order = 1, priority = 101,
+                icon = "🔎", tooltip = "Cycle message filter (all / com / tell / say)",
+                onClick = function(ctx, event)
+                    if event and event.button ~= "LeftButton" then return end
+                    local inst = chatInstFor(ctx)
+                    if not inst then return end
+                    inst.filterIdx = (inst.filterIdx % #FILTERS) + 1
+                    replay(inst)
+                end,
+                menuText = function(ctx)
+                    local inst = chatInstFor(ctx)
+                    local f = inst and FILTERS[inst.filterIdx]
+                    return "🔎  Filter: " .. (f and f.tip or "Show all messages")
+                end,
+                menuGroup = "info", menuOrder = 91,
+                run = function(ctx)
+                    local inst = chatInstFor(ctx)
+                    if not inst then return end
+                    inst.filterIdx = (inst.filterIdx % #FILTERS) + 1
+                    replay(inst)
+                end,
+            },
+        },
+
         apply = function(target)
             local ok, err = pcall(buildContent, target)
             if not ok then
@@ -350,8 +317,6 @@ local function buildChatDef()
             if type(data.filterIdx) == "number" and FILTERS[data.filterIdx] then
                 inst.filterIdx = data.filterIdx
             end
-            updateTsButton(inst)
-            updateFilterButton(inst)
             replay(inst)
         end,
         onReveal = function(target)

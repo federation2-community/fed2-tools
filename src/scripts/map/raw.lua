@@ -64,19 +64,24 @@ function f2t_map_raw_display_room(room_id, include_gmcp)
     end
 
     cecho("\n<cyan>═══ Special Exits ═══<reset>\n")
-    local special_exits = getSpecialExitsSwap(room_id)
-    if special_exits and next(special_exits) ~= nil then
+    local ok1, special_exits = pcall(getSpecialExitsSwap, room_id)
+    if not ok1 then
+        cecho(string.format("  <red>ERROR calling getSpecialExitsSwap: %s<reset>\n", tostring(special_exits)))
+    elseif special_exits and next(special_exits) ~= nil then
         for dest, command in pairs(special_exits) do
-            cecho(string.format("  <yellow>%-30s<reset> -> <cyan>%d<reset> <dim_grey>(%s)<reset>\n",
-                command, dest, getRoomName(dest) or "unnamed"))
+            local dest_id = tonumber(dest)
+            cecho(string.format("  <yellow>%-30s<reset> -> <cyan>%s<reset> <dim_grey>(%s)<reset>\n",
+                tostring(command), tostring(dest), dest_id and getRoomName(dest_id) or "unnamed"))
         end
     else
         cecho("  <dim_grey>(no special exits)<reset>\n")
     end
 
     cecho("\n<cyan>═══ Stub Exits ═══<reset>\n")
-    local stubs = getExitStubs1(room_id)
-    if stubs and #stubs > 0 then
+    local ok2, stubs = pcall(getExitStubs1, room_id)
+    if not ok2 then
+        cecho(string.format("  <red>ERROR calling getExitStubs1: %s<reset>\n", tostring(stubs)))
+    elseif stubs and #stubs > 0 then
         local dir_names = {
             [1]="north",[2]="northeast",[3]="northwest",[4]="east",[5]="west",[6]="south",
             [7]="southeast",[8]="southwest",[9]="up",[10]="down",[11]="in",[12]="out",
@@ -106,20 +111,33 @@ function f2t_map_raw_display_room(room_id, include_gmcp)
     local userdata_keys = {
         "fed2_system","fed2_area","fed2_num","fed2_owner","fed2_flags",
         "fed2_planet","fed2_arrival_cmd","fed2_arrival_type","fed2_arrival_executed","fed2_stub",
+        "fed2_flag_link","fed2_jump_synced_at",
     }
     local has_userdata = false
     for _, key in ipairs(userdata_keys) do
-        local value = getRoomUserData(room_id, key)
-        if value and value ~= "" then
+        local ok3, value = pcall(getRoomUserData, room_id, key)
+        if not ok3 then
+            cecho(string.format("  <red>ERROR reading %s: %s<reset>\n", key, tostring(value)))
+        elseif value and value ~= "" then
             has_userdata = true
-            cecho(string.format("  <yellow>%-25s<reset>: <white>%s<reset>\n", key, value))
+            if key == "fed2_jump_synced_at" then
+                local ts = tonumber(value)
+                local age = ts and (os.time() - ts) or nil
+                cecho(string.format("  <yellow>%-25s<reset>: <white>%s<reset> <dim_grey>(%s ago)<reset>\n",
+                    key, value, age and string.format("%ds", age) or "unknown age"))
+            else
+                cecho(string.format("  <yellow>%-25s<reset>: <white>%s<reset>\n", key, value))
+            end
         end
     end
     if not has_userdata then cecho("  <dim_grey>(no user data)<reset>\n") end
 
     if include_gmcp and is_current_room then
         cecho("\n")
-        f2t_map_raw_display_gmcp_inline()
+        local ok4, err4 = pcall(f2t_map_raw_display_gmcp_inline)
+        if not ok4 then
+            cecho(string.format("  <red>ERROR displaying GMCP data: %s<reset>\n", tostring(err4)))
+        end
     end
     cecho("\n")
 end

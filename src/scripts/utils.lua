@@ -2,6 +2,12 @@
 --
 -- Consolidates: debug logging, game tool checks, string helpers, table helpers.
 
+-- ── Version ───────────────────────────────────────────────────────────────────
+-- Read from the installed package itself (mirrors Muxlet's own Mux._version),
+-- not a build-time constant, so it always reflects what's actually installed.
+local _f2tPkgInfo = getPackageInfo("fed2-tools")
+F2T_VERSION = (_f2tPkgInfo and _f2tPkgInfo.version) or "unknown"
+
 -- ── Debug ─────────────────────────────────────────────────────────────────────
 
 F2T_DEBUG = false

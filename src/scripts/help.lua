@@ -89,7 +89,7 @@ f2t_register_help("f2t", {
         {cmd = "System Commands:", desc = ""},
         {cmd = "f2t", desc = "Show this help"},
         {cmd = "f2t status", desc = "Show component states"},
-        {cmd = "f2t version", desc = "Show package version"},
+        {cmd = "f2t version", desc = "Show package version and check for updates"},
         {cmd = "f2t debug on/off", desc = "Toggle debug logging"},
         {cmd = "f2t settings", desc = "Manage system settings"},
         {cmd = "f2t chat wipe", desc = "Wipe chat history and re-fetch comhistory"},
@@ -107,7 +107,7 @@ f2t_register_help("f2t", {
     },
     examples = {
         "f2t status              # Check which components are enabled",
-        "f2t version             # Show current package version",
+        "f2t version             # Show current package version and check for updates",
         "f2t debug on            # Enable debug logging",
         "f2t settings            # View system settings",
         "map help                # Get help for map component"

@@ -187,6 +187,20 @@ local function refreshAll()
                 -- leak visible -- Geyser shows new widgets unconditionally,
                 -- regardless of the hidden ancestor. See Mux.reassertHidden.
                 if Mux and Mux.reassertHidden then Mux.reassertHidden(target.content) end
+                -- The reassert above is a Geyser-bookkeeping-correct hide, but a
+                -- rebuild that lands while this pane is condition-hidden has been
+                -- observed to leave the new widgets visually painted a tick behind
+                -- the logical hide (native Qt repaint lag, not a logic bug -- see
+                -- the matching fix in Muxlet's Mux._applyContent). Re-hide once
+                -- more a tick later to clear it.
+                if target._conditionHidden then
+                    tempTimer(0, function()
+                        if target._conditionHidden and target.outer then
+                            target.outer:hide()
+                            if Mux.reassertHidden then Mux.reassertHidden(target.content) end
+                        end
+                    end)
+                end
             end
         end
     end

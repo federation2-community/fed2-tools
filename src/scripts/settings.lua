@@ -130,19 +130,11 @@ function f2t_settings_show_get(component, key)
 end
 
 -- ── Core fed2-tools settings (f2t namespace) ──────────────────────────────────
-
-f2t_settings_register("f2t", "update_check_enabled", {
-    tab         = "Fed2-Tools/General",
-    order       = 1,
-    label       = "Auto-update check",
-    description = "Check for fed2-tools updates automatically on session start",
-    default     = true,
-})
-
-f2t_settings_register("f2t", "update_check_remind_skip", {
-    label       = "Reminder delay (sessions)",
-    description = "Sessions remaining before update reminder re-appears",
-    default     = 0,
-    min         = 0, max = 99,
-})
+--
+-- The update-check toggles that used to live here (update_check_enabled,
+-- update_check_remind_skip, for the old MPR-based version.lua checker) are now
+-- registered by Muxlet's own update system instead, under this same "f2t"
+-- namespace but their own "Fed2-Tools/Update" tab, via Mux.configureHost's
+-- updateSettingsNamespace/updateSettingsTab (see init.lua) — see Muxlet's
+-- update.lua for that logic.
 

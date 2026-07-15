@@ -19,6 +19,19 @@ local SB_W   = 17    -- scrollbar pixel allowance
 
 local CELL_FONT = "font-size:10pt;font-family:Consolas,Monaco,monospace;"
 
+-- Same vertical gradient as Galaxy Navigator's header strip, for a
+-- consistent header look across content types.
+local _HDR_BAR_CSS = [[
+    background-color: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #2a2a3a, stop:0.4 #1e1e2a, stop:1 #16161e);
+    border: none;
+    border-bottom: 1px solid rgba(70, 75, 110, 150);
+]]
+
+local function emptyStateHtml(text)
+    return string.format(
+        "<div style='padding:10px 6px;color:#888888;%s'>%s</div>", CELL_FONT, text)
+end
+
 local _COL_HDR_CSS = [[
     QLabel {
         background-color: transparent; border: none;
@@ -183,6 +196,9 @@ local function refreshInstance(gid)
     local inst = instances[gid]
     if not inst then return end
     f2tTableSetData(inst.tableId, jobs)
+    if inst.noJobsLbl then
+        if #jobs == 0 then inst.noJobsLbl:show() else inst.noJobsLbl:hide() end
+    end
 end
 
 local _renderTimer = nil
@@ -283,16 +299,12 @@ local function buildContent(target)
     local bar = Geyser.Label:new({
         name = wid(), x = 0, y = 0, width = "100%", height = H_BAR,
     }, target.content)
-    bar:setStyleSheet([[
-        background-color: rgba(15, 18, 30, 200);
-        border: none;
-        border-bottom: 1px solid rgba(70, 75, 110, 150);
-    ]])
+    bar:setStyleSheet(_HDR_BAR_CSS)
 
     local buttons = {
-        { label = "Work",    cmd = "work",    tip = "List available AC jobs",              css = _BTN_WORK_CSS },
-        { label = "Collect", cmd = "collect", tip = "Collect cargo for the accepted job",   css = _BTN_COLLECT_CSS },
-        { label = "Deliver", cmd = "deliver", tip = "Deliver cargo at the destination",     css = _BTN_DELIVER_CSS },
+        { label = "🚚 Work",    cmd = "work",    tip = "List available AC jobs",            css = _BTN_WORK_CSS },
+        { label = "📦 Collect", cmd = "collect", tip = "Collect cargo for the accepted job", css = _BTN_COLLECT_CSS },
+        { label = "✅ Deliver", cmd = "deliver", tip = "Deliver cargo at the destination",   css = _BTN_DELIVER_CSS },
     }
     local btnW = 76
     for i, b in ipairs(buttons) do
@@ -331,6 +343,15 @@ local function buildContent(target)
     }, scroll)
     contentLabel:setStyleSheet("background-color: rgba(18, 18, 26, 255); border: none;")
 
+    -- Overlays the table area when no jobs are listed; f2tTableSetData leaves
+    -- an empty scrollbox with no message of its own.
+    local noJobsLbl = Geyser.Label:new({
+        name = wid(), x = 0, y = scrollTop, width = "100%", height = "100%-" .. scrollTop .. "px",
+    }, target.content)
+    noJobsLbl:setStyleSheet("background-color: rgba(18, 18, 26, 255); border: none;")
+    noJobsLbl:echo(emptyStateHtml("No jobs listed — click Work to check the board."))
+    noJobsLbl:hide()
+
     -- ── Table system ──────────────────────────────────────────────────────────
     local tableId = "hauling_jobs_" .. gid
     local cols    = buildCols()
@@ -364,6 +385,7 @@ local function buildContent(target)
         scroll       = scroll,
         contentLabel = contentLabel,
         contentW     = contentW,
+        noJobsLbl    = noJobsLbl,
     }
 
     refreshInstance(gid)
