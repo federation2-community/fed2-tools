@@ -287,9 +287,17 @@ local CSS_ICONBTN = [[
         qproperty-alignment: AlignCenter; }
     QLabel::hover{ background-color: rgba(60,60,70,230); border-color: rgba(120,180,255,210); color:white; }
 ]]
--- Header/footer strip heights, shared between buildPanel (which builds them)
--- and populate (which reports total content height to Mux.requestAutoFit).
-local TOPBAR_H, FOOTER_H = 86, 24
+-- Header/footer strip heights, shared between buildPanel (which builds them),
+-- relayoutTopbar (which collapses/expands the heading row), and populate
+-- (which reports total content height to Mux.requestAutoFit).
+local HEADING_ROW_H  = 28    -- vertical space the title row occupies when shown
+local TOPBAR_FULL_H  = 86    -- title + search + collapse-all rows
+local TOPBAR_MIN_H   = TOPBAR_FULL_H - HEADING_ROW_H   -- search + collapse-all only
+local FOOTER_H       = 24
+
+local function topbarHeightFor(inst)
+    return inst.showHeading and TOPBAR_FULL_H or TOPBAR_MIN_H
+end
 
 -- ScrollBox chrome (copied from the gmcp viewer fix): dark viewport, no horizontal
 -- bar, a fixed 8px dark vertical bar, and a dark corner.  Combined with content
@@ -385,7 +393,7 @@ end
 -- local_players.lua's row-count-driven auto-fit).
 local function reportAutoFit(inst, contentH)
     if not inst.target then return end
-    local h = TOPBAR_H + contentH + FOOTER_H
+    local h = topbarHeightFor(inst) + contentH + FOOTER_H
     inst.target._autoFitHeight = h
     if Mux and Mux.requestAutoFit then Mux.requestAutoFit(inst.target, h) end
 end
@@ -530,36 +538,103 @@ local function targetHidden(target)
     return false
 end
 
--- The "Galaxy Navigator" title label is redundant once the hosting pane/tab is
--- renamed to say the same thing in its own titlebar; the "galaxy.heading"
--- titlebarElement below (in buildGalaxyDef) toggles it via this.
-local function applyHeadingVisibility(inst)
-    if not inst.title then return end
-    if inst.showHeading then inst.title:show() else inst.title:hide() end
-end
-
--- Resolve the instance state for a titlebarElements callback's ctx. Galaxy
+-- Resolve the pane/tab a titlebarElements callback's ctx is acting on. Galaxy
 -- Navigator is a singleton, but content still lives on a specific pane/tab —
 -- see Muxlet's README "Publishing to the titlebar and menu".
-local function galaxyInstFor(ctx)
-    local surf = ctx and (ctx.tab or ctx.pane)
-    return surf and instances[surf._gid]
+local function galaxyTargetFor(ctx)
+    return ctx and (ctx.tab or ctx.pane)
 end
 
--- "galaxy.heading" hides itself once locked, same pattern as Muxlet's own
--- Button Grid wrench (its "Lock (hide editor)" setting + `mux reveal <id>`):
--- the menu-only "galaxy.heading.hide" row below sets the lock; onReveal in
+-- The settings wrench hides itself once locked — same pattern as Muxlet's own
+-- Button Grid wrench (its "Lock (hide editor)" checkbox in Grid Settings +
+-- `mux reveal <id>`): openGalaxySettings's Lock toggle sets this; onReveal in
 -- buildGalaxyDef (wired to `mux reveal`) is the only way back.
-local function headingIconHidden()
-    return f2t_settings_get("galaxy", "heading_icon_hidden") == true
+local function settingsIconLocked()
+    return f2t_settings_get("galaxy", "settings_icon_locked") == true
 end
 
 -- Force an immediate titlebar re-layout after a visibility flag changes
--- outside the normal click path (locking/revealing an icon).
-local function refreshOwningTitlebar(ctx)
-    local host = ctx and (ctx.tab or ctx.pane)
-    local p = host and (host.pane or host)
+-- outside the normal click path (locking/revealing the settings icon).
+local function refreshOwningTitlebar(target)
+    local p = target and (target.pane or target)
     if p and p._layoutTitlebarButtons then p:_layoutTitlebarButtons() end
+end
+
+-- Resize/reposition the header rows for the current heading visibility: hiding
+-- the title collapses that space entirely (search + collapse-all shift up)
+-- rather than leaving it blank. Also re-fits the scroll area and re-populates
+-- so row layout and Mux.requestAutoFit both reflect the new topbar height.
+local function relayoutTopbar(inst)
+    if not inst.topbar then return end
+    local th = topbarHeightFor(inst)
+    local searchY, collapseY
+    if inst.showHeading then searchY, collapseY = 34, 60 else searchY, collapseY = 6, 32 end
+
+    inst.topbar:resize(nil, th)
+    if inst.title then
+        if inst.showHeading then inst.title:show() else inst.title:hide() end
+    end
+    if inst.searchCmd   then inst.searchCmd:move(nil, searchY) end
+    if inst.clearBtn    then inst.clearBtn:move(nil, searchY) end
+    if inst.collapseBtn then inst.collapseBtn:move(nil, collapseY) end
+    if inst.scroll then
+        inst.scroll:move(nil, th)
+        inst.scroll:resize(nil, "100%-" .. (th + FOOTER_H) .. "px")
+    end
+    populate(inst.gid)
+end
+
+-- ── Settings dialog (mirrors Muxlet's own Button Grid "Grid Settings") ────────
+local function openGalaxySettings(target)
+    local gid  = target and target._gid
+    local inst = gid and instances[gid]
+    if not inst then return end
+
+    local d = Mux.createDialog({
+        title = "Galaxy Navigator Settings — " .. Mux._targetPath(target),
+        width = 380, height = 260, singleton = "f2t_galaxy_settings_" .. (target.id or gid),
+        contextMenu = false,
+    })
+    if not d then return end
+    if d.contentBg then d.contentBg:echo(""); d.contentBg:hide() end
+
+    local rows = {
+        { type = "button", label = "🔄  Refresh Now (di systems)", _noReset = true,
+          desc = "Last refresh: " .. ageStr(F2T_GALAXY.builtAt),
+          onClick = function() f2t_galaxy_scrape() end },
+        { label = "Show Heading", type = "toggle",
+          desc = "Show the '🔭 Galaxy Navigator' title inside the panel; hiding it collapses that space.",
+          readFn = function() return inst.showHeading end,
+          writeFn = function(v)
+              inst.showHeading = v
+              f2t_settings_set("galaxy", "show_heading", v)
+              relayoutTopbar(inst)
+          end },
+        { label = "Lock (hide settings icon)", type = "toggle",
+          desc = "Hide the settings wrench so the panel looks final. Bring it back with:  mux reveal <pane id>",
+          readFn = function() return settingsIconLocked() end,
+          writeFn = function(v)
+              f2t_settings_set("galaxy", "settings_icon_locked", v)
+              refreshOwningTitlebar(target)
+          end },
+    }
+    d:mountForm(rows, { prefix = d._gid .. "_gxset" })
+
+    -- Locking hides the settings wrench, so warn before closing — pointing at
+    -- `mux reveal` as the way back (same UX Button Grid's Lock uses).
+    if d.closeBtn then
+        d.closeBtn:setClickCallback(function(event)
+            if event.button ~= "LeftButton" then return end
+            if settingsIconLocked() then
+                local msg = "This panel is <b>locked</b> — the settings wrench is now hidden.<br/>"
+                         .. "To bring it back, run: "
+                         .. "<tt style='color:#8ab4ff;'>mux reveal " .. (target.id or "&lt;id&gt;") .. "</tt>"
+                Mux._showPropsCloseConfirm(msg, function() d:close() end)
+            else
+                d:close()
+            end
+        end)
+    end
 end
 
 -- ── Build the header / scroll / footer panel into a content target ────────────
@@ -577,34 +652,41 @@ local function buildPanel(target)
     instances[gid] = inst
 
     -- Header bar (three rows: title / search+clear / collapse-all). Refresh and
-    -- the heading-hide toggle publish to the hosting pane/tab's own titlebar
-    -- instead (see buildGalaxyDef's titlebarElements).
-    local topbar = Geyser.Label:new({ name = gid .. "_gx_top", x = 0, y = 0, width = "100%", height = TOPBAR_H }, C)
-    topbar:setStyleSheet(CSS_HEADER)
+    -- settings (including the heading toggle) publish to the hosting pane/tab's
+    -- own titlebar instead (see buildGalaxyDef's titlebarElements).  Rows are
+    -- built at their "heading shown" position; relayoutTopbar (below) corrects
+    -- everything to the right initial state in one pass.
+    inst.topbar = Geyser.Label:new({ name = gid .. "_gx_top", x = 0, y = 0, width = "100%", height = TOPBAR_FULL_H }, C)
+    inst.topbar:setStyleSheet(CSS_HEADER)
 
     -- Row 1: title
-    inst.title = Geyser.Label:new({ name = gid .. "_gx_title", x = 8, y = 6, width = "100%-16px", height = 22 }, topbar)
+    inst.title = Geyser.Label:new({
+        name = gid .. "_gx_title", x = 8, y = 6, width = "100%-16px", height = 22,
+    }, inst.topbar)
     inst.title:setStyleSheet("background-color:transparent; color:#c8c8d0; font-size:11px; font-weight:bold;")
     inst.title:echo("🔭 Galaxy Navigator")
 
     local showHeadingInit = f2t_settings_get("galaxy", "show_heading")
     if showHeadingInit == nil then showHeadingInit = true end
     inst.showHeading = showHeadingInit
-    applyHeadingVisibility(inst)
 
     -- Row 2: search box (fills) + clear (✕) square on the far right
-    inst.searchCmd = Geyser.CommandLine:new({ name = gid .. "_gx_search", x = 8, y = 34, width = "100%-44px", height = 24 }, topbar)
+    inst.searchCmd = Geyser.CommandLine:new({
+        name = gid .. "_gx_search", x = 8, y = 34, width = "100%-44px", height = 24,
+    }, inst.topbar)
     inst.searchCmd:setStyleSheet([[
         background-color: rgb(10,10,16); color: rgba(200,200,210,255); font-size:11px; font-weight:bold;
         border:1px solid rgba(100,100,110,180); border-radius:3px; padding-left:4px; padding-right:4px;
     ]])
     inst.searchCmd:setAction(function() end)   -- never submit to the game on Enter
 
-    local clearBtn = Geyser.Label:new({ name = gid .. "_gx_clear", x = "-30", y = 34, width = 24, height = 24 }, topbar)
-    clearBtn:setStyleSheet(CSS_ICONBTN)
-    clearBtn:echo("<center>✕</center>")
-    clearBtn:setToolTip("Clear search")
-    clearBtn:setClickCallback(function()
+    inst.clearBtn = Geyser.Label:new({
+        name = gid .. "_gx_clear", x = "-30", y = 34, width = 24, height = 24,
+    }, inst.topbar)
+    inst.clearBtn:setStyleSheet(CSS_ICONBTN)
+    inst.clearBtn:echo("<center>✕</center>")
+    inst.clearBtn:setToolTip("Clear search")
+    inst.clearBtn:setClickCallback(function()
         if inst.searchCmd then
             if inst.searchCmd.clear then pcall(function() inst.searchCmd:clear() end)
             else pcall(function() inst.searchCmd:setText("") end) end
@@ -614,15 +696,17 @@ local function buildPanel(target)
     end)
 
     -- Row 3: collapse-all square (minus), left-aligned with the cartel expand column
-    local collapse = Geyser.Label:new({ name = gid .. "_gx_col", x = "1%", y = 60, width = 22, height = 22 }, topbar)
-    collapse:setStyleSheet(CSS_ICONBTN)
-    collapse:echo("<center>−</center>")
-    collapse:setToolTip("Collapse all")
-    collapse:setClickCallback(function() F2T_GALAXY.expanded = {}; f2t_galaxy_refresh_open() end)
+    inst.collapseBtn = Geyser.Label:new({
+        name = gid .. "_gx_col", x = "1%", y = 60, width = 22, height = 22,
+    }, inst.topbar)
+    inst.collapseBtn:setStyleSheet(CSS_ICONBTN)
+    inst.collapseBtn:echo("<center>−</center>")
+    inst.collapseBtn:setToolTip("Collapse all")
+    inst.collapseBtn:setClickCallback(function() F2T_GALAXY.expanded = {}; f2t_galaxy_refresh_open() end)
 
     -- Scroll area (styled chrome so no white strip appears beside the scrollbar)
-    inst.scroll = Geyser.ScrollBox:new({ name = gid .. "_gx_scroll", x = 0, y = TOPBAR_H,
-        width = "100%", height = "100%-" .. (TOPBAR_H + FOOTER_H) .. "px" }, C)
+    inst.scroll = Geyser.ScrollBox:new({ name = gid .. "_gx_scroll", x = 0, y = TOPBAR_FULL_H,
+        width = "100%", height = "100%-" .. (TOPBAR_FULL_H + FOOTER_H) .. "px" }, C)
     pcall(function() inst.scroll:setStyleSheet(CSS_SCROLL) end)
     -- Content fills the FULL scrollbox width; the 8px scrollbar overlaps only the
     -- right edge (rows are left-anchored), so there is no uncovered white column.
@@ -649,7 +733,9 @@ local function buildPanel(target)
     -- once data lands, so an early-opened navigator still catches up).
     autoExpandCurrentLocation()
 
-    populate(gid)
+    -- Applies inst.showHeading to the row layout (collapsing the title row's
+    -- space if hidden) and calls populate() internally.
+    relayoutTopbar(inst)
 
     -- Debounced search poll: rebuild the tree shortly after typing stops.
     -- Runs at 0.4s (fast enough to feel live for typed search) and idles
@@ -701,66 +787,27 @@ local function buildGalaxyDef()
         -- find "the" navigator without fed2-tools keeping its own pane reference.
         singleton   = true,
 
-        -- Refresh and the heading-hide toggle publish to the hosting pane/tab's
-        -- own titlebar + right-click menu instead of drawing in-content icon
-        -- buttons. "galaxy.refresh" opts into Muxlet's generic per-element
-        -- Properties hide toggle (hideable=true). "galaxy.heading" instead uses
-        -- Button Grid's own wrench-lock pattern (a menu-only "…hide" row sets a
-        -- persisted flag its `visible` checks; `mux reveal` is the only way
-        -- back) — the "set it once, then declutter" case Properties doesn't
-        -- cover as directly, since it's a per-workspace-node override rather
-        -- than a global settings.lua flag.
+        -- One wrench publishes Refresh + Settings (incl. the heading toggle) to
+        -- the hosting pane/tab's own titlebar + right-click menu — the exact
+        -- same shape as Muxlet's own Button Grid wrench: menuFallbackOnly means
+        -- this row never forces the ⋯ menu open on a full, non-compact pane (it
+        -- only reaches the menu once folded — compact/overflow — or on a tab,
+        -- which has no titlebar at all), and openGalaxySettings's own "Lock"
+        -- toggle hides the wrench itself, restorable only via `mux reveal`.
         titlebarElements = {
             {
-                id = "galaxy.refresh", side = "left", group = "content", order = 0, priority = 100,
-                icon = "🔄", tooltip = "Refresh (di systems)",
-                hideable = true, hideLabel = "Refresh Icon",
-                onClick = function(_ctx, event)
-                    if event and event.button ~= "LeftButton" then return end
-                    f2t_galaxy_scrape()
-                end,
-                menuText = function() return "🔄  Refresh — last: " .. ageStr(F2T_GALAXY.builtAt) end,
-                menuGroup = "info", menuOrder = 90,
-                run = function() f2t_galaxy_scrape() end,
-            },
-            {
-                id = "galaxy.heading", side = "left", group = "content", order = 1, priority = 101,
-                icon = "🏷", tooltip = "Toggle the in-panel title",
-                visible = function() return not headingIconHidden() end,
+                id = "galaxy.settings", side = "left", group = "content", order = 0, priority = 100,
+                icon = "🔧", tooltip = "Galaxy Navigator settings",
+                visible = function() return not settingsIconLocked() end,
                 onClick = function(ctx, event)
-                    if event and event.button ~= "LeftButton" then return end
-                    local inst = galaxyInstFor(ctx)
-                    if not inst then return end
-                    inst.showHeading = not inst.showHeading
-                    f2t_settings_set("galaxy", "show_heading", inst.showHeading)
-                    applyHeadingVisibility(inst)
+                    if not event or event.button == "LeftButton" then
+                        openGalaxySettings(galaxyTargetFor(ctx))
+                    end
                 end,
-                menuText = function(ctx)
-                    local inst = galaxyInstFor(ctx)
-                    return (inst and inst.showHeading) and "🏷  Heading ON" or "🏷  Heading OFF"
-                end,
-                menuGroup = "info", menuOrder = 91,
-                run = function(ctx)
-                    local inst = galaxyInstFor(ctx)
-                    if not inst then return end
-                    inst.showHeading = not inst.showHeading
-                    f2t_settings_set("galaxy", "show_heading", inst.showHeading)
-                    applyHeadingVisibility(inst)
-                end,
-            },
-            {
-                -- Menu-only: this row never itself becomes a titlebar icon, so
-                -- there's nothing recursive to hide. Once clicked, "galaxy.heading"
-                -- above disappears until `mux reveal <pane id>` clears the lock
-                -- (see onReveal below) — same escape hatch Button Grid's lock uses.
-                id = "galaxy.heading.hide", side = "left", group = "content", order = 2, priority = 200,
-                iconable = false,
-                menuText = "🔒  Hide heading-toggle icon (mux reveal to restore)",
-                menuGroup = "info", menuOrder = 92,
-                run = function(ctx)
-                    f2t_settings_set("galaxy", "heading_icon_hidden", true)
-                    refreshOwningTitlebar(ctx)
-                end,
+                menuText = "🔧  Galaxy settings…",
+                menuGroup = "info", menuOrder = 95,
+                menuFallbackOnly = true,
+                run = function(ctx) openGalaxySettings(galaxyTargetFor(ctx)) end,
             },
         },
 
@@ -779,13 +826,12 @@ local function buildGalaxyDef()
 
         serialize = function(_target) return {} end,     -- data is global; nothing per-instance
         restore   = function(_target, _data) end,
-        -- `mux reveal <pane id>` clears the heading-icon lock, same escape hatch
-        -- Button Grid's own onReveal uses to undo its wrench lock.
+        -- `mux reveal <pane id>` clears the settings-wrench lock — the exact
+        -- escape hatch Button Grid's own onReveal uses to undo its wrench lock.
         onReveal = function(target)
-            if headingIconHidden() then
-                f2t_settings_set("galaxy", "heading_icon_hidden", false)
-                local p = target.pane or target
-                if p._layoutTitlebarButtons then p:_layoutTitlebarButtons() end
+            if settingsIconLocked() then
+                f2t_settings_set("galaxy", "settings_icon_locked", false)
+                refreshOwningTitlebar(target)
             end
             populate(target._gid)
         end,

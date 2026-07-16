@@ -574,7 +574,7 @@ local _BADGE_RUN_CSS = [[
         border: 1px solid rgba(60, 180, 90, 180);
         border-radius: 4px;
         color: #6bffa0;
-        font-size: 11px; font-weight: bold;
+        font-size: 12px; font-weight: bold;
         qproperty-alignment: AlignCenter;
     }
     QLabel::hover { background-color: rgba(30, 70, 40, 230); }
@@ -585,7 +585,7 @@ local _BADGE_FROZEN_CSS = [[
         border: 1px solid rgba(200, 160, 60, 180);
         border-radius: 4px;
         color: #ffd980;
-        font-size: 11px; font-weight: bold;
+        font-size: 12px; font-weight: bold;
         qproperty-alignment: AlignCenter;
     }
     QLabel::hover { background-color: rgba(70, 58, 20, 230); }
@@ -596,7 +596,7 @@ local _ALERT_CSS = [[
         border: 1px solid rgba(200, 80, 80, 200);
         border-radius: 5px;
         color: #ff9a9a;
-        font-size: 11px; font-weight: bold;
+        font-size: 12px; font-weight: bold;
         qproperty-alignment: AlignCenter;
     }
     QLabel::hover { background-color: rgba(80, 30, 30, 230); }
@@ -613,7 +613,7 @@ local function actionBtnCss(accent, accentHover)
             border: 1px solid rgba(72,85,128,180);
             border-left: 3px solid %s;
             border-radius: 4px;
-            font-size: 10px; font-weight: bold; font-family: "Consolas","Monaco",monospace;
+            font-size: 11px; font-weight: bold; font-family: "Consolas","Monaco",monospace;
             qproperty-alignment: AlignCenter;
         }
         QLabel::hover {
@@ -640,8 +640,8 @@ local _SECTION_HDR_CSS = [[
 
 local function rowCellHtml(label, value, color)
     return string.format(
-        "<td style='padding:2px 8px;color:rgba(155,165,200,220);font-size:10px;white-space:nowrap;'>%s</td>" ..
-        "<td style='padding:2px 16px 2px 4px;color:%s;font-size:12px;font-weight:bold;white-space:nowrap;'>%s</td>",
+        "<td style='padding:2px 8px;color:rgba(155,165,200,220);font-size:11px;white-space:nowrap;'>%s</td>" ..
+        "<td style='padding:2px 16px 2px 4px;color:%s;font-size:13px;font-weight:bold;white-space:nowrap;'>%s</td>",
         label, color or "#e8e8f0", value)
 end
 
@@ -657,7 +657,7 @@ local function buildStatSection(inst, container, wid, icon, title, items, perRow
         local hdr = Geyser.Label:new({ name = wid(), x = 0, y = 0, width = "100%", height = "22%" }, container)
         hdr:setStyleSheet(_SECTION_HDR_CSS)
         hdr:echo(string.format(
-            "<span style='font-size:10px;font-weight:bold;letter-spacing:1px;color:rgba(150,165,210,235);'>" ..
+            "<span style='font-size:11px;font-weight:bold;letter-spacing:1px;color:rgba(150,165,210,235);'>" ..
             "%s&nbsp;%s</span>", icon, title))
         inst.widgets[#inst.widgets + 1] = hdr
         yTop, hAvail = 22, 78
@@ -688,15 +688,17 @@ end
 
 -- ── Overview panel ────────────────────────────────────────────────────────────
 
--- Company name (left) + running/frozen status badge (right, click to freeze).
+-- Company name (left, the largest text on the panel) + running/frozen status
+-- pill (right, click to freeze) — sized to hug its text, not stretch to fill
+-- the row.
 local function buildStatusRow(inst, box, wid, c)
-    local nameLbl = Geyser.Label:new({ name = wid(), x = "2%", y = 0, width = "64%", height = "100%" }, box)
-    nameLbl:setStyleSheet("background: transparent; border: none; color: #ffffff; font-size: 15px; font-weight: bold;")
+    local nameLbl = Geyser.Label:new({ name = wid(), x = "2%", y = 0, width = "70%", height = "100%" }, box)
+    nameLbl:setStyleSheet("background: transparent; border: none; color: #ffffff; font-size: 22px; font-weight: bold;")
     nameLbl:echo(c.name or "Unknown Company")
     inst.widgets[#inst.widgets + 1] = nameLbl
 
     local running = (c.status == "running")
-    local badge = Geyser.Label:new({ name = wid(), x = "67%", y = "12%", width = "31%", height = "76%" }, box)
+    local badge = Geyser.Label:new({ name = wid(), x = "76%", y = "26%", width = "20%", height = "48%" }, box)
     badge:setStyleSheet(running and _BADGE_RUN_CSS or _BADGE_FROZEN_CSS)
     badge:echo(running and "<center>● RUNNING</center>" or "<center>⊘ FROZEN</center>")
     badge:setToolTip("Click to freeze/unfreeze")
@@ -741,7 +743,7 @@ local function renderOverview(inst)
     -- Weights are in "row units" — financials/investors carry a header plus
     -- up to 4 packed rows each, roughly twice identity's row count, so they
     -- get proportionally more of the body.
-    local sections = { { key = "status", weight = 1.0 }, { key = "identity", weight = 0.6 } }
+    local sections = { { key = "status", weight = 1.3 }, { key = "identity", weight = 0.6 } }
     if alertCount > 0 then sections[#sections + 1] = { key = "alerts", weight = 0.6 } end
     sections[#sections + 1] = { key = "financials", weight = 2.2 }
     if isMfr then sections[#sections + 1] = { key = "investors", weight = 2.2 } end

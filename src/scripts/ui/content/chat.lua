@@ -106,7 +106,7 @@ local function renderRecord(inst, r, isCont)
     end
 
     mc:dechoLink(
-        nc .. "<b>" .. from .. "</b><reset>",
+        nc .. "<b>" .. from .. "</b><r>",
         function()
             if f2tPlayerCardShowOrRaiseByName then f2tPlayerCardShowOrRaiseByName(from) end
         end,

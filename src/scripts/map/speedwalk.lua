@@ -201,7 +201,20 @@ function f2t_map_speedwalk_on_room_change()
             if F2T_SPEEDWALK_CURRENT_STEP == #F2T_SPEEDWALK_DIR - 1 then
                 f2t_map_speedwalk_restore_mode()
             end
-            f2t_map_speedwalk_next_step()
+            -- A route is planned once, up front, using whatever's cached
+            -- for every room along it — including rooms not yet visited
+            -- this session, whose "jump ___" exits could be stale or
+            -- leftover from before. GMCP just refreshed this room's real
+            -- jump destinations on arrival (see apply_gmcp_jumps in
+            -- jump.lua), but nothing re-consults that before continuing
+            -- unless we do it here: silently recompute the remaining route
+            -- against the data we just received, rather than blindly
+            -- trusting whatever the original plan assumed for this room.
+            if f2t_map_room_has_flag(current_room, "link") then
+                f2t_map_speedwalk_recompute_path(true)
+            else
+                f2t_map_speedwalk_next_step()
+            end
         else
             if F2T_SPEEDWALK_ROOM_BEFORE_MOVE and current_room == F2T_SPEEDWALK_ROOM_BEFORE_MOVE then
                 cecho(string.format("\n<yellow>[map]<reset> Exit blocked: <white>%s<reset> from room %d\n",
@@ -223,7 +236,12 @@ function f2t_map_speedwalk_retry_last_command()
     return true
 end
 
-function f2t_map_speedwalk_recompute_path()
+-- silent: skip the "recomputing.../recomputed..." messages. Used when
+-- re-verifying the remaining route on ordinary arrival at a link room (see
+-- f2t_map_speedwalk_on_room_change) rather than recovering from a failure —
+-- nothing has actually gone wrong yet in that case, so it shouldn't look
+-- like it has.
+function f2t_map_speedwalk_recompute_path(silent)
     if not F2T_SPEEDWALK_ACTIVE then return false end
     if not F2T_SPEEDWALK_DESTINATION_ROOM_ID then
         cecho("\n<red>[map]<reset> Unable to recover speedwalk: destination unknown\n")
@@ -240,7 +258,9 @@ function f2t_map_speedwalk_recompute_path()
         F2T_SPEEDWALK_FAILED_EXIT_DIR  = F2T_SPEEDWALK_LAST_COMMAND
         f2t_map_speedwalk_stop(); return false
     end
-    cecho("\n<yellow>[map]<reset> Recomputing path from current location...\n")
+    if not silent then
+        cecho("\n<yellow>[map]<reset> Recomputing path from current location...\n")
+    end
     local success = getPath(current_room_id, F2T_SPEEDWALK_DESTINATION_ROOM_ID)
     if not success then
         cecho("\n<red>[map]<reset> Unable to find path from current location\n")
@@ -264,7 +284,9 @@ function f2t_map_speedwalk_recompute_path()
         killTimer(F2T_SPEEDWALK_MOVE_TIMEOUT_ID)
         F2T_SPEEDWALK_MOVE_TIMEOUT_ID = nil
     end
-    cecho(string.format("\n<green>[map]<reset> Path recomputed (%d steps), resuming...\n", #speedWalkDir))
+    if not silent then
+        cecho(string.format("\n<green>[map]<reset> Path recomputed (%d steps), resuming...\n", #speedWalkDir))
+    end
     f2t_map_speedwalk_next_step()
     return true
 end

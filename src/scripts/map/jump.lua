@@ -30,14 +30,21 @@ function f2t_map_apply_gmcp_jumps(room_id, jumps, source_system)
     if not room_id or not roomExists(room_id) or not jumps then return end
     clearJumpExits(room_id)
     local created_count, total = 0, 0
+    local all_dests, missing_dests = {}, {}
     for _, category in ipairs({"inter_syndicate", "intra_syndicate", "local"}) do
         for _, dest_system in ipairs(jumps[category] or {}) do
             total = total + 1
+            table.insert(all_dests, dest_system)
             if f2t_map_create_jump_special_exit(room_id, source_system, dest_system) then
                 created_count = created_count + 1
+            else
+                table.insert(missing_dests, dest_system)
             end
         end
     end
+    f2t_debug_log("[map/jump] apply_gmcp_jumps(room=%s): GMCP gave [%s]%s",
+        tostring(room_id), table.concat(all_dests, ", "),
+        #missing_dests > 0 and (" (not yet mapped: " .. table.concat(missing_dests, ", ") .. ")") or "")
     setRoomUserData(room_id, "fed2_jump_synced_at", tostring(os.time()))
     f2t_debug_log("[map/jump] apply_gmcp_jumps(room=%s): %d/%d special exits from GMCP data",
         tostring(room_id), created_count, total)
