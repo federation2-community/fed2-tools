@@ -161,6 +161,14 @@ local function openInGalaxy(cartelName, entityName)
     if f2t_galaxy_show_nav then f2t_galaxy_show_nav() end
 end
 
+-- ── Syndicate lookup (a cartel's parent, from the galaxy navigator's scrape) ──
+
+local function syndicateFor(cartelName)
+    if not (F2T_GALAXY and F2T_GALAXY.cartels and cartelName and cartelName ~= "") then return nil end
+    local cd = F2T_GALAXY.cartels[cartelName]
+    return cd and cd.syndicate and cd.syndicate ~= "" and cd.syndicate or nil
+end
+
 -- ── Fingerprint (detects data changes for f2tPlayerCardsRefreshAll) ───────────
 
 local function fingerprint(p)
@@ -190,7 +198,9 @@ local function initialContentSize(player)
     local hasSystem    = system ~= "" and (
         rank == "Engineer"   or rank == "Technocrat" or rank == "Gengineer" or
         rank == "Magnate"    or rank == "Founder"    or rank == "Mogul")
-    local hasCartel    = cartel ~= "" and rank == "Plutocrat"
+    local hasCartel    = cartel ~= "" and (rank == "Plutocrat" or rank == "Syndicrat")
+    local syndicate    = hasCartel and syndicateFor(cartel) or nil
+    local hasSyndicate = syndicate ~= nil
     local hasShip      = ship ~= ""
     local hasOwnership = (hasCompany and (isIndustrial or isMfrFin)) or hasSystem or hasCartel
 
@@ -201,9 +211,10 @@ local function initialContentSize(player)
 
     local longest = math.max(
         #(loc ~= "" and loc or "Unknown"),
-        hasCompany and (#company + 10) or 0,
-        hasSystem  and (#system  + 8)  or 0,
-        hasCartel  and (#cartel  + 8)  or 0)
+        hasCompany   and (#company   + 10) or 0,
+        hasSystem    and (#system    + 8)  or 0,
+        hasCartel    and (#cartel    + 8)  or 0,
+        hasSyndicate and (#syndicate + 12) or 0)
     local bodyNeed = math.ceil(longest * 7.0) + 30 + 62
 
     local W = math.max(360, math.min(580, math.max(headerNeed, bodyNeed)))
@@ -214,14 +225,15 @@ local function initialContentSize(player)
     if hasCompany and isIndustrial then H = H + ROW_H end
     if hasCompany and isMfrFin     then H = H + ROW_H end
     if hasSystem                   then H = H + ROW_H end
+    if hasSyndicate                then H = H + ROW_H end
     if hasCartel                   then H = H + ROW_H end
     if hasShip                     then H = H + ROW_H end
     H = H + (isOffline and 14 or (10 + CMD_H + 22))
-    -- A little slack for the (up to a handful of) titles rows a fresh card
-    -- commonly has; render() re-measures the real content height afterward
-    -- to decide exactly how many actually fit.
+    -- Reserve room for the full title list up front so a fresh card doesn't
+    -- open pre-truncated; render() re-measures the real content height
+    -- afterward in case the pane ends up smaller than this estimate.
     local titleCount = player.titles and #player.titles or 0
-    if titleCount > 0 then H = H + 10 + ROW_H + math.min(titleCount, 4) * 22 end
+    if titleCount > 0 then H = H + 10 + ROW_H + titleCount * 22 end
 
     return W, H
 end
@@ -234,9 +246,21 @@ end
 -- "disposable slot" pattern _applyContent itself uses, rather than hand-tracking
 -- every widget it creates.
 local function render(target, player)
-    if target._f2tCardSlot then pcall(function() target._f2tCardSlot:delete() end) end
+    -- delete() only schedules the old widgets' underlying Qt objects for teardown
+    -- (deleteLater) -- they stay fully visible for at least one event-loop tick
+    -- after this call returns. hide() first is synchronous, so the old slot never
+    -- has a moment on screen next to the new one. The epoch suffix additionally
+    -- guarantees the new widgets never share a name with the still-tearing-down
+    -- old ones (a fresh render() with an identical row layout would otherwise
+    -- create same-named replacements while the old ones are still pending delete).
+    if target._f2tCardSlot then
+        pcall(function() target._f2tCardSlot:hide() end)
+        pcall(function() target._f2tCardSlot:delete() end)
+    end
+    target._f2tCardEpoch = (target._f2tCardEpoch or 0) + 1
+    local epoch = target._f2tCardEpoch
     local _in = Geyser.Container:new({
-        name = target._gid .. "_cardslot", x="0%", y="0%", width="100%", height="100%",
+        name = target._gid .. "_cardslot_" .. epoch, x="0%", y="0%", width="100%", height="100%",
     }, target.content)
     target._f2tCardSlot = _in
 
@@ -260,12 +284,20 @@ local function render(target, player)
     local hasSystem    = system ~= "" and (
         rank == "Engineer"   or rank == "Technocrat" or rank == "Gengineer" or
         rank == "Magnate"    or rank == "Founder"    or rank == "Mogul")
-    local hasCartel    = cartel ~= "" and rank == "Plutocrat"
+    local hasCartel    = cartel ~= "" and (rank == "Plutocrat" or rank == "Syndicrat")
+    local syndicate    = hasCartel and syndicateFor(cartel) or nil
+    local hasSyndicate = syndicate ~= nil
     local hasShip      = ship   ~= ""
     local hasOwnership = (hasCompany and (isIndustrial or isMfrFin)) or hasSystem or hasCartel
 
     local wc = 0
-    local function wid() wc = wc + 1; return string.format("%s_%d", target._gid, wc) end
+    local function wid() wc = wc + 1; return string.format("%s_%d_%d", target._gid, epoch, wc) end
+
+    -- Opaque fill for the slot: target.contentBg is hidden (per the Muxlet content
+    -- convention), so without this, gaps between rows are fully transparent and
+    -- whatever sits behind the pane (another window, chat) shows through.
+    local bg = Geyser.Label:new({ name = wid(), x="0%", y="0%", width="100%", height="100%" }, _in)
+    bg:setStyleSheet(Mux.css and Mux.css("content", target) or "background-color: rgba(15,17,30,255); border: none;")
 
     local rowY = 0
 
@@ -443,6 +475,19 @@ local function render(target, player)
             di_tooltip = "Get system info  (di system " .. system .. ")",
             nav_cmd    = "nav " .. system .. " link",
             galaxy_fn  = function() openInGalaxy(nil, system) end,
+        })
+    end
+
+    -- ── Syndicate (a cartel's parent — shown above the cartel it comes from) ───
+    if hasSyndicate then
+        addLinkRow({
+            icon       = "🏛️",
+            label      = "Syndicate",
+            text       = syndicate,
+            text_color = "rgba(200, 160, 255, 255)",
+            di_cmd     = "di syndicate " .. syndicate,
+            di_tooltip = "Get syndicate info  (di syndicate " .. syndicate .. ")",
+            galaxy_fn  = function() openInGalaxy(cartel, nil) end,
         })
     end
 

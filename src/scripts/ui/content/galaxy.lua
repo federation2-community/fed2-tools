@@ -316,6 +316,17 @@ local CSS_SCROLL = [[
 -- Each holds its own header/scroll/footer widgets and search state.
 local instances = {}
 
+-- Navigator display preferences. Content-owned (not Muxlet's global settings
+-- system, which is for app-wide options, not a single content instance's own
+-- display prefs) — persisted via buildGalaxyDef's serialize/restore, exactly
+-- how Button Grid's own CONFIG/cfg.locked rides the workspace instead of
+-- Mux.settings. Navigator is a singleton, so one shared table is sufficient.
+local GX_PREFS = {
+    showHeading     = true,
+    showRefreshIcon = true,
+    settingsLocked  = false,
+}
+
 local function ageStr(ts)
     if not ts or ts == 0 then return "never" end
     local age = os.time() - ts
@@ -550,7 +561,7 @@ end
 -- `mux reveal <id>`): openGalaxySettings's Lock toggle sets this; onReveal in
 -- buildGalaxyDef (wired to `mux reveal`) is the only way back.
 local function settingsIconLocked()
-    return f2t_settings_get("galaxy", "settings_icon_locked") == true
+    return GX_PREFS.settingsLocked
 end
 
 -- Force an immediate titlebar re-layout after a visibility flag changes
@@ -592,29 +603,35 @@ local function openGalaxySettings(target)
 
     local d = Mux.createDialog({
         title = "Galaxy Navigator Settings — " .. Mux._targetPath(target),
-        width = 380, height = 260, singleton = "f2t_galaxy_settings_" .. (target.id or gid),
+        width = 380, height = 220, singleton = "f2t_galaxy_settings_" .. (target.id or gid),
         contextMenu = false,
     })
     if not d then return end
     if d.contentBg then d.contentBg:echo(""); d.contentBg:hide() end
 
+    -- Visibility toggles only — Refresh is its own titlebar/menu action (see
+    -- buildGalaxyDef's titlebarElements), not a button living in here.
     local rows = {
-        { type = "button", label = "🔄  Refresh Now (di systems)", _noReset = true,
-          desc = "Last refresh: " .. ageStr(F2T_GALAXY.builtAt),
-          onClick = function() f2t_galaxy_scrape() end },
         { label = "Show Heading", type = "toggle",
           desc = "Show the '🔭 Galaxy Navigator' title inside the panel; hiding it collapses that space.",
           readFn = function() return inst.showHeading end,
           writeFn = function(v)
               inst.showHeading = v
-              f2t_settings_set("galaxy", "show_heading", v)
+              GX_PREFS.showHeading = v
               relayoutTopbar(inst)
+          end },
+        { label = "Show Refresh Icon", type = "toggle",
+          desc = "Show the refresh (🔄) control on the titlebar / right-click menu.",
+          readFn = function() return GX_PREFS.showRefreshIcon end,
+          writeFn = function(v)
+              GX_PREFS.showRefreshIcon = v
+              refreshOwningTitlebar(target)
           end },
         { label = "Lock (hide settings icon)", type = "toggle",
           desc = "Hide the settings wrench so the panel looks final. Bring it back with:  mux reveal <pane id>",
           readFn = function() return settingsIconLocked() end,
           writeFn = function(v)
-              f2t_settings_set("galaxy", "settings_icon_locked", v)
+              GX_PREFS.settingsLocked = v
               refreshOwningTitlebar(target)
           end },
     }
@@ -666,9 +683,7 @@ local function buildPanel(target)
     inst.title:setStyleSheet("background-color:transparent; color:#c8c8d0; font-size:11px; font-weight:bold;")
     inst.title:echo("🔭 Galaxy Navigator")
 
-    local showHeadingInit = f2t_settings_get("galaxy", "show_heading")
-    if showHeadingInit == nil then showHeadingInit = true end
-    inst.showHeading = showHeadingInit
+    inst.showHeading = GX_PREFS.showHeading
 
     -- Row 2: search box (fills) + clear (✕) square on the far right
     inst.searchCmd = Geyser.CommandLine:new({
@@ -787,16 +802,29 @@ local function buildGalaxyDef()
         -- find "the" navigator without fed2-tools keeping its own pane reference.
         singleton   = true,
 
-        -- One wrench publishes Refresh + Settings (incl. the heading toggle) to
-        -- the hosting pane/tab's own titlebar + right-click menu — the exact
-        -- same shape as Muxlet's own Button Grid wrench: menuFallbackOnly means
-        -- this row never forces the ⋯ menu open on a full, non-compact pane (it
-        -- only reaches the menu once folded — compact/overflow — or on a tab,
-        -- which has no titlebar at all), and openGalaxySettings's own "Lock"
-        -- toggle hides the wrench itself, restorable only via `mux reveal`.
+        -- Refresh + Settings publish to the hosting pane/tab's own titlebar +
+        -- right-click menu — the same shape as Muxlet's own Button Grid wrench:
+        -- menuFallbackOnly on both means neither ever forces the ⋯ menu open on
+        -- a full, non-compact pane; each only reaches the menu once folded
+        -- (compact/overflow) or on a tab (no titlebar at all). Each element's
+        -- own visibility is a plain "Show ... Icon" toggle in Settings, except
+        -- the settings wrench itself, which uses the stronger Lock + `mux
+        -- reveal` pattern since hiding it would otherwise be a dead end.
         titlebarElements = {
             {
-                id = "galaxy.settings", side = "left", group = "content", order = 0, priority = 100,
+                id = "galaxy.refresh", side = "left", group = "content", order = 0, priority = 100,
+                icon = "🔄", tooltip = "Refresh (di systems)",
+                visible = function() return GX_PREFS.showRefreshIcon end,
+                onClick = function(_ctx, event)
+                    if not event or event.button == "LeftButton" then f2t_galaxy_scrape() end
+                end,
+                menuText = function() return "🔄  Refresh — last: " .. ageStr(F2T_GALAXY.builtAt) end,
+                menuGroup = "info", menuOrder = 90,
+                menuFallbackOnly = true,
+                run = function() f2t_galaxy_scrape() end,
+            },
+            {
+                id = "galaxy.settings", side = "left", group = "content", order = 1, priority = 101,
                 icon = "🔧", tooltip = "Galaxy Navigator settings",
                 visible = function() return not settingsIconLocked() end,
                 onClick = function(ctx, event)
@@ -824,13 +852,28 @@ local function buildGalaxyDef()
             if instances[target._gid] then populate(target._gid) end
         end,
 
-        serialize = function(_target) return {} end,     -- data is global; nothing per-instance
-        restore   = function(_target, _data) end,
+        -- GX_PREFS rides the workspace with this one singleton target, exactly
+        -- how Button Grid's serialize/restore carries its own CONFIG.
+        serialize = function(_target)
+            return {
+                showHeading     = GX_PREFS.showHeading,
+                showRefreshIcon = GX_PREFS.showRefreshIcon,
+                settingsLocked  = GX_PREFS.settingsLocked,
+            }
+        end,
+        restore = function(target, data)
+            if type(data) ~= "table" then return end
+            if type(data.showHeading)     == "boolean" then GX_PREFS.showHeading     = data.showHeading end
+            if type(data.showRefreshIcon) == "boolean" then GX_PREFS.showRefreshIcon = data.showRefreshIcon end
+            if type(data.settingsLocked)  == "boolean" then GX_PREFS.settingsLocked  = data.settingsLocked end
+            local inst = instances[target._gid]
+            if inst then inst.showHeading = GX_PREFS.showHeading; relayoutTopbar(inst) end
+        end,
         -- `mux reveal <pane id>` clears the settings-wrench lock — the exact
         -- escape hatch Button Grid's own onReveal uses to undo its wrench lock.
         onReveal = function(target)
             if settingsIconLocked() then
-                f2t_settings_set("galaxy", "settings_icon_locked", false)
+                GX_PREFS.settingsLocked = false
                 refreshOwningTitlebar(target)
             end
             populate(target._gid)

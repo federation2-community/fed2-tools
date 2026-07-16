@@ -10,14 +10,18 @@
 -- exit.lua's GMCP room handler on every room entry and just rebuilds the
 -- room's "jump ___" special exits from that data each time.
 
--- Collect matching commands first, then remove them in a separate pass —
--- calling removeSpecialExit while iterating the same table with pairs() is
--- unsafe and can silently skip entries.
+-- getSpecialExits(room_id) is keyed by DESTINATION ROOM NUMBER, with each
+-- value a table of command strings leading there — NOT keyed by command
+-- text. getSpecialExitsSwap(room_id) is the one keyed by command string
+-- (confirmed via direct testing: its keys are the "jump ___" text). Collect
+-- matching commands first, then remove them in a separate pass — calling
+-- removeSpecialExit while iterating the same table with pairs() is unsafe
+-- and can silently skip entries.
 local function clearJumpExits(room_id)
     if not room_id or not roomExists(room_id) then return end
     local to_remove = {}
-    for command, _ in pairs(getSpecialExits(room_id)) do
-        if string.match(command, "^jump ") then
+    for command, _ in pairs(getSpecialExitsSwap(room_id) or {}) do
+        if type(command) == "string" and string.match(command, "^jump ") then
             table.insert(to_remove, command)
         end
     end
