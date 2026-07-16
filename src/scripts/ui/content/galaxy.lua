@@ -546,6 +546,22 @@ local function galaxyInstFor(ctx)
     return surf and instances[surf._gid]
 end
 
+-- "galaxy.heading" hides itself once locked, same pattern as Muxlet's own
+-- Button Grid wrench (its "Lock (hide editor)" setting + `mux reveal <id>`):
+-- the menu-only "galaxy.heading.hide" row below sets the lock; onReveal in
+-- buildGalaxyDef (wired to `mux reveal`) is the only way back.
+local function headingIconHidden()
+    return f2t_settings_get("galaxy", "heading_icon_hidden") == true
+end
+
+-- Force an immediate titlebar re-layout after a visibility flag changes
+-- outside the normal click path (locking/revealing an icon).
+local function refreshOwningTitlebar(ctx)
+    local host = ctx and (ctx.tab or ctx.pane)
+    local p = host and (host.pane or host)
+    if p and p._layoutTitlebarButtons then p:_layoutTitlebarButtons() end
+end
+
 -- ── Build the header / scroll / footer panel into a content target ────────────
 local function buildPanel(target)
     local gid = target._gid
@@ -686,14 +702,19 @@ local function buildGalaxyDef()
         singleton   = true,
 
         -- Refresh and the heading-hide toggle publish to the hosting pane/tab's
-        -- own titlebar + right-click menu (mirrors Muxlet's own Button Grid
-        -- wrench icon) instead of drawing in-content icon buttons. Muxlet's
-        -- per-element "hide from titlebar" (right-click > Properties) already
-        -- covers hiding either of these individually — nothing extra needed here.
+        -- own titlebar + right-click menu instead of drawing in-content icon
+        -- buttons. "galaxy.refresh" opts into Muxlet's generic per-element
+        -- Properties hide toggle (hideable=true). "galaxy.heading" instead uses
+        -- Button Grid's own wrench-lock pattern (a menu-only "…hide" row sets a
+        -- persisted flag its `visible` checks; `mux reveal` is the only way
+        -- back) — the "set it once, then declutter" case Properties doesn't
+        -- cover as directly, since it's a per-workspace-node override rather
+        -- than a global settings.lua flag.
         titlebarElements = {
             {
                 id = "galaxy.refresh", side = "left", group = "content", order = 0, priority = 100,
                 icon = "🔄", tooltip = "Refresh (di systems)",
+                hideable = true, hideLabel = "Refresh Icon",
                 onClick = function(_ctx, event)
                     if event and event.button ~= "LeftButton" then return end
                     f2t_galaxy_scrape()
@@ -705,6 +726,7 @@ local function buildGalaxyDef()
             {
                 id = "galaxy.heading", side = "left", group = "content", order = 1, priority = 101,
                 icon = "🏷", tooltip = "Toggle the in-panel title",
+                visible = function() return not headingIconHidden() end,
                 onClick = function(ctx, event)
                     if event and event.button ~= "LeftButton" then return end
                     local inst = galaxyInstFor(ctx)
@@ -726,6 +748,20 @@ local function buildGalaxyDef()
                     applyHeadingVisibility(inst)
                 end,
             },
+            {
+                -- Menu-only: this row never itself becomes a titlebar icon, so
+                -- there's nothing recursive to hide. Once clicked, "galaxy.heading"
+                -- above disappears until `mux reveal <pane id>` clears the lock
+                -- (see onReveal below) — same escape hatch Button Grid's lock uses.
+                id = "galaxy.heading.hide", side = "left", group = "content", order = 2, priority = 200,
+                iconable = false,
+                menuText = "🔒  Hide heading-toggle icon (mux reveal to restore)",
+                menuGroup = "info", menuOrder = 92,
+                run = function(ctx)
+                    f2t_settings_set("galaxy", "heading_icon_hidden", true)
+                    refreshOwningTitlebar(ctx)
+                end,
+            },
         },
 
         apply = function(target)
@@ -743,7 +779,16 @@ local function buildGalaxyDef()
 
         serialize = function(_target) return {} end,     -- data is global; nothing per-instance
         restore   = function(_target, _data) end,
-        onReveal  = function(target) populate(target._gid) end,
+        -- `mux reveal <pane id>` clears the heading-icon lock, same escape hatch
+        -- Button Grid's own onReveal uses to undo its wrench lock.
+        onReveal = function(target)
+            if headingIconHidden() then
+                f2t_settings_set("galaxy", "heading_icon_hidden", false)
+                local p = target.pane or target
+                if p._layoutTitlebarButtons then p:_layoutTitlebarButtons() end
+            end
+            populate(target._gid)
+        end,
     }
 end
 

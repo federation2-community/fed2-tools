@@ -19,16 +19,6 @@ F2T_SPEEDWALK_OWNER                = nil
 F2T_SPEEDWALK_ON_INTERRUPT         = nil
 F2T_SPEEDWALK_BRIEF_SWITCHED       = false
 
--- room_id -> how many times this speedwalk has proactively resynced that
--- room's jump exits before sending a "jump ___" step. Bounds the self-heal
--- loop in f2t_map_speedwalk_next_step() below: if a room's probe never
--- settles into "not stale" (e.g. "jump" never yields a recognizable
--- response there), we fall back to sending the command as-is after a couple
--- of tries rather than resyncing forever — the normal timeout/retry/give-up
--- path in f2t_map_speedwalk_handle_move_failure is what bounds that case.
-local jump_sync_retries = {}
-local JUMP_SYNC_RETRY_CAP = 2
-
 function f2t_map_set_nav_owner(owner, on_interrupt)
     F2T_SPEEDWALK_OWNER        = owner
     F2T_SPEEDWALK_ON_INTERRUPT = on_interrupt
@@ -64,7 +54,6 @@ function doSpeedWalk()
     F2T_SPEEDWALK_MOVE_TIMEOUT_ID      = nil
     F2T_SPEEDWALK_CONSECUTIVE_FAILURES = 0
     F2T_SPEEDWALK_BRIEF_SWITCHED       = false
-    jump_sync_retries                  = {}
     local path_length = #speedWalkDir
     cecho(string.format("\n<green>[map]<reset> Speedwalking (%d steps)\n", path_length))
     if path_length >= 3 and f2t_settings_get("map", "speedwalk_brief") and not F2T_EXPLORE_BRIEF_OWNER then
@@ -102,37 +91,6 @@ function f2t_map_speedwalk_next_step()
     end
     local direction = F2T_SPEEDWALK_DIR[F2T_SPEEDWALK_CURRENT_STEP]
     if f2t_map_handle_special_movement(direction) then return end
-
-    -- A "jump ___" step relies on cached special-exit data that can be
-    -- stale (a syndicate beacon build changes which destinations are valid)
-    -- or already being refreshed right now (e.g. the passive per-visit
-    -- check just fired for this room on arrival, moments before this step
-    -- runs). Sending our own "jump X" while a probe is in flight puts two
-    -- "jump"-family responses in the stream at once and corrupts both, so
-    -- wait for it to settle first — refreshing proactively if the data is
-    -- just stale, not yet in flight — then recompute from the corrected
-    -- data instead of blindly sending a command that might already be wrong.
-    if type(direction) == "string" and direction:match("^jump ") then
-        local current_room_id = F2T_MAP_CURRENT_ROOM_ID
-        local busy = F2T_MAP_JUMP_CAPTURE.expecting or F2T_MAP_JUMP_CAPTURE.active
-        local retries = jump_sync_retries[current_room_id] or 0
-        f2t_debug_log("[map/speedwalk] next_step: about to send '%s' from room=%s (busy=%s retries=%d/%d)",
-            direction, tostring(current_room_id), tostring(busy), retries, JUMP_SYNC_RETRY_CAP)
-        if not busy and retries < JUMP_SYNC_RETRY_CAP and f2t_map_jump_exit_needs_sync(current_room_id) then
-            -- true only if a probe actually started; if it couldn't (e.g. the
-            -- room is missing its system userdata), fall through and send
-            -- the command as-is rather than looping on a resync that will
-            -- never succeed.
-            busy = f2t_map_resync_jump_exits(current_room_id)
-            if busy then jump_sync_retries[current_room_id] = retries + 1 end
-        end
-        if busy then
-            f2t_debug_log("[map/speedwalk] next_step: deferring '%s', waiting on jump sync first", direction)
-            f2t_map_wait_for_jump_sync(f2t_map_speedwalk_recompute_path)
-            return
-        end
-    end
-
     F2T_SPEEDWALK_LAST_COMMAND      = direction
     F2T_SPEEDWALK_EXPECTED_ROOM_ID  = tonumber(F2T_SPEEDWALK_PATH[F2T_SPEEDWALK_CURRENT_STEP])
     F2T_SPEEDWALK_WAITING_FOR_MOVE  = true
@@ -353,38 +311,6 @@ function f2t_map_speedwalk_handle_move_failure()
     end
     cecho(string.format("\n<yellow>[map]<reset> Movement erred, recomputing path... (attempt %d/%d)\n",
         F2T_SPEEDWALK_CONSECUTIVE_FAILURES, max_retries))
-
-    -- A failed "jump ___" step is proof its cached special exit is wrong
-    -- right now — regardless of what f2t_map_jump_exit_needs_sync's TTL
-    -- stamp claims (e.g. an earlier interleaved/corrupted probe could have
-    -- stamped a "fresh" sync despite capturing bad data, or a beacon change
-    -- landed within the TTL window). Force a resync before blindly
-    -- recomputing against the same bad data again. Shares its retry budget
-    -- with the proactive check in f2t_map_speedwalk_next_step so a room
-    -- that can never sync falls through to the ordinary give-up above
-    -- instead of looping.
-    local failed_room = F2T_MAP_CURRENT_ROOM_ID
-    f2t_debug_log("[map/speedwalk] handle_move_failure: last_command='%s' failed_room=%s",
-        tostring(F2T_SPEEDWALK_LAST_COMMAND), tostring(failed_room))
-    if F2T_SPEEDWALK_LAST_COMMAND and F2T_SPEEDWALK_LAST_COMMAND:match("^jump ") and failed_room then
-        local retries = jump_sync_retries[failed_room] or 0
-        f2t_debug_log("[map/speedwalk] handle_move_failure: jump step failed, retries=%d/%d",
-            retries, JUMP_SYNC_RETRY_CAP)
-        if retries < JUMP_SYNC_RETRY_CAP then
-            local busy = F2T_MAP_JUMP_CAPTURE.expecting or F2T_MAP_JUMP_CAPTURE.active
-            if not busy then
-                busy = f2t_map_resync_jump_exits(failed_room)
-                if busy then jump_sync_retries[failed_room] = retries + 1 end
-            end
-            if busy then
-                f2t_debug_log("[map/speedwalk] handle_move_failure: forcing resync before recompute")
-                f2t_map_wait_for_jump_sync(f2t_map_speedwalk_recompute_path)
-                return
-            end
-        end
-    end
-
-    f2t_debug_log("[map/speedwalk] handle_move_failure: recomputing without resync")
     f2t_map_speedwalk_recompute_path()
 end
 

@@ -29,25 +29,6 @@ local STYLE = {
     self_tell = { gutterHex = "#ff8888", textHex = "#ff8888" },
 }
 
--- Rank → cecho color name for speaker names (mirrors who.lua's palette).
-local RANK_CECHO = {
-    ["Trader"]        = "mint_cream",
-    ["Merchant"]      = "mint_cream",
-    ["Engineer"]      = "ansiCyan",
-    ["Mogul"]         = "ansiCyan",
-    ["Magnate"]       = "ansiCyan",
-    ["Technocrat"]    = "ansiCyan",
-    ["Gengineer"]     = "ansiCyan",
-    ["Founder"]       = "ansiCyan",
-    ["Manufacturer"]  = "ansiGreen",
-    ["Industrialist"] = "ansiGreen",
-    ["Financier"]     = "ansiGreen",
-    ["Plutocrat"]     = "ansiRed",
-    ["Syndicrat"]     = "dark_khaki",
-    ["Commander"]     = "dark_violet",
-    ["Groundhog"]     = "dark_violet",
-}
-
 local FILTERS = {
     { id = "all",  label = "A", matches = nil,                                tip = "Show all messages" },
     { id = "com",  label = "C", matches = { com = true, self_com = true },    tip = "Com channel only" },
@@ -60,22 +41,29 @@ local instances = {}
 
 -- ── Name coloring ─────────────────────────────────────────────────────────────
 
-local function rankCecho(name)
+-- decho tag for a name with unknown/unrecorded rank (mirrors who.lua's RC_DEFAULT).
+local UNKNOWN_RANK_DECHO = "<200,200,200>"
+
+-- Colors by the sender's last known rank regardless of online status —
+-- player_db keeps a player's rank after they log out, so this only falls
+-- back to gray for names we have never seen a rank for at all.
+local function rankDecho(name)
     if f2t_player_db_get then
         local entry = f2t_player_db_get(name)
-        if entry and entry.rank and RANK_CECHO[entry.rank] then
-            return "<" .. RANK_CECHO[entry.rank] .. ">", entry.rank
+        if entry and entry.rank then
+            local tag = f2t_rank_color_decho(entry.rank)
+            if tag then return tag, entry.rank end
         end
     end
-    return "<dim_gray>", nil
+    return UNKNOWN_RANK_DECHO, nil
 end
 
 -- ── Rendering ─────────────────────────────────────────────────────────────────
 
 -- Render one record into an instance's console.
 --   isCont = true: same speaker+type as previous message — colored pipe only.
--- hecho carries #hex prefixes; cecho carries <colorname> tags. Never mixed in
--- one call.
+-- hecho carries #hex prefixes, cecho carries <colorname> tags, decho carries
+-- <r,g,b> tags (used for exact rank-color matches). Never mixed in one call.
 local function renderRecord(inst, r, isCont)
     local mc = inst.console
     if not mc then return end
@@ -107,7 +95,7 @@ local function renderRecord(inst, r, isCont)
         return
     end
 
-    local nc, rank = rankCecho(r.from)
+    local nc, rank = rankDecho(r.from)
     local hint     = rank and (rank .. " " .. r.from) or r.from
     local from     = r.from
 
@@ -117,7 +105,7 @@ local function renderRecord(inst, r, isCont)
         mc:hecho(st.gutterHex .. "❮❮ ")
     end
 
-    mc:cechoLink(
+    mc:dechoLink(
         nc .. "<b>" .. from .. "</b><reset>",
         function()
             if f2tPlayerCardShowOrRaiseByName then f2tPlayerCardShowOrRaiseByName(from) end
@@ -250,6 +238,7 @@ local function buildChatDef()
             {
                 id = "chat.timestamps", side = "left", group = "content", order = 0, priority = 100,
                 icon = "⏱", tooltip = "Toggle timestamps",
+                hideable = true, hideLabel = "Timestamps Icon",
                 onClick = function(ctx, event)
                     if event and event.button ~= "LeftButton" then return end
                     local inst = chatInstFor(ctx)
@@ -274,6 +263,7 @@ local function buildChatDef()
             {
                 id = "chat.filter", side = "left", group = "content", order = 1, priority = 101,
                 icon = "🔎", tooltip = "Cycle message filter (all / com / tell / say)",
+                hideable = true, hideLabel = "Filter Icon",
                 onClick = function(ctx, event)
                     if event and event.button ~= "LeftButton" then return end
                     local inst = chatInstFor(ctx)

@@ -27,27 +27,6 @@ elseif subcommand == "off" then
 elseif subcommand == "sync" then
     f2t_map_sync()
 
-elseif subcommand == "resync" then
-    local rest = args:match("^resync%s*(.*)") or ""
-
-    if f2t_handle_help("map resync", rest) then return end
-
-    -- Jump-exit resync only works for the room the player is actually
-    -- standing in right now — the "jump" probe's answer depends on the
-    -- character's real in-game location, not Mudlet's room_id bookkeeping,
-    -- so a bulk "resync every mapped link room" can't be done soundly
-    -- without physically speedwalking to each one (that's what
-    -- "map explore" is for, not this).
-    if not F2T_MAP_CURRENT_ROOM_ID then
-        cecho("\n<red>[map]<reset> No current room.\n")
-        return
-    end
-    if f2t_map_resync_jump_exits(F2T_MAP_CURRENT_ROOM_ID) then
-        cecho("\n<green>[map]<reset> Resyncing jump exits for the current room...\n")
-    else
-        cecho("\n<orange>[map]<reset> A jump-exit probe is already in progress; try again shortly.\n")
-    end
-
 elseif subcommand == "clear" then
     local confirm = args:match("^clear%s+(.+)")
 

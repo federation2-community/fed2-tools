@@ -44,18 +44,6 @@
     "patterns": [{"pattern": "^Cartels operating in this galaxy:$", "type": "regex"}]
   },
   {
-    "name": "jump_capture_line",
-    "patterns": [{"pattern": "^\\s+(\\S.*)$", "type": "regex"}]
-  },
-  {
-    "name": "jump_capture_start",
-    "patterns": [
-      {"pattern": "Inter-Syndicate destinations available:", "type": "substring"},
-      {"pattern": "Intra-Syndicate cartel destinations available:", "type": "substring"},
-      {"pattern": "Local destinations available:", "type": "substring"}
-    ]
-  },
-  {
     "name": "special_exit_invalid_command",
     "patterns": [{"pattern": "^I'm sorry I don't understand you\\. Can you put that a different way\\?$", "type": "regex"}]
   },

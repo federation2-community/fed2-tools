@@ -85,7 +85,7 @@ function f2t_map_process_exits(current_room_id, gmcp_exits, gmcp_room_data)
         end
     end
 
-    for direction, dest_id in pairs(current_exits) do
+    for direction in pairs(current_exits) do
         local normalized_dir = f2t_map_normalize_direction(direction)
         if not seen_directions[direction] and not seen_directions[normalized_dir] then
             setExit(current_room_id, -1, f2t_map_direction_to_number(direction))
@@ -147,7 +147,7 @@ end
 function f2t_map_process_special_exits(current_room_id, gmcp_room_data)
     if not current_room_id or not roomExists(current_room_id) or not gmcp_room_data then return end
     if gmcp_room_data.flags then
-        f2t_map_process_link_room(current_room_id, gmcp_room_data.flags)
+        f2t_map_process_link_room(current_room_id, gmcp_room_data.flags, gmcp_room_data.jumps)
     end
     if gmcp_room_data.board or gmcp_room_data.orbit then
         local board_hash = gmcp_room_data.board or gmcp_room_data.orbit

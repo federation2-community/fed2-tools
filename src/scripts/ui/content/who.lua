@@ -15,24 +15,6 @@ local H_COL     = 20    -- column header bar height (px)
 local WHO_ROW_H = 22    -- row height (px)
 local SB_W      = 17    -- scrollbar pixel allowance
 
--- Rank → HTML hex color (inline-style in Labels; mirrors archive's RANK_COLOR + _html_cc)
-local RANK_COLOR = {
-    ["Trader"]        = "#f5fffa",
-    ["Merchant"]      = "#f5fffa",
-    ["Engineer"]      = "#00cccc",
-    ["Mogul"]         = "#00cccc",
-    ["Magnate"]       = "#00cccc",
-    ["Technocrat"]    = "#00cccc",
-    ["Gengineer"]     = "#00cccc",
-    ["Founder"]       = "#00cccc",
-    ["Manufacturer"]  = "#00cc44",
-    ["Industrialist"] = "#00cc44",
-    ["Financier"]     = "#00cc44",
-    ["Plutocrat"]     = "#ff5555",
-    ["Syndicrat"]     = "#808000",
-    ["Commander"]     = "#9932cc",
-    ["Groundhog"]     = "#9932cc",
-}
 local RC_DEFAULT = "#c8c8c8"
 local RC_OFFLINE = "#888888"
 local RC_STAFF   = "#6b8e23"   -- Plutocrat with a staff role
@@ -56,7 +38,7 @@ local instances = {}
 local function rankColor(row)
     if row.is_online == false then return RC_OFFLINE end
     if row.rank == "Plutocrat" and (row.staff or "") ~= "" then return RC_STAFF end
-    return RANK_COLOR[row.rank] or RC_DEFAULT
+    return f2t_rank_color_hex(row.rank) or RC_DEFAULT
 end
 
 local function buildTableData(showAll)

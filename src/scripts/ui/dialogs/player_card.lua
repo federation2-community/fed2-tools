@@ -21,31 +21,12 @@ local _cardsByName = {}   -- player name → MuxPane
 
 -- ── Rank → accent color (pane border + titlebar name) ─────────────────────────
 
-local RANK_CARD_COLOR = {
-    ["Groundhog"]     = "rgba(110, 40, 190, 255)",
-    ["Commander"]     = "rgba(110, 40, 190, 255)",
-    ["Captain"]       = "rgba(180, 180, 230, 255)",
-    ["Adventurer"]    = "rgba(180, 180, 230, 255)",
-    ["Merchant"]      = "rgba(195, 235, 195, 255)",
-    ["Trader"]        = "rgba(195, 235, 195, 255)",
-    ["Industrialist"] = "rgba(50, 205, 90, 255)",
-    ["Manufacturer"]  = "rgba(50, 205, 90, 255)",
-    ["Financier"]     = "rgba(50, 205, 90, 255)",
-    ["Mogul"]         = "rgba(0, 215, 235, 255)",
-    ["Engineer"]      = "rgba(0, 215, 235, 255)",
-    ["Technocrat"]    = "rgba(0, 215, 235, 255)",
-    ["Gengineer"]     = "rgba(0, 215, 235, 255)",
-    ["Magnate"]       = "rgba(0, 215, 235, 255)",
-    ["Founder"]       = "rgba(0, 215, 235, 255)",
-    ["Plutocrat"]     = "rgba(215, 65, 65, 255)",
-    ["Syndicrat"]     = "rgba(128, 128, 0, 255)",
-}
 local CARD_COLOR_DEFAULT = "rgba(120, 125, 155, 255)"
 
 -- Rank color persists whether the player is online or not — only the who
 -- list's own row grays out for offline; the card keeps identifying the rank.
 local function accentFor(player)
-    return RANK_CARD_COLOR[player.rank] or CARD_COLOR_DEFAULT
+    return f2t_rank_color_rgba(player.rank) or CARD_COLOR_DEFAULT
 end
 
 -- ── Button styles ─────────────────────────────────────────────────────────────

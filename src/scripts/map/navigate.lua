@@ -18,46 +18,25 @@ function f2t_map_navigate(destination)
         F2T_SPEEDWALK_LAST_RESULT = "completed"
         return true
     end
-
-    local function computeAndWalk()
-        local success = getPath(current_room_id, target_id)
-        if not success then
-            local current_area = getRoomArea(current_room_id)
-            local target_area  = getRoomArea(target_id)
-            cecho("\n<red>[map]<reset> No path found to destination\n")
-            cecho(string.format("\n<dim_grey>Current: Room %d (%s)<reset>\n",
-                current_room_id, current_area and getRoomAreaName(current_area) or "unknown"))
-            cecho(string.format("<dim_grey>Target: Room %d (%s)<reset>\n",
-                target_id, target_area and getRoomAreaName(target_area) or "unknown"))
-            if current_area ~= target_area then
-                cecho("\n<yellow>[map]<reset> Rooms are in different areas - make sure areas are connected\n")
-            end
-            return false
+    local success = getPath(current_room_id, target_id)
+    if not success then
+        local current_area = getRoomArea(current_room_id)
+        local target_area  = getRoomArea(target_id)
+        cecho("\n<red>[map]<reset> No path found to destination\n")
+        cecho(string.format("\n<dim_grey>Current: Room %d (%s)<reset>\n",
+            current_room_id, current_area and getRoomAreaName(current_area) or "unknown"))
+        cecho(string.format("<dim_grey>Target: Room %d (%s)<reset>\n",
+            target_id, target_area and getRoomAreaName(target_area) or "unknown"))
+        if current_area ~= target_area then
+            cecho("\n<yellow>[map]<reset> Rooms are in different areas - make sure areas are connected\n")
         end
-        if #speedWalkDir == 0 then
-            cecho("\n<green>[map]<reset> Already at destination\n")
-            F2T_SPEEDWALK_LAST_RESULT = "completed"
-            return true
-        end
-        doSpeedWalk()
+        return false
+    end
+    if #speedWalkDir == 0 then
+        cecho("\n<green>[map]<reset> Already at destination\n")
+        F2T_SPEEDWALK_LAST_RESULT = "completed"
         return true
     end
-
-    -- Starting from a link room: getPath() below reads whatever "jump ___"
-    -- special exits are already cached, but a syndicate's beacon builds can
-    -- change which destinations are actually valid from here since the last
-    -- passive sync (see JUMP_SYNC_TTL in jump.lua). We're standing here
-    -- right now, so force a fresh probe and wait for it rather than routing
-    -- on data that might already be stale.
-    if f2t_map_room_has_flag(current_room_id, "link") then
-        f2t_debug_log("[map/navigate] current room %s is a link room, forcing jump-exit resync before routing",
-            tostring(current_room_id))
-        f2t_map_resync_jump_exits(current_room_id)
-        if F2T_MAP_JUMP_CAPTURE.expecting or F2T_MAP_JUMP_CAPTURE.active then
-            f2t_map_wait_for_jump_sync(computeAndWalk)
-            return true
-        end
-    end
-
-    return computeAndWalk()
+    doSpeedWalk()
+    return true
 end

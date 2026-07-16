@@ -19,24 +19,6 @@
 local H_HDR = 24   -- header strip height (px)
 local ROW_H = 26   -- player row height (px)
 
--- Rank → HTML hex color (mirrors who.lua's RANK_COLOR palette).
-local RANK_COLOR = {
-    ["Trader"]        = "#f5fffa",
-    ["Merchant"]      = "#f5fffa",
-    ["Engineer"]      = "#00cccc",
-    ["Mogul"]         = "#00cccc",
-    ["Magnate"]       = "#00cccc",
-    ["Technocrat"]    = "#00cccc",
-    ["Gengineer"]     = "#00cccc",
-    ["Founder"]       = "#00cccc",
-    ["Manufacturer"]  = "#00cc44",
-    ["Industrialist"] = "#00cc44",
-    ["Financier"]     = "#00cc44",
-    ["Plutocrat"]     = "#ff5555",
-    ["Syndicrat"]     = "#808000",
-    ["Commander"]     = "#9932cc",
-    ["Groundhog"]     = "#9932cc",
-}
 local RC_DEFAULT = "#c8c8c8"
 
 local NAME_CSS = [[
@@ -132,7 +114,7 @@ local function render(target)
     for i, player in ipairs(players) do
         local name = player.name or "Unknown"
         local rank = player.rank or ""
-        local rc   = RANK_COLOR[rank] or RC_DEFAULT
+        local rc   = f2t_rank_color_hex(rank) or RC_DEFAULT
         local hint = rank ~= "" and (rank .. " " .. name) or name
 
         local rowBg = Geyser.Label:new({

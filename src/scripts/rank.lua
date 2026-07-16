@@ -52,6 +52,56 @@ function f2t_is_rank_exactly(rankName)
     return currentLevel == targetLevel
 end
 
+-- ── Rank → color (matches the game's own `ranks` command output exactly) ──────
+-- Single source of truth: every UI surface (who list, local players, chat,
+-- player card) derives its own format (hex / cecho triplet / rgba) from this
+-- instead of keeping a private, drifting copy.
+F2T_RANK_COLORS = {
+    Groundhog     = "#800080",
+    Commander     = "#800080",
+    Captain       = "#000080",
+    Adventurer    = "#000080",
+    Adventuress   = "#000080",
+    Merchant      = "#ffffff",
+    Trader        = "#ffffff",
+    Industrialist = "#008000",
+    Manufacturer  = "#008000",
+    Financier     = "#008000",
+    Founder       = "#008080",
+    Engineer      = "#008080",
+    Mogul         = "#008080",
+    Technocrat    = "#008080",
+    Gengineer     = "#008080",
+    Magnate       = "#008080",
+    Plutocrat     = "#800000",
+    Syndicrat     = "#808000",
+}
+
+function f2t_rank_color_hex(rankName)
+    return rankName and F2T_RANK_COLORS[rankName] or nil
+end
+
+local function _hexToRgb(hex)
+    return tonumber(hex:sub(2, 3), 16), tonumber(hex:sub(4, 5), 16), tonumber(hex:sub(6, 7), 16)
+end
+
+-- decho foreground tag ("<r,g,b>") for the same rank color. cecho only knows
+-- named colors (and Mudlet's built-ins don't match the game's exact RGB
+-- values), so exact-match rank coloring goes through decho instead.
+function f2t_rank_color_decho(rankName)
+    local hex = f2t_rank_color_hex(rankName)
+    if not hex then return nil end
+    return string.format("<%d,%d,%d>", _hexToRgb(hex))
+end
+
+-- CSS rgba() string for the same rank color, for stylesheet-driven widgets.
+function f2t_rank_color_rgba(rankName, alpha)
+    local hex = f2t_rank_color_hex(rankName)
+    if not hex then return nil end
+    local r, g, b = _hexToRgb(hex)
+    return string.format("rgba(%d, %d, %d, %d)", r, g, b, alpha or 255)
+end
+
 function f2t_check_rank_requirement(requiredRank, featureName)
     if f2t_is_rank_or_above(requiredRank) then return true end
     local currentRank  = f2t_get_rank()

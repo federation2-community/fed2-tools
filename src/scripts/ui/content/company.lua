@@ -627,6 +627,65 @@ local _BTN_DIVIDEND_CSS = actionBtnCss("#e0b84d", "#f0cc66")
 local _BTN_BUY_CSS      = actionBtnCss("#3aa0ff", "#5cb8ff")
 local _BTN_TREASURY_CSS = actionBtnCss("#8888aa", "#aaaacc")
 
+-- ── Data rows (Overview + Financials' stat blocks) ───────────────────────────
+-- Dense label:value rows — closer to the original console's packed text
+-- layout than a grid of bordered tiles, but real widgets (an HTML <table> per
+-- row for font-independent column alignment, not console text), so
+-- percentage geometry still guarantees an exact fit with nothing to scroll.
+
+local _SECTION_HDR_CSS = [[
+    background: transparent; border: none;
+    border-bottom: 1px solid rgba(90, 100, 140, 140);
+]]
+
+local function rowCellHtml(label, value, color)
+    return string.format(
+        "<td style='padding:2px 8px;color:rgba(155,165,200,220);font-size:10px;white-space:nowrap;'>%s</td>" ..
+        "<td style='padding:2px 16px 2px 4px;color:%s;font-size:12px;font-weight:bold;white-space:nowrap;'>%s</td>",
+        label, color or "#e8e8f0", value)
+end
+
+-- Builds an optional section header ("icon TITLE" + divider) followed by
+-- `items` ({label,value,color}) packed `perRow` to a row, each row a single
+-- HTML-table Label (striped for readability). All widgets are appended
+-- directly to inst.widgets. Pass title=nil to skip the header entirely
+-- (used for the identity block, which reads fine without one).
+local function buildStatSection(inst, container, wid, icon, title, items, perRow)
+    perRow = perRow or 2
+    local yTop, hAvail = 0, 100
+    if title then
+        local hdr = Geyser.Label:new({ name = wid(), x = 0, y = 0, width = "100%", height = "22%" }, container)
+        hdr:setStyleSheet(_SECTION_HDR_CSS)
+        hdr:echo(string.format(
+            "<span style='font-size:10px;font-weight:bold;letter-spacing:1px;color:rgba(150,165,210,235);'>" ..
+            "%s&nbsp;%s</span>", icon, title))
+        inst.widgets[#inst.widgets + 1] = hdr
+        yTop, hAvail = 22, 78
+    end
+
+    local n = #items
+    if n == 0 then return end
+    local rowCount = math.max(1, math.ceil(n / perRow))
+    local rowH = hAvail / rowCount
+    for r = 0, rowCount - 1 do
+        local cells = ""
+        for c = 1, perRow do
+            local item = items[r * perRow + c]
+            cells = cells .. (item
+                and rowCellHtml(item.label, item.value, item.color)
+                or  "<td width='50%'></td><td></td>")
+        end
+        local row = Geyser.Label:new({
+            name = wid(), x = 0, y = (yTop + r * rowH) .. "%", width = "100%", height = rowH .. "%",
+        }, container)
+        row:setStyleSheet(r % 2 == 1
+            and "background-color: rgba(255,255,255,12); border:none;"
+            or  "background: transparent; border:none;")
+        row:echo(string.format("<table width='100%%' cellspacing='0' cellpadding='0'><tr>%s</tr></table>", cells))
+        inst.widgets[#inst.widgets + 1] = row
+    end
+end
+
 -- ── Overview panel ────────────────────────────────────────────────────────────
 
 -- Company name (left) + running/frozen status badge (right, click to freeze).
@@ -679,10 +738,13 @@ local function renderOverview(inst)
     -- Vertical sections, weighted so the body always sums to exactly 100% —
     -- nothing is ever clipped or needs to scroll, regardless of which
     -- optional sections (alerts, investors) are present this render.
-    local sections = { { key = "status", weight = 1.2 }, { key = "identity", weight = 1.0 } }
-    if alertCount > 0 then sections[#sections + 1] = { key = "alerts", weight = 0.9 } end
-    sections[#sections + 1] = { key = "financials", weight = 2.4 }
-    if isMfr then sections[#sections + 1] = { key = "investors", weight = 2.4 } end
+    -- Weights are in "row units" — financials/investors carry a header plus
+    -- up to 4 packed rows each, roughly twice identity's row count, so they
+    -- get proportionally more of the body.
+    local sections = { { key = "status", weight = 1.0 }, { key = "identity", weight = 0.6 } }
+    if alertCount > 0 then sections[#sections + 1] = { key = "alerts", weight = 0.6 } end
+    sections[#sections + 1] = { key = "financials", weight = 2.2 }
+    if isMfr then sections[#sections + 1] = { key = "investors", weight = 2.2 } end
 
     local totalWeight = 0
     for _, s in ipairs(sections) do totalWeight = totalWeight + s.weight end
@@ -711,15 +773,14 @@ local function renderOverview(inst)
             local rank  = f2t_get_rank()
             local items = {}
             if c.ceo then
-                items[#items + 1] = { icon = "👤", value = rank and (rank .. " " .. c.ceo) or c.ceo, caption = "CEO" }
+                items[#items + 1] = { label = "CEO", value = rank and (rank .. " " .. c.ceo) or c.ceo }
             end
-            items[#items + 1] = { icon = "🔄", value = tostring(c.total_cycles or 0), caption = "CYCLES RUN" }
+            items[#items + 1] = { label = "Cycles Run", value = tostring(c.total_cycles or 0) }
             if c.ac_cycle then
                 local col = c.ac_cycle <= 1 and "#ff5555" or (c.ac_cycle <= 3 and "#cccc44" or "#00cc44")
-                items[#items + 1] = { icon = "📅", value = c.ac_cycle .. " days", color = col, caption = "ACCOUNTS DUE" }
+                items[#items + 1] = { label = "Accounts Due", value = c.ac_cycle .. " days", color = col }
             end
-            local tiles = buildTileGrid(box, wid, items, 3)
-            for _, t in ipairs(tiles) do inst.widgets[#inst.widgets + 1] = t end
+            buildStatSection(inst, box, wid, nil, nil, items, 2)
 
         elseif s.key == "alerts" then
             local box = sectionBox(s)
@@ -735,30 +796,29 @@ local function renderOverview(inst)
             local box = sectionBox(s)
             local pc = profit >= 0 and "#00cc44" or "#ff5555"
             local items = {
-                { icon = "💰", value = fmtComma(c.cash) .. "ig", color = "#00cccc", caption = "CASH" },
-                { icon = "📈", value = fmtComma(profit) .. "ig", color = pc, caption = "PROFIT" },
+                { label = "Cash",   value = fmtComma(c.cash) .. "ig", color = "#00cccc" },
+                { label = "Profit", value = fmtComma(profit) .. "ig", color = pc },
             }
             if c.tax then
-                items[#items + 1] = { icon = "🏛️", value = fmtComma(c.tax) .. "ig", caption = "TAX PAID" }
+                items[#items + 1] = { label = "Tax Paid", value = fmtComma(c.tax) .. "ig" }
             end
             if c.revenue and c.revenue.income then
-                items[#items + 1] = { icon = "⬆", value = "+" .. fmtComma(c.revenue.income) .. "ig",
-                    color = "#00cc44", caption = "REVENUE" }
+                items[#items + 1] = { label = "Revenue", value = "+" .. fmtComma(c.revenue.income) .. "ig",
+                    color = "#00cc44" }
             end
             if c.revenue and c.revenue.expenses then
-                items[#items + 1] = { icon = "⬇", value = "-" .. fmtComma(c.revenue.expenses) .. "ig",
-                    color = "#ff5555", caption = "EXPENSES" }
+                items[#items + 1] = { label = "Expenses", value = "-" .. fmtComma(c.revenue.expenses) .. "ig",
+                    color = "#ff5555" }
             end
             if c.capital then
                 local ce = tonumber(c.capital.expenditure) or 0
                 local cr = tonumber(c.capital.receipts)    or 0
-                items[#items + 1] = { icon = "📤", value = (ce > 0 and "-" or "") .. fmtComma(ce) .. "ig",
-                    color = ce > 0 and "#ff5555" or nil, caption = "CAPITAL EXP" }
-                items[#items + 1] = { icon = "📥", value = (cr > 0 and "+" or "") .. fmtComma(cr) .. "ig",
-                    color = cr > 0 and "#00cc44" or nil, caption = "CAPITAL REC" }
+                items[#items + 1] = { label = "Capital Exp", value = (ce > 0 and "-" or "") .. fmtComma(ce) .. "ig",
+                    color = ce > 0 and "#ff5555" or nil }
+                items[#items + 1] = { label = "Capital Rec", value = (cr > 0 and "+" or "") .. fmtComma(cr) .. "ig",
+                    color = cr > 0 and "#00cc44" or nil }
             end
-            local tiles = buildTileGrid(box, wid, items, 4)
-            for _, t in ipairs(tiles) do inst.widgets[#inst.widgets + 1] = t end
+            buildStatSection(inst, box, wid, "💰", "FINANCIALS", items, 2)
 
         elseif s.key == "investors" then
             local box = sectionBox(s)
@@ -768,19 +828,18 @@ local function renderOverview(inst)
             local peStr = (sv > 0 and eps > 0) and string.format("%.1f", sv / eps) or "N/A"
             local daCol = da < 20 and "#00cc44" or (da < 50 and "#cccc44" or "#ff5555")
             local items = {
-                { icon = "😠", value = da .. "%", color = daCol, caption = "DISAFFECTION" },
-                { icon = "💹", value = fmtComma(sv) .. "ig", caption = "SHARE PRICE" },
-                { icon = "📊", value = fmtComma(eps) .. "ig/sh", caption = "EPS" },
-                { icon = "⚖", value = peStr, caption = "P/E" },
-                { icon = "🎁", value = fmtComma(div) .. "ig/sh", caption = "DIVIDEND" },
-                { icon = "🧾", value = fmtComma(shares), caption = "SHARES" },
-                { icon = "🏦", value = fmtCompact(sv * shares), caption = "MARKET CAP" },
+                { label = "Disaffection", value = da .. "%", color = daCol },
+                { label = "Share Price",  value = fmtComma(sv) .. "ig" },
+                { label = "EPS",          value = fmtComma(eps) .. "ig/sh" },
+                { label = "P/E",          value = peStr },
+                { label = "Dividend",     value = fmtComma(div) .. "ig/sh" },
+                { label = "Shares",       value = fmtComma(shares) },
+                { label = "Market Cap",   value = fmtCompact(sv * shares) },
             }
             if (c.total_cycles or 0) >= 4 and profit > 0 then
-                items[#items + 1] = { icon = "★", value = "Eligible", color = "#00cc44", caption = "FIN. PROMOTION" }
+                items[#items + 1] = { label = "Fin. Promotion", value = "★ Eligible", color = "#00cc44" }
             end
-            local tiles = buildTileGrid(box, wid, items, 4)
-            for _, t in ipairs(tiles) do inst.widgets[#inst.widgets + 1] = t end
+            buildStatSection(inst, box, wid, "📈", "INVESTORS", items, 2)
         end
     end
 
@@ -1195,20 +1254,33 @@ local function renderFinancials(inst)
         netCapCol = netCap < 0 and "#ff5555" or "#00cc44"
     end
 
-    local items = {
-        { icon = "💹", value = fmtComma(sv) .. "ig", caption = "SHARE PRICE" },
-        { icon = "🏦", value = fmtCompact(sv * shares), caption = "MARKET CAP" },
-        { icon = "📊", value = fmtComma(eps) .. "ig/sh", caption = "EPS" },
-        { icon = "⚖", value = pe, caption = "P/E" },
-        { icon = "🎁", value = fmtComma(div) .. "ig/sh", caption = "DIVIDEND" },
-        { icon = "🔁", value = pd, color = pdCol, caption = "P/D" },
-        { icon = "🧾", value = fmtComma(shares), caption = "TOTAL SHARES" },
-        { icon = "💵", value = payoutStr, color = payoutCol, caption = "PAYOUT RATIO" },
-        { icon = "🏛️", value = taxStr, caption = "TAX RATE" },
-        { icon = "📤", value = netCapStr, color = netCapCol, caption = "NET CAPITAL" },
-    }
-    local tiles = buildTileGrid(statsBox, wid, items, 5)
-    for _, t in ipairs(tiles) do inst.widgets[#inst.widgets + 1] = t end
+    -- Two stacked sections (each 50% of statsBox) mirror the original
+    -- console's Share Stats / Analysis blocks.
+    local shareBox = Geyser.Label:new({
+        name = wid(), x = 0, y = "0%", width = "100%", height = "50%",
+    }, statsBox)
+    shareBox:setStyleSheet("background: transparent; border: none;")
+    inst.widgets[#inst.widgets + 1] = shareBox
+    buildStatSection(inst, shareBox, wid, "💹", "SHARE STATS", {
+        { label = "Share Price",   value = fmtComma(sv) .. "ig" },
+        { label = "Market Cap",    value = fmtCompact(sv * shares) },
+        { label = "EPS",           value = fmtComma(eps) .. "ig/sh" },
+        { label = "P/E",           value = pe },
+        { label = "Dividend",      value = fmtComma(div) .. "ig/sh" },
+        { label = "P/D",           value = pd, color = pdCol },
+        { label = "Total Shares",  value = fmtComma(shares) },
+    }, 2)
+
+    local analysisBox = Geyser.Label:new({
+        name = wid(), x = 0, y = "50%", width = "100%", height = "50%",
+    }, statsBox)
+    analysisBox:setStyleSheet("background: transparent; border: none;")
+    inst.widgets[#inst.widgets + 1] = analysisBox
+    buildStatSection(inst, analysisBox, wid, "📐", "ANALYSIS", {
+        { label = "Payout Ratio", value = payoutStr, color = payoutCol },
+        { label = "Tax Rate",     value = taxStr },
+        { label = "Net Capital",  value = netCapStr, color = netCapCol },
+    }, 2)
 
     -- See the matching comment in renderOverview: a live gmcp.char.company
     -- rebuild must reassert hidden state or freshly created tiles leak
