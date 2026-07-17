@@ -24,6 +24,15 @@ Mux.createDeclarativeCondition({
 })
 Mux.createDeclarativeCondition({
     cond = {
+        path = "gmcp.char.vitals.rank",
+        type = "gmcp_equals",
+        value = "Financier"
+    },
+    id = "FinancierRank",
+    label = "FinancierRank"
+})
+Mux.createDeclarativeCondition({
+    cond = {
         path = "gmcp.char.ship",
         type = "gmcp_exists"
     },
@@ -61,29 +70,32 @@ Mux.registerWorkspace("fed2-tools", {
         {
             activeContent = "fed2_local_players",
             anchor = {
-                alongV = 36.950000000001,
+                alongV = 123,
+                priority = 5,
                 v = {
-                    myEdge = "right",
-                    ref = "output",
-                    targetEdge = "right"
+                    myEdge = "left",
+                    ref = "pane_1",
+                    targetEdge = "left"
                 }
             },
             anchorable = true,
             atAnchor = true,
+            bordered = false,
             closeable = false,
             contentState = {},
             contentable = false,
             convertible = false,
             floatH = 86,
-            floatW = 155,
-            floatX = 1890,
-            floatY = 94,
+            floatW = 186,
+            floatX = 2048,
+            floatY = 123,
             floating = true,
             id = "pane_6",
             mainConsoleHost = false,
+            minimizable = false,
+            movable = false,
             name = "Local Players",
             nameAlign = "center",
-            propertiesButton = false,
             renamable = false,
             resizable = false,
             rules = {
@@ -98,7 +110,7 @@ Mux.registerWorkspace("fed2-tools", {
                 }
             },
             showAnchorElement = false,
-            showTitlebar = true,
+            showTitlebar = false,
             type = "pane",
             zoomable = false
         },
@@ -115,14 +127,19 @@ Mux.registerWorkspace("fed2-tools", {
             anchorable = true,
             atAnchor = true,
             closeable = false,
-            contentState = {},
+            contentState = {
+                settingsLocked = true,
+                showHeading = false,
+                showRefreshIcon = true
+            },
             contentable = false,
             convertible = false,
-            floatH = 1099,
+            floatH = 930,
             floatW = 495,
             floatX = 1550,
-            floatY = 79,
+            floatY = 81,
             floating = true,
+            hidden = true,
             id = "pane_7",
             mainConsoleHost = false,
             name = "🔭 Galaxy Navigator",
@@ -300,16 +317,38 @@ Mux.registerWorkspace("fed2-tools", {
                         a = {
                             activeContent = "fed2_player_info",
                             anchorable = true,
+                            bordered = false,
                             closeable = false,
                             contentState = {},
                             contentable = false,
                             convertible = false,
                             id = "pane_3",
                             mainConsoleHost = false,
+                            minimizable = false,
                             movable = false,
                             name = "Top",
                             nameAlign = "center",
                             renamable = false,
+                            rules = {
+                                {
+                                    act = "mux.overlay.disconnected.show",
+                                    actElse = "mux.overlay.disconnected.hide",
+                                    cond = {
+                                        ref = "disconnected"
+                                    },
+                                    enabled = true,
+                                    id = "r16"
+                                },
+                                {
+                                    act = "mux.overlay.connecting.show",
+                                    actElse = "mux.overlay.connecting.hide",
+                                    cond = {
+                                        ref = "connecting"
+                                    },
+                                    enabled = true,
+                                    id = "r18"
+                                }
+                            },
                             showTitlebar = false,
                             splittable = false,
                             swappable = false,
@@ -453,7 +492,7 @@ Mux.registerWorkspace("fed2-tools", {
                     zoomable = false
                 },
                 b = {
-                    activeTabName = "Hauling",
+                    activeTabName = "Company",
                     anchorable = true,
                     bordered = false,
                     closeable = false,
@@ -489,6 +528,24 @@ Mux.registerWorkspace("fed2-tools", {
                                     },
                                     enabled = true,
                                     id = "r6"
+                                },
+                                {
+                                    act = "mux.overlay.disconnected.show",
+                                    actElse = "mux.overlay.disconnected.hide",
+                                    cond = {
+                                        ref = "disconnected"
+                                    },
+                                    enabled = true,
+                                    id = "r12"
+                                },
+                                {
+                                    act = "mux.overlay.connecting.show",
+                                    actElse = "mux.overlay.connecting.hide",
+                                    cond = {
+                                        ref = "connecting"
+                                    },
+                                    enabled = true,
+                                    id = "r13"
                                 }
                             }
                         },
@@ -513,6 +570,24 @@ Mux.registerWorkspace("fed2-tools", {
                                     },
                                     enabled = true,
                                     id = "r5"
+                                },
+                                {
+                                    act = "mux.overlay.disconnected.show",
+                                    actElse = "mux.overlay.disconnected.hide",
+                                    cond = {
+                                        ref = "disconnected"
+                                    },
+                                    enabled = true,
+                                    id = "r14"
+                                },
+                                {
+                                    act = "mux.overlay.connecting.show",
+                                    actElse = "mux.overlay.connecting.hide",
+                                    cond = {
+                                        ref = "connecting"
+                                    },
+                                    enabled = true,
+                                    id = "r15"
                                 }
                             }
                         },
@@ -576,6 +651,28 @@ Mux.registerWorkspace("fed2-tools", {
                                     nameAlign = "center",
                                     propertiesButton = false,
                                     renamable = false
+                                },
+                                {
+                                    _activeContent = "fed2_company_portfolio",
+                                    closeable = false,
+                                    contentState = {},
+                                    contentable = false,
+                                    movable = false,
+                                    name = "Investment",
+                                    nameAlign = "center",
+                                    propertiesButton = false,
+                                    renamable = false,
+                                    rules = {
+                                        {
+                                            act = "mux.showSelf",
+                                            actElse = "mux.hideSelf",
+                                            cond = {
+                                                ref = "FinancierRank"
+                                            },
+                                            enabled = true,
+                                            id = "r11"
+                                        }
+                                    }
                                 },
                                 {
                                     _activeContent = "fed2_company_factories",
