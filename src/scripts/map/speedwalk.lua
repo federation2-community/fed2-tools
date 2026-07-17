@@ -210,7 +210,10 @@ function f2t_map_speedwalk_on_room_change()
             -- unless we do it here: silently recompute the remaining route
             -- against the data we just received, rather than blindly
             -- trusting whatever the original plan assumed for this room.
-            if f2t_map_room_has_flag(current_room, "link") then
+            -- Blind walks (jump chains into unmapped territory) have no
+            -- destination room id; recomputing would abort them, so only
+            -- re-verify planned routes.
+            if F2T_SPEEDWALK_DESTINATION_ROOM_ID and f2t_map_room_has_flag(current_room, "link") then
                 f2t_map_speedwalk_recompute_path(true)
             else
                 f2t_map_speedwalk_next_step()

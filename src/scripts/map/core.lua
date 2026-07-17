@@ -3,6 +3,14 @@
 function f2t_map_handle_gmcp_room()
     if not F2T_MAP_ENABLED then return end
     if not gmcp or not gmcp.room or not gmcp.room.info then return end
+
+    -- Once per session, after the map is definitely loaded: load the
+    -- persisted topology model and re-derive the jump graph from it.
+    if not F2T_MAP_TOPOLOGY_SESSION_REBUILT then
+        F2T_MAP_TOPOLOGY_SESSION_REBUILT = true
+        f2t_map_topology_ensure_loaded()
+        f2t_map_topology_request_rebuild()
+    end
     local room_data = gmcp.room.info
     if not room_data.system or not room_data.area or not room_data.num then return end
 

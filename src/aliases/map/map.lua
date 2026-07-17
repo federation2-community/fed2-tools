@@ -183,6 +183,10 @@ elseif subcommand == "explore" then
     elseif first == "galaxy" then
         f2t_map_explore_galaxy_start()
 
+    elseif first == "syndicate" then
+        local syndicate_name = f2t_parse_rest(words, 2)
+        f2t_map_explore_syndicate_start(syndicate_name)
+
     elseif first == "stop" then
         f2t_map_explore_stop()
 
@@ -494,7 +498,9 @@ elseif subcommand == "exit" then
                     local dest_name = getRoomName(dest_room_id) or "unnamed"
                     local dest_hash = f2t_map_generate_hash_from_room(dest_room_id) or "unknown"
                     if command:match("^__move_no_op_%d+$") then
-                        cecho(string.format("  <yellow>%s<reset> <dim_grey>(auto-transit)<reset> -> <white>%s<reset> <dim_grey>[%d | %s]<reset>\n",
+                        cecho(string.format(
+                            "  <yellow>%s<reset> <dim_grey>(auto-transit)<reset> -> <white>%s<reset>"
+                            .. " <dim_grey>[%d | %s]<reset>\n",
                             command, dest_name, dest_room_id, dest_hash))
                     else
                         cecho(string.format("  <yellow>%s<reset> -> <white>%s<reset> <dim_grey>[%d | %s]<reset>\n",
@@ -513,7 +519,8 @@ elseif subcommand == "exit" then
             if success then
                 local from_name = getRoomName(from_room) or string.format("Room %d", from_room)
                 local to_name = getRoomName(to_room) or string.format("Room %d", to_room)
-                cecho(string.format("\n<green>[map]<reset> Reverse special exit created: <white>%s<reset> -> <white>%s<reset>\n",
+                cecho(string.format(
+                    "\n<green>[map]<reset> Reverse special exit created: <white>%s<reset> -> <white>%s<reset>\n",
                     from_name, to_name))
                 if used_command == "noop" then
                     cecho("\n<dim_grey>  Command: (auto-transit, wait for GMCP)<reset>\n")
@@ -576,7 +583,8 @@ elseif subcommand == "exit" then
                 if success then
                     local from_name = getRoomName(source_room_id) or string.format("Room %d", source_room_id)
                     local to_name = getRoomName(dest_room_id) or string.format("Room %d", dest_room_id)
-                    cecho(string.format("\n<green>[map]<reset> Special exit created: <white>%s<reset> -> <white>%s<reset>\n",
+                    cecho(string.format(
+                        "\n<green>[map]<reset> Special exit created: <white>%s<reset> -> <white>%s<reset>\n",
                         from_name, to_name))
                     if command == "noop" then
                         cecho("\n<dim_grey>  Command: (auto-transit, wait for GMCP)<reset>\n")
@@ -603,7 +611,8 @@ elseif subcommand == "exit" then
                 if success then
                     local from_name = getRoomName(source_room_id) or string.format("Room %d", source_room_id)
                     local to_name = getRoomName(dest_room_id) or string.format("Room %d", dest_room_id)
-                    cecho(string.format("\n<green>[map]<reset> Special exit created: <white>%s<reset> -> <white>%s<reset>\n",
+                    cecho(string.format(
+                        "\n<green>[map]<reset> Special exit created: <white>%s<reset> -> <white>%s<reset>\n",
                         from_name, to_name))
                     if command == "noop" then
                         cecho("\n<dim_grey>  Command: (auto-transit, wait for GMCP)<reset>\n")
@@ -814,7 +823,8 @@ elseif subcommand == "special" then
 
                 local success = f2t_map_special_set_arrival(current_room, command, exec_type)
                 if success then
-                    cecho(string.format("\n<green>[map]<reset> On-arrival command set (<cyan>%s<reset>): <white>%s<reset>\n",
+                    cecho(string.format(
+                        "\n<green>[map]<reset> On-arrival command set (<cyan>%s<reset>): <white>%s<reset>\n",
                         exec_type, command))
                 else
                     cecho("\n<red>[map]<reset> Failed to set on-arrival command\n")
@@ -885,6 +895,26 @@ elseif subcommand == "special" then
     else
         cecho(string.format("\n<red>[map]<reset> Unknown special subcommand: %s\n", special_subcmd))
         f2t_show_help_hint("map special")
+    end
+
+elseif subcommand == "topology" then
+    local rest = args:match("^topology%s*(.*)") or ""
+    if f2t_handle_help("map topology", rest) then return end
+
+    if rest == "" or rest == "show" then
+        f2t_map_topology_show()
+    elseif rest == "sync" then
+        cecho("\n<green>[map]<reset> Syncing galaxy topology...\n")
+        f2t_map_topology_sync()
+    elseif rest == "rebuild" then
+        local rebuilt, skipped, changed = f2t_map_topology_rebuild_exits()
+        cecho(string.format(
+            "\n<green>[map]<reset> Jump exits rebuilt: <white>%d<reset> system(s), %d exit change(s)%s\n",
+            rebuilt, changed,
+            skipped > 0 and string.format(", <yellow>%d skipped<reset> (syndicate unknown)", skipped) or ""))
+    else
+        cecho(string.format("\n<red>[map]<reset> Unknown topology command: %s\n", rest))
+        f2t_show_help_hint("map topology")
     end
 
 elseif subcommand == "export" then

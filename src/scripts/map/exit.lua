@@ -147,7 +147,7 @@ end
 function f2t_map_process_special_exits(current_room_id, gmcp_room_data)
     if not current_room_id or not roomExists(current_room_id) or not gmcp_room_data then return end
     if gmcp_room_data.flags then
-        f2t_map_process_link_room(current_room_id, gmcp_room_data.flags, gmcp_room_data.jumps)
+        f2t_map_process_link_room(current_room_id, gmcp_room_data)
     end
     if gmcp_room_data.board or gmcp_room_data.orbit then
         local board_hash = gmcp_room_data.board or gmcp_room_data.orbit

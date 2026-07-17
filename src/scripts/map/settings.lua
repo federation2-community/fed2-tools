@@ -72,6 +72,12 @@ f2t_settings_register("map", "movement_keys", {
     default     = true,
 })
 
+f2t_settings_register("map", "topology_auto_sync", {
+    label       = "Topology auto-sync",
+    description = "Automatically run 'display cartels'/'display syndicates' when the jump model proves stale",
+    default     = true,
+})
+
 -- Gates the map import dialog. Independent of the Mudlet map's actual room
 -- count — the map always has at least the current room once mapping is
 -- enabled, so room count can't signal "first run". A plain on/off toggle
@@ -81,6 +87,7 @@ f2t_settings_register("map", "movement_keys", {
 -- bundled map database ships, even if the user had turned it off.
 f2t_settings_register("map", "show_import_prompt", {
     label       = "Show map import prompt",
-    description = "Offer the bundled map-database import dialog next time the map loads. Turns itself back on when a new map database ships.",
+    description = "Offer the bundled map-database import dialog next time the map loads. "
+        .. "Turns itself back on when a new map database ships.",
     default     = true,
 })

@@ -15,6 +15,8 @@
   {"name": "manual_lock"},
   {"name": "manual_stub"},
   {"name": "destinations"},
+  {"name": "topology"},
+  {"name": "topology_capture"},
   {"name": "jump"},
   {"name": "search"},
   {"name": "raw"},

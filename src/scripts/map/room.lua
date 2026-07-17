@@ -55,6 +55,15 @@ function f2t_map_store_room_metadata(room_id, room_data)
     if room_data.area    then setRoomUserData(room_id, "fed2_area",    room_data.area)   end
     if room_data.num     then setRoomUserData(room_id, "fed2_num",     tostring(room_data.num)) end
 
+    -- Keep the area's cartel current too: systems change cartels, and the
+    -- cartel-scoped route BFS and topology bootstrap read area userdata.
+    if room_data.cartel then
+        local area_id = getRoomArea(room_id)
+        if area_id and getAreaUserData(area_id, "fed2_cartel") ~= room_data.cartel then
+            setAreaUserData(area_id, "fed2_cartel", room_data.cartel)
+        end
+    end
+
     if room_data.flags then
         for _, flag in ipairs(room_data.flags) do
             setRoomUserData(room_id, string.format("fed2_flag_%s", flag), "true")

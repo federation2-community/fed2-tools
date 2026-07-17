@@ -71,6 +71,13 @@ function f2t_map_import_file(file_path)
     local new_room_count = 0
     for _ in pairs(getRooms()) do new_room_count = new_room_count + 1 end
 
+    -- The imported map carries its own topology model (map userdata) or at
+    -- least area cartel data: reload and re-derive the jump graph from it.
+    F2T_MAP_TOPOLOGY = {systems = {}, cartels = {}, syndicates = {}, synced_at = nil}
+    F2T_MAP_TOPOLOGY_LOADED = false
+    f2t_map_topology_load()
+    f2t_map_topology_request_rebuild()
+
     if F2T_MAP_ENABLED and f2t_map_sync then
         tempTimer(0.5, function() f2t_map_sync() end)
     end
@@ -113,7 +120,7 @@ function f2t_map_import()
     for _ in pairs(rooms) do current_room_count = current_room_count + 1 end
     local areas = getAreaTable()
     local current_area_count = 0
-    for area_name, area_id in pairs(areas) do
+    for _, area_id in pairs(areas) do
         local area_rooms = getAreaRooms(area_id)
         if area_rooms and next(area_rooms) ~= nil then current_area_count = current_area_count + 1 end
     end
@@ -131,7 +138,8 @@ function f2t_map_import()
 
     local action = string.format("import map (%d rooms, %d areas)", import_room_count, import_area_count)
     if current_room_count > 0 then
-        action = string.format("import map and DELETE current map (%d -> %d rooms)", current_room_count, import_room_count)
+        action = string.format("import map and DELETE current map (%d -> %d rooms)",
+            current_room_count, import_room_count)
     end
 
     f2t_map_manual_request_confirmation(action, f2t_map_import_execute, {

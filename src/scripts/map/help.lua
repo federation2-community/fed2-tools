@@ -38,7 +38,13 @@ f2t_register_help("map", {
         {cmd="map explore full [target]", desc="Full exploration (all rooms)"},
         {cmd="map explore brief [target]", desc="Brief exploration (flag discovery)"},
         {cmd="map explore cartel [name]", desc="Explore all systems in cartel"},
+        {cmd="map explore syndicate [name]", desc="Explore all cartels in a syndicate"},
         {cmd="map explore galaxy", desc="Explore all cartels in galaxy"},
+        {cmd="", desc=""},
+        {cmd="Galaxy Topology:", desc=""},
+        {cmd="map topology", desc="Show syndicates, cartels, and beacon builds"},
+        {cmd="map topology sync", desc="Sync model from display cartels/syndicates"},
+        {cmd="map topology rebuild", desc="Re-derive all jump exits from the model"},
         {cmd="", desc=""},
         {cmd="Import/Export:", desc=""},
         {cmd="map export", desc="Export map to JSON file (file dialog)"},
@@ -60,6 +66,16 @@ f2t_register_help("map", {
         "map settings set planet_nav_default orbit     # Default to orbit",
         "map search exchange                 # Search for exchange in current area",
     },
+})
+
+f2t_register_help("map topology", {
+    description = "Galaxy topology model: syndicates, cartels, beacons, and the jump graph derived from them",
+    usage = {
+        {cmd="map topology", desc="Show the known syndicate/cartel structure and beacon builds"},
+        {cmd="map topology sync", desc="Capture 'display cartels' + 'display syndicates' and rebuild jump exits"},
+        {cmd="map topology rebuild", desc="Re-derive every link room's jump exits from the current model"},
+    },
+    examples = {"map topology", "map topology sync"},
 })
 
 f2t_register_help("map dest", {
@@ -132,9 +148,12 @@ f2t_register_help("nav", {
     },
 })
 
-f2t_register_help("nav stop",   {description="Stop active speedwalk navigation",   usage={{cmd="nav stop",   desc="Stop speedwalk completely"}}, examples={"nav stop"}})
-f2t_register_help("nav pause",  {description="Pause active speedwalk navigation",   usage={{cmd="nav pause",  desc="Pause speedwalk (keeps path for resume)"}}, examples={"nav pause"}})
-f2t_register_help("nav resume", {description="Resume paused speedwalk navigation",  usage={{cmd="nav resume", desc="Resume paused speedwalk from current position"}}, examples={"nav resume"}})
+f2t_register_help("nav stop", {description="Stop active speedwalk navigation",
+    usage={{cmd="nav stop", desc="Stop speedwalk completely"}}, examples={"nav stop"}})
+f2t_register_help("nav pause", {description="Pause active speedwalk navigation",
+    usage={{cmd="nav pause", desc="Pause speedwalk (keeps path for resume)"}}, examples={"nav pause"}})
+f2t_register_help("nav resume", {description="Resume paused speedwalk navigation",
+    usage={{cmd="nav resume", desc="Resume paused speedwalk from current position"}}, examples={"nav resume"}})
 
 f2t_register_help("map search", {
     description = "Search for rooms by name in the map database",
@@ -154,6 +173,7 @@ f2t_register_help("map explore", {
         {cmd="map explore full [target]", desc="Full exploration (all rooms)"},
         {cmd="map explore brief [target]", desc="Brief exploration (flag discovery)"},
         {cmd="map explore cartel [name]", desc="Explore all systems in cartel"},
+        {cmd="map explore syndicate [name]", desc="Explore all cartels in a syndicate"},
         {cmd="map explore galaxy", desc="Explore all cartels in galaxy"},
         {cmd="", desc=""},
         {cmd="map explore stop", desc="Stop exploration"},

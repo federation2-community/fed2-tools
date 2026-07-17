@@ -17,7 +17,7 @@
   },
   {
     "name": "cartel_capture_start",
-    "patterns": [{"pattern": "^   Members:$", "type": "regex"}]
+    "patterns": [{"pattern": "^   Member systems:$", "type": "regex"}]
   },
   {
     "name": "di_system_capture_details",
@@ -36,12 +36,8 @@
     "patterns": [{"pattern": "^I'm afraid the (.+) system is closed to visitors at the moment\\.$", "type": "regex"}]
   },
   {
-    "name": "galaxy_capture_line",
-    "patterns": [{"pattern": "^   (\\S.*)$", "type": "regex"}]
-  },
-  {
-    "name": "galaxy_capture_start",
-    "patterns": [{"pattern": "^Cartels operating in this galaxy:$", "type": "regex"}]
+    "name": "jump_no_direct_link",
+    "patterns": [{"pattern": "^There isn't a direct link to (.+) from here\\.$", "type": "regex"}]
   },
   {
     "name": "special_exit_invalid_command",
@@ -54,5 +50,25 @@
   {
     "name": "speedwalk_out_of_fuel",
     "patterns": [{"pattern": "^You have run out of fuel, and are unable to move\\.$", "type": "regex"}]
+  },
+  {
+    "name": "topology_cartels_start",
+    "patterns": [{"pattern": "^Cartels operating in this galaxy, grouped by syndicate:$", "type": "regex"}]
+  },
+  {
+    "name": "topology_cartels_syndicate",
+    "patterns": [{"pattern": "^(\\S.*) syndicate:$", "type": "regex"}]
+  },
+  {
+    "name": "topology_cartels_line",
+    "patterns": [{"pattern": "^      (\\S.*)$", "type": "regex"}]
+  },
+  {
+    "name": "topology_syndicates_start",
+    "patterns": [{"pattern": "^Syndicates operating in this galaxy:$", "type": "regex"}]
+  },
+  {
+    "name": "topology_syndicates_line",
+    "patterns": [{"pattern": "^   #\\d+ (.+)$", "type": "regex"}]
   }
 ]

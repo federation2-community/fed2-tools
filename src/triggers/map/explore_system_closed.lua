@@ -35,7 +35,8 @@ if is_jumping_to_cartel then
 elseif is_jumping_to_system then
     F2T_MAP_EXPLORE_STATE.cartel_target_system = nil
     tempTimer(0.5, function()
-        if F2T_MAP_EXPLORE_STATE.active and (F2T_MAP_EXPLORE_STATE.mode == "cartel" or F2T_MAP_EXPLORE_STATE.mode == "galaxy") then
+        if F2T_MAP_EXPLORE_STATE.active and
+           (F2T_MAP_EXPLORE_STATE.mode == "cartel" or F2T_MAP_EXPLORE_STATE.mode == "galaxy") then
             f2t_map_explore_cartel_next_system()
         end
     end)

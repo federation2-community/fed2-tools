@@ -136,7 +136,7 @@ function f2t_map_explore_planet_start(planet_mode, planet_name, on_complete_call
         cecho(string.format("  Starting room: <white>%s<reset>\n", room_name))
         cecho(string.format("  Starting area: <white>%s<reset>\n", area_name))
         cecho(string.format("  Target flags: <yellow>%s<reset>\n", table.concat(brief_fields.brief_flags or {}, ", ")))
-        for flag, flag_room_id in pairs(brief_fields.brief_flags_found or {}) do
+        for flag in pairs(brief_fields.brief_flags_found or {}) do
             cecho(string.format("  <green>+<reset> <yellow>%s<reset> already mapped\n", flag))
         end
         if brief_fields.brief_flags_remaining_count == 0 then
@@ -166,7 +166,8 @@ function f2t_map_explore_brief_check_room_flags(room_id)
         if not flags_found[flag] then
             if getRoomUserData(room_id, string.format("fed2_flag_%s", flag)) == "true" then
                 flags_found[flag] = room_id
-                F2T_MAP_EXPLORE_STATE.brief_flags_remaining_count = F2T_MAP_EXPLORE_STATE.brief_flags_remaining_count - 1
+                F2T_MAP_EXPLORE_STATE.brief_flags_remaining_count =
+                    F2T_MAP_EXPLORE_STATE.brief_flags_remaining_count - 1
                 local room_name = getRoomName(room_id) or "Unknown"
                 cecho(string.format("  <green>✓<reset> Found <yellow>%s<reset> at: %s\n", flag, room_name))
                 local effective_remaining = F2T_MAP_EXPLORE_STATE.brief_flags_remaining_count
@@ -184,11 +185,13 @@ function f2t_map_explore_brief_check_room_flags(room_id)
                 if effective_remaining == 0 then
                     cecho("\n<green>[map-explore]<reset> All target flags found!\n\n")
                     if F2T_MAP_EXPLORE_STATE.system_stats then
-                        F2T_MAP_EXPLORE_STATE.system_stats.planets_explored = F2T_MAP_EXPLORE_STATE.system_stats.planets_explored + 1
-                        F2T_MAP_EXPLORE_STATE.system_stats.exchanges_found  = F2T_MAP_EXPLORE_STATE.system_stats.exchanges_found  + 1
+                        local sys_stats = F2T_MAP_EXPLORE_STATE.system_stats
+                        sys_stats.planets_explored = sys_stats.planets_explored + 1
+                        sys_stats.exchanges_found  = sys_stats.exchanges_found  + 1
                         if F2T_MAP_EXPLORE_STATE.mode == "cartel" or F2T_MAP_EXPLORE_STATE.mode == "galaxy" then
-                            F2T_MAP_EXPLORE_STATE.cartel_stats.total_planets   = F2T_MAP_EXPLORE_STATE.cartel_stats.total_planets   + 1
-                            F2T_MAP_EXPLORE_STATE.cartel_stats.total_exchanges = F2T_MAP_EXPLORE_STATE.cartel_stats.total_exchanges + 1
+                            local c_stats = F2T_MAP_EXPLORE_STATE.cartel_stats
+                            c_stats.total_planets   = c_stats.total_planets   + 1
+                            c_stats.total_exchanges = c_stats.total_exchanges + 1
                         end
                     end
                     tempTimer(0.5, function()
@@ -287,7 +290,10 @@ function f2t_map_explore_start(mode, name)
     local area_name = getRoomAreaName(current_area)
     if area_name and area_name:match(" Space$") then
         local system = f2t_get_current_system()
-        if not system then cecho("\n<red>[map-explore]<reset> Error: In space but couldn't detect system\n"); return false end
+        if not system then
+            cecho("\n<red>[map-explore]<reset> Error: In space but couldn't detect system\n")
+            return false
+        end
         return f2t_map_explore_system_start(system, mode)
     end
 
@@ -359,7 +365,9 @@ function f2t_map_explore_stop()
 end
 
 function f2t_map_explore_pause()
-    if not F2T_MAP_EXPLORE_STATE.active then cecho("\n<yellow>[map-explore]<reset> No exploration in progress\n"); return end
+    if not F2T_MAP_EXPLORE_STATE.active then
+        cecho("\n<yellow>[map-explore]<reset> No exploration in progress\n"); return
+    end
     if F2T_MAP_EXPLORE_STATE.paused or F2T_MAP_EXPLORE_STATE.pause_requested then
         cecho("\n<yellow>[map-explore]<reset> Exploration already paused\n"); return
     end
@@ -379,7 +387,9 @@ function f2t_map_explore_check_deferred_pause()
 end
 
 function f2t_map_explore_resume()
-    if not F2T_MAP_EXPLORE_STATE.active then cecho("\n<yellow>[map-explore]<reset> No exploration in progress\n"); return end
+    if not F2T_MAP_EXPLORE_STATE.active then
+        cecho("\n<yellow>[map-explore]<reset> No exploration in progress\n"); return
+    end
     if F2T_MAP_EXPLORE_STATE.pause_requested then
         F2T_MAP_EXPLORE_STATE.pause_requested = false
         cecho("\n<green>[map]<reset> Pending pause cancelled\n"); return
@@ -413,7 +423,9 @@ function f2t_map_explore_resume()
 end
 
 function f2t_map_explore_status()
-    if not F2T_MAP_EXPLORE_STATE.active then cecho("\n<yellow>[map-explore]<reset> No exploration in progress\n"); return end
+    if not F2T_MAP_EXPLORE_STATE.active then
+        cecho("\n<yellow>[map-explore]<reset> No exploration in progress\n"); return
+    end
     cecho("\n<green>[map]<reset> Exploration Status\n\n")
     local state_str = "ACTIVE"
     if F2T_MAP_EXPLORE_STATE.paused then
@@ -453,11 +465,13 @@ function f2t_map_explore_show_statistics()
         cecho(string.format("    Exchanges found: <white>%d<reset>\n", sys_stats.exchanges_found))
     elseif mode == "cartel" then
         local cartel_stats = F2T_MAP_EXPLORE_STATE.cartel_stats
-        cecho(string.format("    Systems explored: <white>%d/%d<reset>\n", cartel_stats.systems_explored, cartel_stats.total_systems))
+        cecho(string.format("    Systems explored: <white>%d/%d<reset>\n",
+            cartel_stats.systems_explored, cartel_stats.total_systems))
         cecho(string.format("    Total planets: <white>%d<reset>\n", cartel_stats.total_planets))
     elseif mode == "galaxy" then
         local galaxy_stats = F2T_MAP_EXPLORE_STATE.galaxy_stats
-        cecho(string.format("    Cartels explored: <white>%d/%d<reset>\n", galaxy_stats.cartels_explored, galaxy_stats.total_cartels))
+        cecho(string.format("    Cartels explored: <white>%d/%d<reset>\n",
+            galaxy_stats.cartels_explored, galaxy_stats.total_cartels))
     end
 end
 
@@ -501,9 +515,9 @@ function f2t_map_explore_next_step()
     elseif phase == "discovering_special" then
         F2T_MAP_EXPLORE_STATE.phase = "navigating"
         f2t_map_explore_next_step()
-    elseif phase == "navigating_to_orbit" or phase == "finding_exchange" or phase == "planet_complete"
-        or phase == "finding_flags" or phase == "navigating_to_flag" then
-        -- system-specific phases, handled in on_room_change
+    -- system-specific phases (navigating_to_orbit, finding_exchange,
+    -- planet_complete, finding_flags, navigating_to_flag) are handled in
+    -- on_room_change
     elseif phase == "returning" then
         f2t_map_explore_return_to_start()
     end
@@ -536,7 +550,8 @@ function f2t_map_explore_on_room_change()
             F2T_SPEEDWALK_FAILED_EXIT_DIR  = nil
             if failed_room and failed_dir then
                 lockExit(failed_room, failed_dir, true)
-                cecho(string.format("\n<yellow>[map-explore]<reset> Locked blocked exit %s from room %d, trying next...\n",
+                cecho(string.format(
+                    "\n<yellow>[map-explore]<reset> Locked blocked exit %s from room %d, trying next...\n",
                     failed_dir, failed_room))
                 if not F2T_MAP_EXPLORE_STATE.temp_locked_exits[failed_room] then
                     F2T_MAP_EXPLORE_STATE.temp_locked_exits[failed_room] = {}
@@ -594,22 +609,19 @@ function f2t_map_explore_on_room_change()
     -- Galaxy phase transitions
     if F2T_MAP_EXPLORE_STATE.mode == "galaxy" then
         if F2T_MAP_EXPLORE_STATE.phase == "jumping_to_cartel" then
-            local target_cartel = F2T_MAP_EXPLORE_STATE.galaxy_target_cartel
-            cecho(string.format("  <dim_grey>Jumping to %s<reset>\n", target_cartel))
-            speedWalkDir = {string.format("jump %s", target_cartel)}
-            speedWalkPath = {nil}
-            doSpeedWalk()
-            F2T_MAP_EXPLORE_STATE.phase = "arriving_in_cartel"; return
+            f2t_map_explore_jump_to_cartel(F2T_MAP_EXPLORE_STATE.galaxy_target_cartel); return
         elseif F2T_MAP_EXPLORE_STATE.phase == "arriving_in_cartel" then
             local target_cartel  = F2T_MAP_EXPLORE_STATE.galaxy_target_cartel
             local current_cartel = f2t_map_get_current_cartel()
             if not current_cartel or current_cartel:lower() ~= target_cartel:lower() then
-                cecho(string.format("  <red>Error:<reset> Jump failed (expected %s, got %s)\n", target_cartel, current_cartel or "unknown"))
+                cecho(string.format("  <red>Error:<reset> Jump failed (expected %s, got %s)\n",
+                    target_cartel, current_cartel or "unknown"))
                 F2T_MAP_EXPLORE_STATE.phase = nil
                 f2t_map_explore_galaxy_next_cartel(); return
             end
             cecho(string.format("  <green>Arrived in %s!<reset>\n", target_cartel))
-            F2T_MAP_EXPLORE_STATE.galaxy_stats.cartels_explored = F2T_MAP_EXPLORE_STATE.galaxy_stats.cartels_explored + 1
+            F2T_MAP_EXPLORE_STATE.galaxy_stats.cartels_explored =
+                F2T_MAP_EXPLORE_STATE.galaxy_stats.cartels_explored + 1
             F2T_MAP_EXPLORE_STATE.phase = nil
             F2T_MAP_EXPLORE_STATE.galaxy_target_cartel = nil
             tempTimer(0.5, function()
@@ -623,12 +635,7 @@ function f2t_map_explore_on_room_change()
     if F2T_MAP_EXPLORE_STATE.mode == "system" or F2T_MAP_EXPLORE_STATE.mode == "cartel" or
        F2T_MAP_EXPLORE_STATE.mode == "galaxy" then
         if F2T_MAP_EXPLORE_STATE.phase == "jumping_to_system" then
-            local target_system = F2T_MAP_EXPLORE_STATE.cartel_target_system
-            cecho(string.format("  <dim_grey>Jumping to %s<reset>\n", target_system))
-            speedWalkDir = {string.format("jump %s", target_system)}
-            speedWalkPath = {nil}
-            doSpeedWalk()
-            F2T_MAP_EXPLORE_STATE.phase = "arriving_in_system"; return
+            f2t_map_explore_jump_to_system(F2T_MAP_EXPLORE_STATE.cartel_target_system); return
         elseif F2T_MAP_EXPLORE_STATE.phase == "arriving_in_system" then
             local target_system  = F2T_MAP_EXPLORE_STATE.cartel_target_system
             local current_system = getRoomUserData(current_room, "fed2_system")
@@ -638,7 +645,8 @@ function f2t_map_explore_on_room_change()
                 f2t_map_explore_cartel_next_system(); return
             end
             cecho(string.format("  <green>Arrived in %s!<reset>\n", target_system))
-            F2T_MAP_EXPLORE_STATE.cartel_stats.systems_explored = F2T_MAP_EXPLORE_STATE.cartel_stats.systems_explored + 1
+            F2T_MAP_EXPLORE_STATE.cartel_stats.systems_explored =
+                F2T_MAP_EXPLORE_STATE.cartel_stats.systems_explored + 1
             F2T_MAP_EXPLORE_STATE.phase = nil
             F2T_MAP_EXPLORE_STATE.cartel_target_system = nil
             tempTimer(0.5, function()
@@ -673,11 +681,13 @@ function f2t_map_explore_on_room_change()
         elseif F2T_MAP_EXPLORE_STATE.phase == "planet_complete" then
             local planet = F2T_MAP_EXPLORE_STATE.planet_list[F2T_MAP_EXPLORE_STATE.current_planet_index]
             if planet then cecho(string.format("  <green>Exchange found on %s!<reset>\n", planet.name)) end
-            F2T_MAP_EXPLORE_STATE.system_stats.planets_explored = F2T_MAP_EXPLORE_STATE.system_stats.planets_explored + 1
-            F2T_MAP_EXPLORE_STATE.system_stats.exchanges_found  = F2T_MAP_EXPLORE_STATE.system_stats.exchanges_found  + 1
-            if F2T_MAP_EXPLORE_STATE.mode == "cartel" then
-                F2T_MAP_EXPLORE_STATE.cartel_stats.total_planets   = F2T_MAP_EXPLORE_STATE.cartel_stats.total_planets   + 1
-                F2T_MAP_EXPLORE_STATE.cartel_stats.total_exchanges = F2T_MAP_EXPLORE_STATE.cartel_stats.total_exchanges + 1
+            local sys_stats = F2T_MAP_EXPLORE_STATE.system_stats
+            sys_stats.planets_explored = sys_stats.planets_explored + 1
+            sys_stats.exchanges_found  = sys_stats.exchanges_found  + 1
+            if F2T_MAP_EXPLORE_STATE.mode == "cartel" or F2T_MAP_EXPLORE_STATE.mode == "galaxy" then
+                local c_stats = F2T_MAP_EXPLORE_STATE.cartel_stats
+                c_stats.total_planets   = c_stats.total_planets   + 1
+                c_stats.total_exchanges = c_stats.total_exchanges + 1
             end
             tempTimer(0.5, function()
                 if F2T_MAP_EXPLORE_STATE.active then f2t_map_explore_system_next_planet() end
