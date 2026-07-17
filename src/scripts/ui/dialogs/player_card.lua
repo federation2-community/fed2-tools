@@ -774,13 +774,20 @@ end
 
 -- Re-render open cards whose data changed since they were last shown.
 function f2tPlayerCardsRefreshAll()
+    local anyRendered = false
     for name, pane in pairs(_cardsByName) do
         local fresh = (f2t_player_db_get and f2t_player_db_get(name))
         if fresh and fingerprint(fresh) ~= pane._f2tCardFingerprint then
             pane._f2tCardPlayerData = fresh
             renderCard(pane)
+            anyRendered = true
         end
     end
+    -- Freshly recreated widgets land on top of the Qt stacking order regardless
+    -- of Muxlet's own logical z-order (see local_players.lua's identical fix), so
+    -- a live data update on a card sitting *behind* others would otherwise pop it
+    -- to the front. Re-assert the real order once, after all cards are updated.
+    if anyRendered and Mux and Mux.raiseFloatingPanes then Mux.raiseFloatingPanes() end
 end
 
 if f2t_debug_log then f2t_debug_log("[player_card] module loaded") end
