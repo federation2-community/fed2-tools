@@ -246,6 +246,21 @@ function f2tGetMapSlotInfo()
     return liveSlotContent, liveGid
 end
 
+-- Reports whether a native mapper widget is currently live in a pane.
+--
+-- Mudlet gates loadJsonMap/saveJsonMap/deleteMap behind an open mapper widget
+-- (they fail with "no map present or loaded" otherwise). The widget only exists
+-- once a Fed2 Map pane has mounted it via mapperAcquire() above — i.e. in Full
+-- or BYOW mode, or after "mux start" + opening the map. In Minimal mode no pane
+-- ever mounts, so no widget exists, and callers must take a widget-free path
+-- rather than touching those functions. import_export.lua uses this to decide
+-- between Mudlet's native loader/saver (widget present) and a headless rebuild
+-- straight through the room-database API (widget absent). Deliberately does NOT
+-- create a widget: Minimal mode promises the user's Mudlet layout is untouched.
+function f2tMapHasLiveMapper()
+    return liveMapper ~= nil
+end
+
 function f2tRegisterMapContent()
     if not (Mux and Mux.registerContent) then return end
     Mux.registerContent("fed2_map", buildContentDef())

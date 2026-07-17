@@ -11,9 +11,17 @@
 
 F2T_MAP_TOPOLOGY_CAPTURE = F2T_MAP_TOPOLOGY_CAPTURE or {active = false}
 
-function f2t_map_topology_sync(callback)
+-- opts.silent suppresses every console message this sync would print (used by
+-- the once-per-login startup sync in map/events.lua). Debug logging and the
+-- callback are unaffected; the game replies are swallowed by the capture
+-- triggers either way, so a silent sync produces no output at all.
+function f2t_map_topology_sync(callback, opts)
+    opts = opts or {}
+    local silent = opts.silent and true or false
     if F2T_MAP_TOPOLOGY_CAPTURE.active then
-        cecho("\n<yellow>[map]<reset> Topology sync already in progress\n")
+        if not silent then
+            cecho("\n<yellow>[map]<reset> Topology sync already in progress\n")
+        end
         return false
     end
     F2T_MAP_TOPOLOGY_CAPTURE = {
@@ -25,8 +33,9 @@ function f2t_map_topology_sync(callback)
         seen_start = false,
         timer_id = nil,
         callback = callback,
+        silent = silent,
     }
-    f2t_debug_log("[map/topology] Sync started: capturing display cartels")
+    f2t_debug_log("[map/topology] Sync started: capturing display cartels (silent=%s)", tostring(silent))
     send("display cartels", false)
     f2t_map_topology_capture_reset_timer()
     return true
@@ -64,7 +73,9 @@ function f2t_map_topology_capture_finish()
     for _ in pairs(capture.syndicates) do syndicate_count = syndicate_count + 1 end
 
     if cartel_count == 0 or syndicate_count == 0 then
-        cecho("\n<red>[map]<reset> Topology sync failed (no data captured)\n")
+        if not capture.silent then
+            cecho("\n<red>[map]<reset> Topology sync failed (no data captured)\n")
+        end
         f2t_debug_log("[map/topology] Sync failed: %d cartels, %d syndicates captured",
             cartel_count, syndicate_count)
         if capture.callback then capture.callback(false) end
@@ -109,9 +120,11 @@ function f2t_map_topology_capture_finish()
     f2t_map_topology_save()
     f2t_map_topology_request_rebuild()
 
-    cecho(string.format(
-        "\n<green>[map]<reset> Topology synced: <white>%d<reset> syndicate(s), <white>%d<reset> cartel(s)\n",
-        syndicate_count, cartel_count))
+    if not capture.silent then
+        cecho(string.format(
+            "\n<green>[map]<reset> Topology synced: <white>%d<reset> syndicate(s), <white>%d<reset> cartel(s)\n",
+            syndicate_count, cartel_count))
+    end
     if capture.callback then capture.callback(true) end
 end
 
