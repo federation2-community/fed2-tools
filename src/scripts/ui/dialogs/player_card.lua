@@ -5,9 +5,10 @@
 -- (player name centered, colored to match rank; the pane's own close/move
 -- button — no separate custom close button), a rank-colored border, and the
 -- same detail rows/quick-send command line the archive-derived cards had.
--- Not splittable (a card is a single unit of info, not a layout host) but
--- embeddable and swappable like any other content pane; its Properties icon
--- is hidden since there's nothing there worth exposing for a card.
+-- Not splittable or resizable (a card is a fixed-size unit of info, sized to
+-- fit its own content, not a layout host) but embeddable and swappable like
+-- any other content pane; its Properties icon is hidden since there's
+-- nothing there worth exposing for a card.
 --
 -- Public API:
 --   f2tPlayerCardShowOrRaise(player)         — show or bring existing card to front
@@ -103,7 +104,7 @@ local FRAME_W  = tostring(-(SEND_W + GAP + CMD_R_M + CMD_L_M - 2))
 
 -- ── Galaxy integration ────────────────────────────────────────────────────────
 
-local function openInGalaxy(cartelName, entityName)
+local function openInGalaxy(cartelName, entityName, syndicateName)
     if not F2T_GALAXY then return end
 
     -- Cartel rows key off "syndicate:cartel" (see galaxy.lua createRow); a
@@ -137,6 +138,8 @@ local function openInGalaxy(cartelName, entityName)
                     end
                 end
             end
+        elseif syndicateName and syndicateName ~= "" then
+            F2T_GALAXY.expanded[syndicateName] = true
         end
         if f2t_galaxy_refresh_open then f2t_galaxy_refresh_open() end
     end
@@ -179,8 +182,7 @@ local function fingerprint(p)
     }, "\0")
 end
 
--- ── Initial pane size (a starting point only — the pane is a normal,
--- user-resizable Muxlet pane afterward) ────────────────────────────────────────
+-- ── Initial pane size (the only size — the pane is not resizable) ─────────────
 
 local function initialContentSize(player)
     local rank    = player.rank       or "Unknown"
@@ -192,17 +194,27 @@ local function initialContentSize(player)
     local ship    = player.ship_class or ""
     local isOffline = (player.is_online == false)
 
+    local isFounder    = rank == "Founder"
+    local isPlutocrat  = rank == "Plutocrat"
+    local isSyndicrat  = rank == "Syndicrat"
     local hasCompany   = company ~= ""
     local isIndustrial = rank == "Industrialist"
     local isMfrFin     = rank == "Manufacturer" or rank == "Financier"
-    local hasSystem    = system ~= "" and (
+    local hasSystem    = system ~= "" and not isFounder and (
         rank == "Engineer"   or rank == "Technocrat" or rank == "Gengineer" or
-        rank == "Magnate"    or rank == "Founder"    or rank == "Mogul")
-    local hasCartel    = cartel ~= "" and (rank == "Plutocrat" or rank == "Syndicrat")
-    local syndicate    = hasCartel and syndicateFor(cartel) or nil
+        rank == "Magnate"    or rank == "Mogul")
+    local hasPlanet    = isFounder and system ~= ""
+    local hasCartel    = cartel ~= "" and isPlutocrat
+    -- Plutocrats own a cartel; the syndicate row is derived from its parent.
+    -- Syndicrats own a syndicate directly — GMCP reports it in the same
+    -- "cartel" field, so it's used as the syndicate name as-is.
+    local syndicate    = hasCartel and syndicateFor(cartel)
+        or (isSyndicrat and cartel ~= "" and cartel)
+        or nil
     local hasSyndicate = syndicate ~= nil
     local hasShip      = ship ~= ""
-    local hasOwnership = (hasCompany and (isIndustrial or isMfrFin)) or hasSystem or hasCartel
+    local hasOwnership = (hasCompany and (isIndustrial or isMfrFin))
+        or hasSystem or hasPlanet or hasCartel or hasSyndicate
 
     local function badgePx(s) return math.ceil(#s * 6.5) + 16 end
     local rankBadgeW  = badgePx(rank)
@@ -213,6 +225,7 @@ local function initialContentSize(player)
         #(loc ~= "" and loc or "Unknown"),
         hasCompany   and (#company   + 10) or 0,
         hasSystem    and (#system    + 8)  or 0,
+        hasPlanet    and (#system    + 8)  or 0,
         hasCartel    and (#cartel    + 8)  or 0,
         hasSyndicate and (#syndicate + 12) or 0)
     local bodyNeed = math.ceil(longest * 7.0) + 30 + 62
@@ -225,6 +238,7 @@ local function initialContentSize(player)
     if hasCompany and isIndustrial then H = H + ROW_H end
     if hasCompany and isMfrFin     then H = H + ROW_H end
     if hasSystem                   then H = H + ROW_H end
+    if hasPlanet                   then H = H + ROW_H end
     if hasSyndicate                then H = H + ROW_H end
     if hasCartel                   then H = H + ROW_H end
     if hasShip                     then H = H + ROW_H end
@@ -278,17 +292,30 @@ local function render(target, player)
 
     local accent = accentFor(player)
 
+    local isFounder    = rank == "Founder"
+    local isPlutocrat  = rank == "Plutocrat"
+    local isSyndicrat  = rank == "Syndicrat"
     local hasCompany   = company ~= ""
     local isIndustrial = rank == "Industrialist"
     local isMfrFin     = rank == "Manufacturer" or rank == "Financier"
-    local hasSystem    = system ~= "" and (
+    local hasSystem    = system ~= "" and not isFounder and (
         rank == "Engineer"   or rank == "Technocrat" or rank == "Gengineer" or
-        rank == "Magnate"    or rank == "Founder"    or rank == "Mogul")
-    local hasCartel    = cartel ~= "" and (rank == "Plutocrat" or rank == "Syndicrat")
-    local syndicate    = hasCartel and syndicateFor(cartel) or nil
+        rank == "Magnate"    or rank == "Mogul")
+    local hasPlanet    = isFounder and system ~= ""
+    local hasCartel    = cartel ~= "" and isPlutocrat
+    -- Plutocrats own a cartel; the syndicate row is derived from its parent.
+    -- Syndicrats own a syndicate directly — GMCP reports it in the same
+    -- "cartel" field, so it's used as the syndicate name as-is.
+    local syndicate    = hasCartel and syndicateFor(cartel)
+        or (isSyndicrat and cartel ~= "" and cartel)
+        or nil
+    local syndicateGalaxyFn = hasCartel and function() openInGalaxy(cartel, nil) end
+        or (isSyndicrat and function() openInGalaxy(nil, nil, syndicate) end)
+        or nil
     local hasSyndicate = syndicate ~= nil
     local hasShip      = ship   ~= ""
-    local hasOwnership = (hasCompany and (isIndustrial or isMfrFin)) or hasSystem or hasCartel
+    local hasOwnership = (hasCompany and (isIndustrial or isMfrFin))
+        or hasSystem or hasPlanet or hasCartel or hasSyndicate
 
     local wc = 0
     local function wid() wc = wc + 1; return string.format("%s_%d_%d", target._gid, epoch, wc) end
@@ -478,7 +505,21 @@ local function render(target, player)
         })
     end
 
-    -- ── Syndicate (a cartel's parent — shown above the cartel it comes from) ───
+    -- ── Planet (Founders own a planet, not a system) ───────────────────────────
+    if hasPlanet then
+        addLinkRow({
+            icon       = "🌍",
+            label      = "Planet",
+            text       = system,
+            text_color = "rgba(120, 220, 190, 255)",
+            di_cmd     = "di planet " .. system,
+            di_tooltip = "Get planet info  (di planet " .. system .. ")",
+            nav_cmd    = "nav " .. system,
+            galaxy_fn  = function() openInGalaxy(nil, system) end,
+        })
+    end
+
+    -- ── Syndicate (Plutocrats: their cartel's parent. Syndicrats: their own.) ──
     if hasSyndicate then
         addLinkRow({
             icon       = "🏛️",
@@ -487,7 +528,7 @@ local function render(target, player)
             text_color = "rgba(200, 160, 255, 255)",
             di_cmd     = "di syndicate " .. syndicate,
             di_tooltip = "Get syndicate info  (di syndicate " .. syndicate .. ")",
-            galaxy_fn  = function() openInGalaxy(cartel, nil) end,
+            galaxy_fn  = syndicateGalaxyFn,
         })
     end
 
@@ -743,6 +784,7 @@ local function showCard(player)
         convertible      = true,
         splittable       = false,
         swappable        = true,
+        resizable        = false,
         borderColor      = accent,
         tokens           = { ["titlebar.text.color"] = accent },
         onClose          = function() _cardsByName[name] = nil end,
