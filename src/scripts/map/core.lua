@@ -113,3 +113,58 @@ function f2t_map_sync()
     f2t_map_handle_gmcp_room()
     cecho("\n<green>[map]<reset> Synchronization complete.\n")
 end
+
+-- Report the live state of the map database and topology model. Works in every
+-- mode (no widget needed) — useful for confirming an import actually populated
+-- the database, especially in Minimal / BYOW where there is no visible map.
+function f2t_map_status()
+    local room_count = 0
+    for _ in pairs(getRooms() or {}) do room_count = room_count + 1 end
+
+    local area_total, area_with_rooms = 0, 0
+    for _, area_id in pairs(getAreaTable() or {}) do
+        area_total = area_total + 1
+        local ar = getAreaRooms(area_id)
+        if ar and next(ar) ~= nil then area_with_rooms = area_with_rooms + 1 end
+    end
+
+    local widget_live = (type(f2tMapHasLiveMapper) == "function" and f2tMapHasLiveMapper())
+
+    cecho("\n<cyan>═══ Map Status ═══<reset>\n")
+    cecho(string.format("<yellow>Auto-mapping<reset>: %s\n",
+        F2T_MAP_ENABLED and "<green>enabled<reset>" or "<red>disabled<reset>"))
+    cecho(string.format("<yellow>Mapper widget<reset>: %s\n",
+        widget_live and "<green>live<reset>"
+                     or "<dim_grey>none (headless — Minimal mode or no map pane)<reset>"))
+    cecho(string.format("<yellow>Rooms<reset>: <white>%d<reset>\n", room_count))
+    cecho(string.format("<yellow>Areas<reset>: <white>%d<reset> <dim_grey>(%d with rooms)<reset>\n",
+        area_total, area_with_rooms))
+
+    local cur = F2T_MAP_CURRENT_ROOM_ID
+    if cur and roomExists(cur) then
+        local hash = getRoomHashByID(cur)
+        cecho(string.format("<yellow>Current room<reset>: <white>%s<reset> (ID <cyan>%d<reset>%s)\n",
+            getRoomName(cur) or "(unnamed)", cur, hash and (", " .. hash) or ""))
+    else
+        cecho("<yellow>Current room<reset>: <dim_grey>unknown<reset>\n")
+    end
+
+    if type(f2t_map_topology_ensure_loaded) == "function" then
+        pcall(f2t_map_topology_ensure_loaded)
+    end
+    local t = F2T_MAP_TOPOLOGY or {}
+    local sys, car, syn = 0, 0, 0
+    for _ in pairs(t.systems or {})    do sys = sys + 1 end
+    for _ in pairs(t.cartels or {})    do car = car + 1 end
+    for _ in pairs(t.syndicates or {}) do syn = syn + 1 end
+    cecho(string.format(
+        "<yellow>Topology<reset>: <white>%d<reset> system(s), <white>%d<reset> cartel(s), <white>%d<reset> syndicate(s)\n",
+        sys, car, syn))
+    cecho(string.format("<yellow>Last topology sync<reset>: <white>%s<reset>\n",
+        t.synced_at and os.date("%Y-%m-%d %H:%M:%S", t.synced_at) or "never"))
+
+    if room_count == 0 then
+        cecho("\n<dim_grey>Database is empty. Use <white>map import<reset><dim_grey> to load a bundled map, "
+            .. "or travel/<white>map explore<reset><dim_grey> to build one.<reset>\n")
+    end
+end

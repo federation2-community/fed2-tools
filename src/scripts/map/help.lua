@@ -12,6 +12,7 @@ f2t_register_help("map", {
         {cmd="map cancel", desc="Cancel pending confirmation"},
         {cmd="", desc=""},
         {cmd="Diagnostics:", desc=""},
+        {cmd="map status", desc="Show map database + topology status (room/area counts)"},
         {cmd="map raw", desc="Show raw mapper + GMCP data (current room)"},
         {cmd="map raw <room_id>", desc="Show raw mapper data for specified room"},
         {cmd="map restyle", desc="Re-apply correct styling to every room in the database"},

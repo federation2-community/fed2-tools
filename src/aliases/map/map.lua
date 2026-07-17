@@ -27,6 +27,9 @@ elseif subcommand == "off" then
 elseif subcommand == "sync" then
     f2t_map_sync()
 
+elseif subcommand == "status" then
+    f2t_map_status()
+
 elseif subcommand == "clear" then
     local confirm = args:match("^clear%s+(.+)")
 

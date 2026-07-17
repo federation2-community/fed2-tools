@@ -168,81 +168,121 @@ function f2t_map_load_json_headless(file_path)
         end
     end
 
-    -- Create areas first; map each file area id to the real id Mudlet assigns.
-    -- (fed2-tools resolves areas by name and rooms by hash, not by fixed area
-    -- id, so remapping ids is safe — room->room exits use global room ids, which
-    -- addRoom preserves exactly below.)
+    -- Create areas via the SAME proven creator the auto-mapper uses
+    -- (f2t_map_get_or_create_area) rather than a bespoke addAreaName call, so
+    -- headless import builds areas exactly the way live mapping does — the
+    -- battle-tested path that is known to persist without a widget. Map each
+    -- file area id to the real id Mudlet assigns.
     local area_id_map = {}
+    local areas_made = 0
     for _, area in ipairs(data.areas) do
         if type(area.rooms) == "table" and #area.rooms > 0 and not area_id_map[area.id] then
-            local real_id = addAreaName(area.name or "Unnamed Area")
-            if type(real_id) == "number" and real_id > 0 then
+            local ud = type(area.userData) == "table" and area.userData or {}
+            local real_id
+            if type(f2t_map_get_or_create_area) == "function" then
+                real_id = f2t_map_get_or_create_area(area.name or "Unnamed Area", {
+                    system = ud.fed2_system, cartel = ud.fed2_cartel, owner = ud.fed2_owner,
+                })
+            else
+                real_id = addAreaName(area.name or "Unnamed Area")
+            end
+            if type(real_id) == "number" and real_id ~= 0 then
                 area_id_map[area.id] = real_id
-                if type(area.userData) == "table" then
-                    for k, v in pairs(area.userData) do
-                        pcall(setAreaUserData, real_id, tostring(k), tostring(v))
-                    end
+                areas_made = areas_made + 1
+                -- Copy any remaining area userData verbatim.
+                for k, v in pairs(ud) do
+                    pcall(setAreaUserData, real_id, tostring(k), tostring(v))
                 end
+            else
+                f2t_debug_log("[map] headless import: area '%s' create failed (got %s)",
+                    tostring(area.name), tostring(real_id))
             end
         end
     end
 
-    -- Pass 1 — create every room and its attributes. Exits are deferred to pass
-    -- 2 because a destination room may not exist yet while its source is built.
+    -- Pass 1 — create every room. Preserve the file's own room id when possible
+    -- (these came from a Mudlet export, so they are valid Mudlet room ids); if a
+    -- specific id can't be taken, fall back to a fresh createRoomID(). Either
+    -- way record file-id -> real-id in id_map so exits rewire correctly in pass
+    -- 2. Room creation mirrors f2t_map_create_room: addRoom + setRoomArea, the
+    -- proven no-widget sequence. Exits are deferred to pass 2 because a
+    -- destination room may not exist yet while its source is being built.
+    local id_map = {}
     local created = 0
     for _, area in ipairs(data.areas) do
         local real_area = area_id_map[area.id]
         if real_area and type(area.rooms) == "table" then
             for _, room in ipairs(area.rooms) do
-                local rid = room.id
-                if rid and addRoom(rid) then
-                    setRoomArea(rid, real_area)
+                -- Preserve the file's room id only if it is currently free;
+                -- otherwise take a fresh unique id. roomExists() is the source of
+                -- truth (addRoom's return value varies across Mudlet builds).
+                local new_id
+                local desired = room.id
+                if desired and not roomExists(desired) then
+                    pcall(addRoom, desired)
+                    if roomExists(desired) then new_id = desired end
+                end
+                if not new_id then
+                    new_id = createRoomID()
+                    if new_id then
+                        pcall(addRoom, new_id)
+                        if not roomExists(new_id) then new_id = nil end
+                    end
+                end
+                if new_id then
+                    id_map[room.id] = new_id
+                    pcall(setRoomArea, new_id, real_area)
                     local c = room.coordinates
                     if type(c) == "table" and #c >= 3 then
-                        setRoomCoordinates(rid, c[1], c[2], c[3])
+                        pcall(setRoomCoordinates, new_id, c[1], c[2], c[3])
                     end
-                    if room.environment then setRoomEnv(rid, room.environment) end
-                    if room.name then setRoomName(rid, room.name) end
-                    if room.symbol and room.symbol ~= "" then setRoomChar(rid, room.symbol) end
-                    if room.hash and room.hash ~= "" then setRoomIDbyHash(rid, room.hash) end
+                    if room.environment then pcall(setRoomEnv, new_id, room.environment) end
+                    if room.name then pcall(setRoomName, new_id, room.name) end
+                    if room.symbol and room.symbol ~= "" then pcall(setRoomChar, new_id, room.symbol) end
+                    if room.hash and room.hash ~= "" then pcall(setRoomIDbyHash, new_id, room.hash) end
                     if type(room.userData) == "table" then
                         for k, v in pairs(room.userData) do
-                            setRoomUserData(rid, tostring(k), tostring(v))
+                            pcall(setRoomUserData, new_id, tostring(k), tostring(v))
                         end
                     end
-                    if room.locked then pcall(lockRoom, rid, true) end
+                    if room.locked then pcall(lockRoom, new_id, true) end
                     created = created + 1
                 end
             end
         end
     end
 
-    -- Pass 2 — wire exits and stubs now that every room exists.
+    -- Pass 2 — wire exits and stubs through id_map now that every room exists.
+    local exits_made = 0
     for _, area in ipairs(data.areas) do
         if type(area.rooms) == "table" then
             for _, room in ipairs(area.rooms) do
-                local rid = room.id
-                if rid and roomExists(rid) then
+                local from = id_map[room.id]
+                if from and roomExists(from) then
                     for _, ex in ipairs(room.exits or {}) do
-                        local dest, name = ex.exitId, ex.name
-                        if dest and name and roomExists(dest) then
-                            local dir_num = f2t_map_direction_to_number(name)
+                        local dest = ex.exitId and id_map[ex.exitId]
+                        if dest and ex.name and roomExists(dest) then
+                            local dir_num = f2t_map_direction_to_number(ex.name)
                             if dir_num then
-                                setExit(rid, dest, dir_num)
-                                if ex.locked then pcall(lockExit, rid, dir_num, true) end
+                                pcall(setExit, from, dest, dir_num)
+                                if ex.locked then pcall(lockExit, from, dir_num, true) end
                             else
-                                pcall(addSpecialExit, rid, dest, name)
+                                pcall(addSpecialExit, from, dest, ex.name)
                             end
+                            exits_made = exits_made + 1
                         end
                     end
                     for _, st in ipairs(room.stubExits or {}) do
                         local dir_num = st.name and f2t_map_direction_to_number(st.name)
-                        if dir_num then setExitStub(rid, dir_num, true) end
+                        if dir_num then pcall(setExitStub, from, dir_num, true) end
                     end
                 end
             end
         end
     end
+
+    f2t_debug_log("[map] headless import complete: %d areas, %d rooms, %d exits",
+        areas_made, created, exits_made)
 
     return true, created
 end
