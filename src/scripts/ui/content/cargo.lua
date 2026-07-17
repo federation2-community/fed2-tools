@@ -1,11 +1,7 @@
--- cargo.lua — Cargo manifest content for fed2-tools.
---
--- This module ONLY registers a piece of content that renders the ship's cargo
--- from GMCP. It does not create a pane and it does not define a condition: to make
--- a cargo window that appears only when the hold has cargo, create a pane, assign
--- it this "fed2_cargo" content, and in the pane's Rules set:
---     Show when → GMCP has value → char.ship.cargo
--- Muxlet's condition engine handles visibility from there.
+-- Registers content that renders the ship's cargo from GMCP. Doesn't create a
+-- pane or define a condition: for a cargo window that appears only when the
+-- hold has cargo, create a pane, assign it this "fed2_cargo" content, and set
+-- a Rule: Show when -> GMCP has value -> char.ship.cargo.
 --
 -- GMCP shape (fed2): gmcp.char.ship = { hold = {cur,max},
 --   cargo = { {commodity, base, cost, origin}, ... } }   -- each entry = one 75-ton lot.

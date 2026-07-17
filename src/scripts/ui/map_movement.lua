@@ -1,17 +1,14 @@
--- fed2-tools — Map movement button overlay
---
--- f2tBuildMapMovement(parent, gid) creates a compass + navigation button panel
--- as a transparent overlay in the bottom-left of the Fed2 Map pane content area.
--- Layout and proportions mirror ui_movement.lua from fed2-tools_archive.
+-- f2tBuildMapMovement(parent, gid) creates a compass + navigation button
+-- panel as a transparent overlay in the bottom-left of the Fed2 Map pane.
 --
 -- Shell: x=0%, y=80%, width=30%, height=21% (left 30% of pane, bottom 21%)
 -- Inside shell:
---   Board button     — x=0%,  y=0%,  w=17%, h=17%
---   IN/OUT container — x=22%, y=2%,  w=60%, h=17%
---   Press button     — x=73%, y=4%,  w=12%, h=16%
---   Compass grid     — x=5%,  y=22%, w=85%, h=85%  (3×3, 25% buttons, 2% gaps)
---   UP/DN column     — x=75%, y=33%, w=17%, h=60%
---   Toggle tab       — x=0%,  y=78%, w=4%,  h=10%  (shows/hides all above)
+--   Board button     - x=0%,  y=0%,  w=17%, h=17%
+--   IN/OUT container - x=22%, y=2%,  w=60%, h=17%
+--   Press button     - x=73%, y=4%,  w=12%, h=16%
+--   Compass grid     - x=5%,  y=22%, w=85%, h=85%  (3x3, 25% buttons, 2% gaps)
+--   UP/DN column     - x=75%, y=33%, w=17%, h=60%
+--   Toggle tab       - x=0%,  y=78%, w=4%,  h=10%  (shows/hides all above)
 
 local _CSS_BTN = [[
     QLabel {

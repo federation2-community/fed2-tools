@@ -1,21 +1,11 @@
--- fed2-tools chat — live inbound message continuation handling
+-- Mirrors comhistory.lua's design: a permanent catch-all trigger
+-- (chat_inbound_line.lua, pattern ^.*$) feeds every line to
+-- f2tChatInboundLine() while a message is pending completion, rather than a
+-- tempLineTrigger armed to "peek" at just the next line, which could drop a
+-- wrapped message when several lines flush in one batch.
 --
--- Mirrors comhistory.lua's proven design: a permanent catch-all trigger
--- (src/triggers/chat/chat_inbound_line.lua, pattern ^.*$) feeds every line to
--- f2tChatInboundLine() while a message is pending completion, instead of a
--- tempLineTrigger armed to "peek" at just the next line.
---
--- The peek approach could silently drop a wrapped message entirely: when the
--- game flushed several lines in one batch, a trigger armed mid-batch could
--- register one line too late and never see the continuation. With nothing
--- left listening, the pending message just sat there — flushed early (and
--- incomplete) only if a later message happened to arrive, or never sent at
--- all if it was the last message of the session. This is the same failure
--- mode comhistory.lua was already rewritten to avoid (see its header
--- comment); this module now uses the same fix.
---
--- comhistory.lua defers to this module (via F2T_CHAT_INBOUND_PENDING) whenever
--- a message is pending here, so its backfill catch-all never treats a live
+-- comhistory.lua defers to this module (via F2T_CHAT_INBOUND_PENDING)
+-- whenever a message is pending here, so its backfill never treats a live
 -- message's lines as part of a comhistory entry.
 
 local MAX_CONTINUATION_LINES = 6   -- safety cap; see f2tChatInboundLine below

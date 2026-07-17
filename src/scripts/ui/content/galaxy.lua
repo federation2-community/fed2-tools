@@ -1,31 +1,8 @@
--- fed2-tools — Galaxy Navigator
---
--- Data comes from the in-game "di systems" command — a full listing of every
--- cartel, system, and planet — NOT the Mudlet map DB. This matters because a
--- player's map may be incomplete, whereas "di systems" is always authoritative.
--- The capture/parse mirrors the v1 archive's ui_galaxy module.
---
--- Two pieces, registered with Muxlet from init.lua's muxletReady handler via
--- f2tRegisterGalaxy():
---
---   1. A background "di systems" scrape, run at load (once connected) and on
---      (re)connect / character change. Output lines are captured and deleted by
---      two triggers, so nothing spams the main console. Because the index is
---      pre-built in the background, opening the navigator is instant.
---
---   2. A "fed2_galaxy" Muxlet content type (singleton) rendering the syndicate →
---      cartel → system → planet tree in a scrollable console (expand/collapse,
---      click a name for "di" info, click → to navigate). Add it to a pane from
---      the Content Library, position/anchor that pane, and save the workspace —
---      Muxlet's own pane persistence carries the placement from there. To
---      show/hide it from a Button Grid button, bind the button to Muxlet's
---      generic "Toggle Pane/Tab Visibility" action and pick that pane as the
---      target (see Muxlet's conditional.lua / contentLibrary/buttons.lua).
+-- Galaxy Navigator content type. Data comes from "di systems", not the map DB,
+-- since a player's map can be incomplete but "di systems" always lists everything.
 
--- ── Data store ───────────────────────────────────────────────────────────────
--- cartels[cartel] = { name, syndicate, systems = { [sys] = { name, cartel, syndicate, planets = { {name,system,cartel,syndicate}, ... } } } }
--- syndicates[syn] = { name, cartels = { [cartel] = <same table object as cartels[cartel]> } } — a
--- grouping view over the same cartel tables, not a copy, so cartel/system lookups stay unchanged.
+-- cartels[cartel] = { name, syndicate, systems = { [sys] = { name, cartel, syndicate, planets = {...} } } }
+-- syndicates[syn] groups the same cartel tables by syndicate (not copies).
 F2T_GALAXY = F2T_GALAXY or {
     cartels        = {},
     syndicates     = {},
@@ -34,21 +11,14 @@ F2T_GALAXY = F2T_GALAXY or {
     builtAt        = 0,        -- unix time of last successful scrape
     capture_active = false,
     capture_lines  = {},
-    expanded       = {},       -- [key]=true; session-only expand state
+    expanded       = {},       -- [key]=true, session-only expand state
 }
 
--- ── "di systems" capture (mirrors the v1 archive methodology) ──────────────────
+-- di systems capture
 
--- Completion is silence-based (0.5s of no further di-systems-shaped output),
--- reset on every line seen while capturing — NOT "the first blank line ends
--- it". Fed2's login sequence can interleave unrelated blank lines (and other
--- chatter) mid-response while this scrape runs in the background; treating any
--- blank line as authoritative "end of di systems" cut capture short after just
--- the first few entries, leaking the (much longer) remainder of the listing
--- straight to the console. See CLAUDE.md's "Timer-Based Completion Rules".
--- The capture triggers include catch-all line patterns (galaxy_nav_line ^(.+)$,
--- galaxy_nav_end ^$) that otherwise run on every line of output forever. They
--- are armed only for the duration of a scrape.
+-- Completion is silence-based (0.5s with no new output), not "first blank
+-- line ends it": Fed2's login sequence can interleave unrelated blank lines
+-- mid-scrape, which would cut capture short.
 local function setCaptureTriggers(on)
     local fn = on and enableTrigger or disableTrigger
     pcall(fn, "galaxy_nav_line")
@@ -64,8 +34,7 @@ local function resetFinishTimer()
     end)
 end
 
--- Send "di systems" and begin capturing. Safe to call repeatedly; the loading
--- guard prevents overlap. Bails when offline (the command needs the game).
+-- Safe to call repeatedly; the loading guard prevents overlap.
 function f2t_galaxy_scrape()
     if not F2T_LOGGED_IN then
         f2t_debug_log("[galaxy] scrape skipped (not logged in)")
@@ -80,12 +49,11 @@ function f2t_galaxy_scrape()
     F2T_GALAXY.capture_active = true
     F2T_GALAXY.capture_lines  = {}
     setCaptureTriggers(true)
-    f2t_galaxy_refresh_open()              -- show the loading state in any open navigator
-    sendAll("di systems", false)           -- false = don't echo the command; triggers delete the output
+    f2t_galaxy_refresh_open()
+    sendAll("di systems", false)   -- don't echo; triggers delete the output
     resetFinishTimer()
 end
 
--- Called by the galaxy_nav_line trigger for every line while capture is active.
 -- Buffers system lines and folds wrapped continuation lines into the previous one.
 function f2t_galaxy_capture_line(line)
     if not F2T_GALAXY.capture_active then return end
@@ -98,19 +66,14 @@ function f2t_galaxy_capture_line(line)
         local n = #F2T_GALAXY.capture_lines
         F2T_GALAXY.capture_lines[n] = F2T_GALAXY.capture_lines[n] .. " " .. line
     end
-    -- Lines matching neither (command echo, stray text) are ignored.
 end
 
--- Called by the galaxy_nav_end trigger for a blank line while capture is
--- active — hidden (it's still part of an automated background command) but
--- no longer treated as "the" terminator; see resetFinishTimer above.
 function f2t_galaxy_capture_blank()
     if not F2T_GALAXY.capture_active then return end
     resetFinishTimer()
 end
 
--- Parse one combined system line into its components.
--- Format: "SystemName - SyndicateName syndicate - CartelName cartel - Rank Owner[tag]: Planet(T) Planet(T) ..."
+-- "SystemName - SyndicateName syndicate - CartelName cartel - Rank Owner[tag]: Planet(T) Planet(T) ..."
 local function parseSystemLine(line)
     local system_name, syndicate_name, cartel_name, planet_str =
         line:match("^(.+) %- (.+) syndicate %- (.+) cartel %- [^:]+: (.*)$")
@@ -120,7 +83,6 @@ local function parseSystemLine(line)
     cartel_name    = cartel_name:match("^%s*(.-)%s*$")
 
     local planets = {}
-    -- "Planet Name(T)" where T is the planet type tag in parentheses.
     for planet_name in (planet_str or ""):gmatch("(.-)%([^%)]+%)%s*") do
         planet_name = planet_name:match("^%s*(.-)%s*$")
         if planet_name ~= "" then
@@ -130,14 +92,8 @@ local function parseSystemLine(line)
     return system_name, syndicate_name, cartel_name, planets
 end
 
--- Expand the syndicate → cartel → system chain the player currently stands in,
--- so opening (or refreshing) the navigator reveals their location immediately
--- instead of a fully collapsed tree. A no-op until F2T_GALAXY.cartels is
--- populated, so this is safe to call before the "di systems" scrape finishes —
--- callers should also re-call it once loading completes (see
--- f2t_galaxy_finish_capture below), otherwise a navigator opened before the
--- scrape lands never gets its cartel/syndicate expanded even though the
--- system-level key (sourced straight from gmcp, not the scrape) already is.
+-- No-op until cartels is populated; f2t_galaxy_finish_capture re-calls this
+-- once loading completes.
 local function autoExpandCurrentLocation()
     local ri = gmcp and gmcp.room and gmcp.room.info
     if not (ri and ri.cartel and ri.cartel ~= "") then return end
@@ -152,7 +108,6 @@ local function autoExpandCurrentLocation()
     end
 end
 
--- Called when the 0.5s silence timer (resetFinishTimer) expires.
 function f2t_galaxy_finish_capture()
     if not F2T_GALAXY.capture_active then return end
     F2T_GALAXY.capture_active = false
@@ -190,7 +145,6 @@ function f2t_galaxy_finish_capture()
     f2t_galaxy_refresh_open()
 end
 
--- Debounced scheduler so neither load nor reconnect fires multiple scrapes.
 local scrapeTimer = nil
 function f2t_galaxy_schedule_scrape(delay)
     if scrapeTimer then killTimer(scrapeTimer); scrapeTimer = nil end
@@ -201,18 +155,18 @@ function f2t_galaxy_schedule_scrape(delay)
     end)
 end
 
--- ── Navigation / info ────────────────────────────────────────────────────────
+-- Navigation / info
 
 function f2t_galaxy_nav_to(kind, name)
-    expandAlias("nav " .. name)          -- routes via the fed2-tools nav alias
-    f2t_galaxy_hide_nav()                -- tidy away the dedicated navigator after picking
+    expandAlias("nav " .. name)
+    f2t_galaxy_hide_nav()
 end
 
 local function galaxyInfo(kind, name)
-    send("di " .. kind .. " " .. name)   -- cartel / system / planet detail to the main console
+    send("di " .. kind .. " " .. name)
 end
 
--- ── Search match helpers (ported from v1 archive ui_galaxy) ───────────────────
+-- Search match helpers
 local function qMatches(name, q)
     return name and q ~= "" and name:lower():find(q:lower(), 1, true) ~= nil
 end
@@ -245,7 +199,7 @@ local function syndicateHasChildrenMatch(syd, q)
     return false
 end
 
--- ── Styles (self-contained; no dependency on the v1 UI.style table) ───────────
+-- Styles (self-contained)
 local ROW_H      = 24    -- px per row (tied to font size, not pane size)
 local INDENT_PCT = 4
 local EXPAND_PCT = 5
@@ -280,16 +234,14 @@ local ICONS = {
     planet    = { "🌍", "#4ecdc4" },
 }
 
--- Small square icon button (refresh / collapse / clear): bordered square, bigger glyph.
+-- Icon button style (refresh / collapse / clear)
 local CSS_ICONBTN = [[
     QLabel{ background-color: rgba(40,40,45,210); border:1px solid rgba(100,100,110,180);
         border-radius:3px; color: rgba(210,210,220,255); font-size:14px; font-weight:bold;
         qproperty-alignment: AlignCenter; }
     QLabel::hover{ background-color: rgba(60,60,70,230); border-color: rgba(120,180,255,210); color:white; }
 ]]
--- Header/footer strip heights, shared between buildPanel (which builds them),
--- relayoutTopbar (which collapses/expands the heading row), and populate
--- (which reports total content height to Mux.requestAutoFit).
+-- Header/footer heights shared by buildPanel, relayoutTopbar, and populate's autofit report.
 local HEADING_ROW_H  = 28    -- vertical space the title row occupies when shown
 local TOPBAR_FULL_H  = 86    -- title + search + collapse-all rows
 local TOPBAR_MIN_H   = TOPBAR_FULL_H - HEADING_ROW_H   -- search + collapse-all only
@@ -299,10 +251,8 @@ local function topbarHeightFor(inst)
     return inst.showHeading and TOPBAR_FULL_H or TOPBAR_MIN_H
 end
 
--- ScrollBox chrome (copied from the gmcp viewer fix): dark viewport, no horizontal
--- bar, a fixed 8px dark vertical bar, and a dark corner.  Combined with content
--- that fills the FULL scrollbox width, this removes the white strip that used to
--- appear left of the scrollbar when shrinking the pane.
+-- Dark viewport, no horizontal bar, fixed 8px vertical bar: avoids the white
+-- strip that otherwise shows left of the scrollbar when the pane shrinks.
 local CSS_SCROLL = [[
     background: rgb(18,18,26); border: none;
     QScrollBar:horizontal { height: 0px; max-height: 0px; }
@@ -313,14 +263,10 @@ local CSS_SCROLL = [[
 ]]
 
 -- One instance per content target, keyed by the pane/tab's stable _gid.
--- Each holds its own header/scroll/footer widgets and search state.
 local instances = {}
 
--- Navigator display preferences. Content-owned (not Muxlet's global settings
--- system, which is for app-wide options, not a single content instance's own
--- display prefs) — persisted via buildGalaxyDef's serialize/restore, exactly
--- how Button Grid's own CONFIG/cfg.locked rides the workspace instead of
--- Mux.settings. Navigator is a singleton, so one shared table is sufficient.
+-- Display prefs, content-owned (not Mux.settings) since this is a singleton
+-- instance's own state; persisted via buildGalaxyDef's serialize/restore.
 local GX_PREFS = {
     showHeading     = true,
     showRefreshIcon = true,
@@ -336,7 +282,7 @@ local function ageStr(ts)
     else                    return string.format("%dd ago", math.floor(age / 86400)) end
 end
 
--- ── Styled row (syndicate / cartel / system / planet) ─────────────────────────
+-- Styled row: syndicate / cartel / system / planet
 local function createRow(inst, parent, name, row_type, indent_level, y_px, data, is_current)
     local cartel_ctx    = (data and data.cartel) or ""
     local syndicate_ctx = (data and data.syndicate) or ""
@@ -398,10 +344,8 @@ local function createRow(inst, parent, name, row_type, indent_level, y_px, data,
     return row
 end
 
--- Ask the hosting floating pane to track total content height (topbar + rows +
--- footer). Mux.requestAutoFit clamps to its own shared 85%-of-screen ceiling —
--- beyond that, the ScrollBox's own scrollbar takes over (same pattern as
--- local_players.lua's row-count-driven auto-fit).
+-- Reports total content height (topbar+rows+footer) to Mux.requestAutoFit,
+-- which clamps to 85% of screen before the ScrollBox's own scrollbar takes over.
 local function reportAutoFit(inst, contentH)
     if not inst.target then return end
     local h = topbarHeightFor(inst) + contentH + FOOTER_H
@@ -409,15 +353,14 @@ local function reportAutoFit(inst, contentH)
     if Mux and Mux.requestAutoFit then Mux.requestAutoFit(inst.target, h) end
 end
 
--- ── Populate one instance's scroll tree (with search filtering) ───────────────
+-- Populate one instance's scroll tree, filtered by search
 local function populate(gid)
     local inst = instances[gid]
     if not inst or not inst.scroll then return end
     inst.epoch = (inst.epoch or 0) + 1
 
-    -- Track the live viewport so content fills the full width (no white strip by
-    -- the scrollbar) and is never shorter than the viewport (no white gap below
-    -- the rows when collapsed).
+    -- Track the live viewport so content fills the full width (no white strip
+    -- by the scrollbar) and is never shorter than the viewport when collapsed.
     if inst.scroll.get_width then
         local w = inst.scroll:get_width()
         if w and w > 0 then inst.contentW = math.max(50, w) end
@@ -432,7 +375,6 @@ local function populate(gid)
 
     local g = F2T_GALAXY
 
-    -- State (loading / empty) shown on the permanent state label.
     local function showState(msg)
         inst.content:hide()
         inst.stateMsg:echo("<center>" .. msg .. "</center>")
@@ -524,17 +466,12 @@ local function populate(gid)
         end
     end
 
-    -- Resize AFTER all rows exist (resizing mid-loop corrupts container refs).
-    -- Height is max(rows, viewport): fills the viewport when short (no white gap,
-    -- no phantom scroll) and grows to scroll when long.
+    -- Resize AFTER all rows exist; resizing mid-loop corrupts container refs.
     pcall(function() inst.content:resize(inst.contentW or 200, math.max(y + 4, viewportH)) end)
     reportAutoFit(inst, y + 4)
 
-    -- createRow() above just built brand-new row Labels (the whole tree is torn
-    -- down and rebuilt every populate()). Geyser shows a freshly created widget
-    -- unconditionally regardless of its parent's hidden state, so if this
-    -- pane/tab is condition-hidden (see targetHidden below), those new rows
-    -- would otherwise leak visible until the next full hide/show cycle.
+    -- New rows are visible by default regardless of parent hidden state, so
+    -- re-assert hidden here or they'd flash visible on a condition-hidden pane.
     if Mux and Mux.reassertHidden then Mux.reassertHidden(inst.content) end
 end
 
@@ -549,32 +486,27 @@ local function targetHidden(target)
     return false
 end
 
--- Resolve the pane/tab a titlebarElements callback's ctx is acting on. Galaxy
--- Navigator is a singleton, but content still lives on a specific pane/tab —
--- see Muxlet's README "Publishing to the titlebar and menu".
+-- Resolves the pane/tab a titlebarElements callback's ctx acts on (singleton
+-- content still lives on one pane/tab).
 local function galaxyTargetFor(ctx)
     return ctx and (ctx.tab or ctx.pane)
 end
 
--- The settings wrench hides itself once locked — same pattern as Muxlet's own
--- Button Grid wrench (its "Lock (hide editor)" checkbox in Grid Settings +
--- `mux reveal <id>`): openGalaxySettings's Lock toggle sets this; onReveal in
--- buildGalaxyDef (wired to `mux reveal`) is the only way back.
+-- Settings wrench hides once locked; `mux reveal <id>` (onReveal below) is
+-- the only way to unlock it.
 local function settingsIconLocked()
     return GX_PREFS.settingsLocked
 end
 
--- Force an immediate titlebar re-layout after a visibility flag changes
+-- Forces an immediate titlebar re-layout after a visibility flag changes
 -- outside the normal click path (locking/revealing the settings icon).
 local function refreshOwningTitlebar(target)
     local p = target and (target.pane or target)
     if p and p._layoutTitlebarButtons then p:_layoutTitlebarButtons() end
 end
 
--- Resize/reposition the header rows for the current heading visibility: hiding
--- the title collapses that space entirely (search + collapse-all shift up)
--- rather than leaving it blank. Also re-fits the scroll area and re-populates
--- so row layout and Mux.requestAutoFit both reflect the new topbar height.
+-- Hiding the title collapses its space instead of leaving it blank;
+-- re-fits the scroll area and re-populates to match.
 local function relayoutTopbar(inst)
     if not inst.topbar then return end
     local th = topbarHeightFor(inst)
@@ -595,22 +527,21 @@ local function relayoutTopbar(inst)
     populate(inst.gid)
 end
 
--- ── Settings dialog (mirrors Muxlet's own Button Grid "Grid Settings") ────────
+-- Settings dialog
 local function openGalaxySettings(target)
     local gid  = target and target._gid
     local inst = gid and instances[gid]
     if not inst then return end
 
     local d = Mux.createDialog({
-        title = "Galaxy Navigator Settings — " .. Mux._targetPath(target),
+        title = "Galaxy Navigator Settings - " .. Mux._targetPath(target),
         width = 380, height = 220, singleton = "f2t_galaxy_settings_" .. (target.id or gid),
         contextMenu = false,
     })
     if not d then return end
     if d.contentBg then d.contentBg:echo(""); d.contentBg:hide() end
 
-    -- Visibility toggles only — Refresh is its own titlebar/menu action (see
-    -- buildGalaxyDef's titlebarElements), not a button living in here.
+    -- Visibility toggles only; Refresh lives in titlebarElements, not here.
     local rows = {
         { label = "Show Heading", type = "toggle",
           desc = "Show the '🔭 Galaxy Navigator' title inside the panel; hiding it collapses that space.",
@@ -637,13 +568,12 @@ local function openGalaxySettings(target)
     }
     d:mountForm(rows, { prefix = d._gid .. "_gxset" })
 
-    -- Locking hides the settings wrench, so warn before closing — pointing at
-    -- `mux reveal` as the way back (same UX Button Grid's Lock uses).
+    -- Warn before closing while locked, since mux reveal is the only way back.
     if d.closeBtn then
         d.closeBtn:setClickCallback(function(event)
             if event.button ~= "LeftButton" then return end
             if settingsIconLocked() then
-                local msg = "This panel is <b>locked</b> — the settings wrench is now hidden.<br/>"
+                local msg = "This panel is <b>locked</b> - the settings wrench is now hidden.<br/>"
                          .. "To bring it back, run: "
                          .. "<tt style='color:#8ab4ff;'>mux reveal " .. (target.id or "&lt;id&gt;") .. "</tt>"
                 Mux._showPropsCloseConfirm(msg, function() d:close() end)
@@ -654,7 +584,7 @@ local function openGalaxySettings(target)
     end
 end
 
--- ── Build the header / scroll / footer panel into a content target ────────────
+-- Builds header/scroll/footer panel for a content target
 local function buildPanel(target)
     local gid = target._gid
     if target.contentBg then
@@ -668,11 +598,8 @@ local function buildPanel(target)
     local inst = { gid = gid, epoch = 0, rows = {}, target = target }
     instances[gid] = inst
 
-    -- Header bar (three rows: title / search+clear / collapse-all). Refresh and
-    -- settings (including the heading toggle) publish to the hosting pane/tab's
-    -- own titlebar instead (see buildGalaxyDef's titlebarElements).  Rows are
-    -- built at their "heading shown" position; relayoutTopbar (below) corrects
-    -- everything to the right initial state in one pass.
+    -- Header bar: title / search+clear / collapse-all rows. Built at "heading
+    -- shown" position; relayoutTopbar (below) corrects it to the real state.
     inst.topbar = Geyser.Label:new({ name = gid .. "_gx_top", x = 0, y = 0, width = "100%", height = TOPBAR_FULL_H }, C)
     inst.topbar:setStyleSheet(CSS_HEADER)
 
@@ -723,8 +650,8 @@ local function buildPanel(target)
     inst.scroll = Geyser.ScrollBox:new({ name = gid .. "_gx_scroll", x = 0, y = TOPBAR_FULL_H,
         width = "100%", height = "100%-" .. (TOPBAR_FULL_H + FOOTER_H) .. "px" }, C)
     pcall(function() inst.scroll:setStyleSheet(CSS_SCROLL) end)
-    -- Content fills the FULL scrollbox width; the 8px scrollbar overlaps only the
-    -- right edge (rows are left-anchored), so there is no uncovered white column.
+    -- Content fills the FULL scrollbox width; the 8px scrollbar overlaps only
+    -- the right edge (rows are left-anchored), so no white column is left uncovered.
     inst.contentW = math.max(50, inst.scroll:get_width() or 220)
 
     -- Permanent state label (loading / empty) and the row container.
@@ -736,24 +663,20 @@ local function buildPanel(target)
     inst.content = Geyser.Label:new({ name = gid .. "_gx_content", x = 0, y = 0, width = inst.contentW, height = 2000 }, inst.scroll)
     inst.content:setStyleSheet(CSS_BG)
 
-    -- Footer legend (a little taller so the text isn't cramped)
+    -- Footer legend
     local footer = Geyser.Label:new({ name = gid .. "_gx_foot", x = 0, y = "-" .. FOOTER_H, width = "100%", height = FOOTER_H }, C)
     footer:setStyleSheet(CSS_HEADER)
     local legend = Geyser.Label:new({ name = gid .. "_gx_legend", x = "1%", y = 0, width = "98%", height = "100%" }, footer)
     legend:setStyleSheet("background-color:transparent; color:rgba(160,160,170,190); font-size:9px;")
     legend:echo("<center>🏛️ Syndicate&nbsp;&nbsp;&nbsp;🌌 Cartel&nbsp;&nbsp;&nbsp;⭐ System&nbsp;&nbsp;&nbsp;🌍 Planet</center>")
 
-    -- Auto-expand current syndicate/cartel/system on open (a no-op if the
-    -- scrape hasn't finished yet — f2t_galaxy_finish_capture re-runs this
-    -- once data lands, so an early-opened navigator still catches up).
+    -- No-op until the scrape lands; f2t_galaxy_finish_capture re-runs this
+    -- once data is ready, so an early-opened navigator still catches up.
     autoExpandCurrentLocation()
 
-    -- Applies inst.showHeading to the row layout (collapsing the title row's
-    -- space if hidden) and calls populate() internally.
     relayoutTopbar(inst)
 
-    -- Debounced search poll: rebuild the tree shortly after typing stops.
-    -- Runs at 0.4s (fast enough to feel live for typed search) and idles
+    -- Debounced search poll: rebuilds shortly after typing stops; idles
     -- entirely while the hosting pane/tab is condition-hidden.
     inst.pollActive = true
     inst.lastSearch = nil
@@ -786,30 +709,25 @@ local function teardownPanel(gid)
     instances[gid] = nil   -- widgets are children of target.content; the slot delete removes them
 end
 
--- Re-render every open navigator (after a scrape, expand toggle, or reconnect).
 function f2t_galaxy_refresh_open()
     for gid in pairs(instances) do pcall(populate, gid) end
 end
 
--- ── Content type ────────────────────────────────────────────────────────────────
+-- Content type definition
 local function buildGalaxyDef()
     return {
         name        = "Galaxy Navigator",
         description = "Browse every syndicate, cartel, system, and planet from 'di systems'; click → to travel.",
         group       = "Fed2 Tools",
         -- One navigator at a time: Muxlet tracks the active instance itself
-        -- (def._activeTargetRef), which f2t_galaxy_show_nav/hide_nav below use to
-        -- find "the" navigator without fed2-tools keeping its own pane reference.
+        -- (def._activeTargetRef).
         singleton   = true,
 
-        -- Refresh + Settings publish to the hosting pane/tab's own titlebar +
-        -- right-click menu — the same shape as Muxlet's own Button Grid wrench:
-        -- menuFallbackOnly on both means neither ever forces the ⋯ menu open on
-        -- a full, non-compact pane; each only reaches the menu once folded
-        -- (compact/overflow) or on a tab (no titlebar at all). Each element's
-        -- own visibility is a plain "Show ... Icon" toggle in Settings, except
-        -- the settings wrench itself, which uses the stronger Lock + `mux
-        -- reveal` pattern since hiding it would otherwise be a dead end.
+        -- Refresh + Settings publish to the hosting pane/tab's titlebar and
+        -- right-click menu; menuFallbackOnly keeps them off the ⋯ menu unless
+        -- folded/compact or on a tab with no titlebar. The settings wrench
+        -- itself uses the stronger Lock + `mux reveal` pattern since hiding
+        -- it would otherwise be a dead end.
         titlebarElements = {
             {
                 id = "galaxy.refresh", side = "left", group = "content", order = 0, priority = 100,
@@ -818,7 +736,7 @@ local function buildGalaxyDef()
                 onClick = function(_ctx, event)
                     if not event or event.button == "LeftButton" then f2t_galaxy_scrape() end
                 end,
-                menuText = function() return "🔄  Refresh — last: " .. ageStr(F2T_GALAXY.builtAt) end,
+                menuText = function() return "🔄  Refresh - last: " .. ageStr(F2T_GALAXY.builtAt) end,
                 menuGroup = "info", menuOrder = 90,
                 menuFallbackOnly = true,
                 run = function() f2t_galaxy_scrape() end,
@@ -852,8 +770,7 @@ local function buildGalaxyDef()
             if instances[target._gid] then populate(target._gid) end
         end,
 
-        -- GX_PREFS rides the workspace with this one singleton target, exactly
-        -- how Button Grid's serialize/restore carries its own CONFIG.
+        -- GX_PREFS persists via this singleton target's serialize/restore.
         serialize = function(_target)
             return {
                 showHeading     = GX_PREFS.showHeading,
@@ -869,8 +786,7 @@ local function buildGalaxyDef()
             local inst = instances[target._gid]
             if inst then inst.showHeading = GX_PREFS.showHeading; relayoutTopbar(inst) end
         end,
-        -- `mux reveal <pane id>` clears the settings-wrench lock — the exact
-        -- escape hatch Button Grid's own onReveal uses to undo its wrench lock.
+        -- `mux reveal <pane id>` clears the settings-wrench lock.
         onReveal = function(target)
             if settingsIconLocked() then
                 GX_PREFS.settingsLocked = false
@@ -881,35 +797,26 @@ local function buildGalaxyDef()
     }
 end
 
--- ── Show/hide convenience ─────────────────────────────────────────────────────
--- The navigator pane itself is no longer created or placed by fed2-tools: add
--- the "Galaxy Navigator" content to a pane from the Content Library once,
--- position/anchor it, and save the workspace — Muxlet's own pane persistence
--- (floating geometry, anchors) carries it from there. Since the content is
--- singleton (above), Muxlet tracks that one active instance itself
--- (def._activeTargetRef); these two helpers just find it and drive its real
--- condition-hidden state (MuxPane/MuxTab :_conditionShow/_conditionHide,
--- shared with the generic "Toggle Pane/Tab Visibility" action a Button Grid
--- button can bind to — see Muxlet's conditional.lua).
+-- Content is added to a pane via the Content Library, not created here;
+-- Muxlet's pane persistence keeps the placement. These helpers find the
+-- singleton's active target and toggle its condition-hidden state.
 local function currentNavTarget()
     local def = Mux._content and Mux._content.fed2_galaxy
     return def and def._activeTargetRef or nil
 end
 
--- Walks a tab's .pane back-references up to the owning MuxPane (a tab hosting
--- sub-tabs is itself a .pane host, so a nested sub-tab needs more than one hop).
+-- A tab hosting sub-tabs is itself a .pane host, so a nested sub-tab needs
+-- more than one hop up to the owning MuxPane.
 local function rootPaneOf(t)
     while t and t.pane do t = t.pane end
     return t
 end
 
--- Hide the dedicated navigator pane if it's showing (used after navigating).
 function f2t_galaxy_hide_nav()
     local t = currentNavTarget()
     if t and t._conditionHide and not t._conditionHidden then t:_conditionHide() end
 end
 
--- Reveal the navigator (used when a player card jumps to a system).
 function f2t_galaxy_show_nav()
     local t = currentNavTarget()
     if not t then
@@ -922,18 +829,16 @@ function f2t_galaxy_show_nav()
     f2t_galaxy_refresh_open()
 end
 
--- ── Registration (called from init.lua muxletReady) ──────────────────────────────
+-- Registration (init.lua's muxletReady calls this)
 function f2tRegisterGalaxy()
     if not (Mux and Mux.registerContent) then return end
     Mux.registerContent("fed2_galaxy", buildGalaxyDef())
     -- Package (re)install re-enables all triggers; park the catch-all capture
     -- triggers unless a scrape is actually in flight.
     if not F2T_GALAXY.capture_active then setCaptureTriggers(false) end
-    -- Background scrape only for a genuine hot-reload (script re-executed
-    -- with no index built yet). Normal login path: f2tCharacterChanged fires
-    -- after vitals and schedules the scrape. Guarding on `loaded` also stops
-    -- a redundant, visible "di systems" re-scrape when Muxlet finishes an
-    -- in-session install well after login and this registrar re-runs.
+    -- Only scrape here for a genuine hot-reload with no index yet; normal
+    -- login schedules via f2tCharacterChanged. Guarding on `loaded` avoids a
+    -- redundant re-scrape if this registrar re-runs after a mid-session install.
     if not F2T_GALAXY.loaded and F2T_CONNECTED ~= false and F2T_LOGGED_IN then
         f2t_galaxy_schedule_scrape(3)
     end
@@ -943,10 +848,8 @@ end
 F2T_CONTENT_REGISTRARS = F2T_CONTENT_REGISTRARS or {}
 table.insert(F2T_CONTENT_REGISTRARS, f2tRegisterGalaxy)
 
--- ── Connection awareness ─────────────────────────────────────────────────────────
--- Refresh open navigator on (re)connect. Do NOT schedule a scrape here:
--- di systems would fire during the login sequence. The f2tCharacterChanged
--- handler below schedules the scrape after login is confirmed.
+-- Don't scrape on connect; di systems would fire mid-login.
+-- f2tCharacterChanged (below) schedules it once login is confirmed.
 registerAnonymousEventHandler("sysConnectionEvent", function()
     if f2t_check_connection then f2t_check_connection() end
     f2t_galaxy_refresh_open()

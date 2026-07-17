@@ -1,37 +1,25 @@
--- fed2-tools chat — comhistory backfill
---
--- Auto-fetches the game's `comhistory` output once per session shortly after
--- login and merges any missed com messages into F2T_CHAT.history, deduplicating
--- against records already present (the game reports ages in whole-unit buckets,
--- so the dedup window spans one bucket on each side).
+-- Auto-fetches the game's `comhistory` output once per session after login
+-- and merges missed com messages into F2T_CHAT.history, deduplicating against
+-- existing records (ages are reported in whole-unit buckets, so the dedup
+-- window spans one bucket on each side).
 --
 -- Two permanent triggers drive capture (src/triggers/chat/):
---   comhistory_capture → f2tChatComhistoryBegin()   (header line)
---   comhistory_line    → f2tChatComhistoryLine()    (every line, catch-all)
---
--- Permanent triggers (rather than tempLineTrigger) avoid missing lines already
--- batched in the server's response when the request was sent from a timer —
--- this applies just as much to wrapped continuation lines mid-capture as it
--- does to the first entry, so comhistory_line's pattern is a catch-all and
--- f2tChatComhistoryLine() itself branches on whether the line looks like a
--- new entry header or a continuation of the one in progress. (An earlier
--- version used a tempLineTrigger armed after each line to peek at the next
--- one; armed mid-batch it registered one line too late, causing it to skip
--- every other line for the rest of the capture.) chat_inbound.lua now uses
--- this same catch-all pattern for live message continuations.
+--   comhistory_capture -> f2tChatComhistoryBegin()   (header line)
+--   comhistory_line    -> f2tChatComhistoryLine()    (every line, catch-all)
+-- Permanent triggers avoid missing lines already batched in the server's
+-- response when the request was sent from a timer; f2tChatComhistoryLine()
+-- branches on whether each line looks like a new entry header or a
+-- continuation. chat_inbound.lua uses the same catch-all pattern for live
+-- message continuations.
 --
 -- A live com/say/tell message can arrive interleaved with this capture (e.g.
--- another player messages you right after login) — f2tChatComhistoryLine()
--- defers entirely while chat_inbound.lua has a message pending, and treats a
--- live message header as an entry boundary, so the two catch-alls never
--- fight over the same line (previously this could corrupt both: comhistory
--- swallowing a live message into its buffer while also garbling its own
--- in-progress entry with the live text).
---
--- Ported from archive's ui_chat_comhistory.lua.
+-- another player messages you right after login): f2tChatComhistoryLine()
+-- defers while chat_inbound.lua has a message pending, and treats a live
+-- message header as an entry boundary, so the two catch-alls never collide.
 
 local MAX_CONTINUATION_LINES = 6   -- per-entry safety cap, same as chat_inbound.lua
-local FINISH_TIMEOUT = 1.5   -- silence window before capture is considered done; wider than other captures since a long dump can span socket reads
+-- Wider than other captures since a long comhistory dump can span socket reads.
+local FINISH_TIMEOUT = 1.5
 
 local state = {
     -- sent: false = not requested yet; "pending" = requested, header not seen;

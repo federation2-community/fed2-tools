@@ -1,6 +1,4 @@
--- fed2-tools — scrollbox table system
 -- Sortable, scrollable tables backed by Geyser Labels.
--- Ported from archive's ui_table_system.lua (scrollbox portion only).
 --
 -- Public API:
 --   f2tTableCreate(tableId, columns)

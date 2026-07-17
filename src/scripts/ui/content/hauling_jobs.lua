@@ -1,16 +1,13 @@
--- hauling_jobs.lua — Armstrong Cuthbert job board content for fed2-tools.
---
--- Sortable table of AC courier jobs captured from `work` output, with computed
--- route distance and effective pay (20% bonus when the route beats the allowed
--- GTU, 50% penalty when it exceeds it).  Job numbers accept the job; origin
--- and destination navigate.  A button strip triggers work/collect/deliver.
+-- Sortable table of AC courier jobs captured from `work` output, with
+-- computed route distance and effective pay (20% bonus when the route beats
+-- the allowed GTU, 50% penalty when it exceeds it). Job numbers accept the
+-- job; origin and destination navigate. A button strip triggers
+-- work/collect/deliver.
 --
 -- Data flow: the ui triggers (triggers/ui/hauling_work_*.lua) call
--- f2tHaulingJobsHeader()/f2tHaulingJobsLine() and gag the raw listing — but
--- only while at least one panel is open AND the hauling automation is not
--- running (the automation's own capture owns the output then).
---
--- Ported from archive's ui_hauling.lua + haulingStart/haulingJob triggers.
+-- f2tHaulingJobsHeader()/f2tHaulingJobsLine() and gag the raw listing, but
+-- only while at least one panel is open and hauling automation isn't running
+-- (the automation's own capture owns the output then).
 
 local H_BAR  = 26    -- button strip height (px)
 local H_COL  = 20    -- column header bar height (px)

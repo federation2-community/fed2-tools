@@ -1,35 +1,20 @@
--- fed2-tools — Map content registration
---
--- Registers the Fed2 Map content with Muxlet: apply/remove lifecycle hooks that
+-- Registers the Fed2 Map content with Muxlet: apply/remove lifecycle hooks
 -- mount and unmount a Geyser.Mapper widget inside a Muxlet pane.
 --
--- Why the mapper needs special handling
--- -------------------------------------
--- Muxlet tears down content by deleting the disposable Geyser.Container slot it
--- wraps each apply() in; that delete is recursive, so for ordinary widgets no
--- remove() cleanup is needed.  A Geyser.Mapper is the exception: the native
--- embedded map widget is a PER-PROFILE SINGLETON (TMainConsole::mpMapper in
--- Mudlet) — every createMapper call after the first just moves/resizes/shows
--- that same widget, and Geyser.Mapper:hide() merely sizes it to 0×0.  It is
--- NOT a Qt child of its Geyser container, so deleting the slot does not remove
--- it, and reparenting an existing wrapper leaves it blank.
---
--- So on release we hide the native mapper (0×0) and drop our reference to the
--- disposable Geyser wrapper (see releaseLive() below for why we don't call
--- m:delete() on it); on acquire we create a fresh wrapper, which re-points the
--- singleton at the new slot and always renders.  Nothing accumulates across
--- add/remove cycles or package reloads, and none of this can touch the map
--- database — that lives in Host::mpMap and is only affected by deleteMap().
+-- The embedded map widget is a per-profile singleton (TMainConsole::mpMapper
+-- in Mudlet), not a Qt child of its Geyser container, so deleting the slot
+-- doesn't remove it and reparenting an existing wrapper leaves it blank. On
+-- release we hide the native mapper and drop our wrapper reference (see
+-- releaseLive() for why we don't call m:delete()); on acquire we create a
+-- fresh wrapper, which re-points the singleton at the new slot. None of this
+-- touches the map database, which lives in Host::mpMap.
 --
 -- f2tRegisterMapContent() is called from init.lua's muxletReady handler.
 --
--- TEMP DIAGNOSTIC LOGGING (F2T_DEBUG): apply/remove/resize and every
--- createMapper()/updateMap() pass are timed and counted via f2t_debug_log, to
--- get hard numbers on how many times this content is torn down and rebuilt
--- during a single login, and how expensive each native call actually is.
--- Remove once the startup-cost investigation is done.
+-- F2T_DEBUG logging times and counts apply/remove/resize and every
+-- createMapper()/updateMap() pass, to track teardown/rebuild cost per login.
 
--- ── Mapper management ───────────────────────────────────────────────────────────
+-- Mapper management
 local liveMapper = nil    -- the wrapper currently shown in a pane (or nil)
 local mapperSeq  = 0      -- wrapper names are never reused (Qt caches by name)
 local applyCount  = 0     -- diagnostic: how many times apply() has fired this session
@@ -42,20 +27,13 @@ local resizeCount = 0     -- diagnostic: how many times resize() has fired this 
 local liveSlotContent = nil
 local liveGid         = nil
 
--- Hide the native mapper and drop our reference to the wrapper.
---
--- Deliberately does NOT call m:delete(): Geyser.Mapper:type_delete() (Mudlet's
--- GeyserMapper.lua) unconditionally calls closeMapWidget(self.windowname),
--- unlike every other Mapper method (hide_impl/show_impl/move/resize), which
--- branch on self.embedded and use createMapper(..., 0, 0) instead. Calling
--- closeMapWidget() against an embedded mapper's windowname wedges the
--- singleton native mapper (TMainConsole::mpMapper): the next createMapper()
--- still produces a correctly-sized widget, but its room-graphics layer never
--- paints again for the rest of the session -- a blank map with any sibling
--- overlays (movement pad, gear icon) still visible. m:hide() alone already
--- zeros the embedded mapper via Geyser's own embedded-aware path, and
--- mapperSeq below guarantees each new wrapper gets a unique window name, so
--- nothing depends on actually deleting the old one.
+-- Deliberately doesn't call m:delete(): Mudlet's GeyserMapper.lua routes
+-- type_delete() through closeMapWidget(), which wedges the singleton native
+-- mapper (TMainConsole::mpMapper) when called on an embedded mapper - the
+-- next createMapper() sizes correctly, but its room-graphics layer never
+-- paints again this session. m:hide() alone already zeros the embedded
+-- mapper via Geyser's own embedded-aware path, and mapperSeq below
+-- guarantees each new wrapper gets a unique window name.
 local function releaseLive()
     if not liveMapper then return end
     local m = liveMapper

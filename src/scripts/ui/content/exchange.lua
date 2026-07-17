@@ -1,31 +1,24 @@
--- exchange.lua — Live exchange board content for fed2-tools.
+-- Live exchange board content. One registered content, pure GMCP (no game
+-- commands, no triggers):
 --
--- One registered content, pure GMCP (no game commands, no triggers):
---
--- fed2_exchange — board for the exchange you are standing in, with a
+-- fed2_exchange - board for the exchange you're standing in, with a
 -- rank-aware main table and a live price ticker strip:
---   Prices  — every commodity the exchange lists (gmcp.exchange.commodities):
---             base, what the exchange pays (Buying), what it charges
---             (Selling), stock.  Deltas vs base are colored from the player's
---             side: green = exchange pays a premium / charges under base.
---             Click Buying to sell a 75-ton lot, Selling to buy one.
---   Futures — for Traders/Financiers (the only ranks that trade futures) the
---             futures market table shared with fed2_futures_market
---             (f2tFuturesMarketCols/Rows from content/futures.lua).  These
---             ranks default to this view; a header button flips between the
---             two.
---   Ticker  — each gmcp.exchange.commodity announcement rolls into a strip at
---             the bottom, newest last; hover a sell price for stock on hand.
---             Latest ticks also overlay the Prices rows between full
---             gmcp.exchange.commodities pushes.  Collapsible via the header
---             button; cleared when you leave the exchange.
+--   Prices  - every commodity the exchange lists: base, Buying/Selling price,
+--             stock. Deltas vs base are colored from the player's side
+--             (green = exchange pays a premium / charges under base). Click
+--             Buying to sell a 75-ton lot, Selling to buy one.
+--   Futures - for Traders/Financiers, the futures market table shared with
+--             fed2_futures_market (f2tFuturesMarketCols/Rows from
+--             content/futures.lua); these ranks default to this view, with a
+--             header button to flip between the two.
+--   Ticker  - each exchange.commodity announcement rolls into a strip at the
+--             bottom, newest last; hover a sell price for stock on hand.
+--             Overlays the Prices rows between full pushes. Collapsible,
+--             cleared on leaving the exchange.
 --
--- The exchange/console_spam setting (registered below, enforced by
--- triggers/ui/exchange_spam.lua) controls whether the +++ ticker announcements
--- still show in the main console.
---
--- Ported from archive's ui_exchange.lua ticker + rank-gated market, rebuilt on
--- GMCP (the archive scraped the +++ ticker spam with triggers).
+-- The exchange/console_spam setting (below, enforced by
+-- triggers/ui/exchange_spam.lua) controls whether the +++ ticker
+-- announcements still show in the main console.
 
 local H_HDR      = 20    -- status header strip height (px)
 local H_COL      = 20    -- column header bar height (px)

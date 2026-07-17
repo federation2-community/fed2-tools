@@ -1,14 +1,10 @@
--- who.lua — Online player list content for fed2-tools.
---
--- Reads from F2T_PLAYER_DB (player_db.lua) kept current by the always-on GMCP
--- handler.  Refreshes all open panes on f2tPlayerDbUpdated.
+-- Reads from F2T_PLAYER_DB (player_db.lua), kept current by the always-on
+-- GMCP handler. Refreshes all open panes on f2tPlayerDbUpdated.
 --
 -- Layout per pane:
---   H_HDR px  — header strip: online count + Online/All toggle button
---   H_COL px  — sortable column header bar (Rank | Name | Location)
---   remainder — ScrollBox driven by the table system (f2t_table_system.lua)
---
--- Ported from archive's ui_players.lua (ui_who_init + ui_who_set_table_data).
+--   H_HDR px  - header strip: online count + Online/All toggle button
+--   H_COL px  - sortable column header bar (Rank | Name | Location)
+--   remainder - ScrollBox driven by the table system (f2t_table_system.lua)
 
 local H_HDR     = 24    -- header strip height (px)
 local H_COL     = 20    -- column header bar height (px)

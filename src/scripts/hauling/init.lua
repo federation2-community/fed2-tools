@@ -1,17 +1,15 @@
--- fed2-tools hauling — initialization
+-- Automated, rank-adaptive hauling. Owns the global F2T_HAULING_STATE table
+-- and registers hauling's settings into the Muxlet settings UI
+-- (Fed2-Tools/Hauling tab).
 --
--- Automated, rank-adaptive hauling.  This file owns the global F2T_HAULING_STATE
--- table and registers hauling's settings into the Muxlet settings UI (under the
--- Fed2-Tools/Hauling tab).
---
--- Hauling has no "enabled" toggle: it is inert until `haul start` and resets on
--- `haul stop` / `haul terminate`.
+-- No "enabled" toggle: inert until `haul start`, resets on `haul stop` /
+-- `haul terminate`.
 --
 -- Mode by rank (see mode_detection.lua):
---   Commander/Captain        → Armstrong Cuthbert jobs  (standalone)
---   Adventurer/Adventuress   → Akaturi contracts        (standalone)
---   Merchant…Financier       → Exchange trading         (needs commodities module)
---   Founder+                 → Planet Owner trading      (needs commodities module)
+--   Commander/Captain        -> Armstrong Cuthbert jobs (standalone)
+--   Adventurer/Adventuress   -> Akaturi contracts (standalone)
+--   Merchant...Financier     -> Exchange trading (needs commodities module)
+--   Founder+                 -> Planet Owner trading (needs commodities module)
 
 F2T_HAULING_STATE = {
     active = false,

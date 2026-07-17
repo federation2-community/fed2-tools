@@ -1,17 +1,16 @@
--- fed2-tools map — galaxy topology model
+-- Galaxy topology model.
 --
--- Jump legality in Fed2 is a pure function of four facts: which cartel each
--- system belongs to, which syndicate each cartel belongs to, which system is
--- each hub (cartel hub system == cartel name, syndicate hub cartel ==
--- syndicate name, except Prime whose hub is Sol), and each syndicate's beacon
--- builds. This module owns those facts and derives every link room's
--- "jump <system>" special exits from them, so Mudlet's native getPath() plans
--- over exactly the legal jump graph. Sources of truth: gmcp.room.info.jumps
--- corrects the model as you travel (see f2t_map_topology_apply_gmcp), and
--- "display cartels" / "display syndicates" captures sync it wholesale (see
--- topology_capture.lua).
+-- Jump legality is a pure function of: which cartel each system belongs to,
+-- which syndicate each cartel belongs to, each hub system (cartel hub ==
+-- cartel name, syndicate hub cartel == syndicate name, except Prime whose hub
+-- is Sol), and each syndicate's beacon builds. This module owns those facts
+-- and derives every link room's "jump <system>" special exits from them, so
+-- Mudlet's native getPath() plans over exactly the legal jump graph.
+-- Sources of truth: gmcp.room.info.jumps corrects the model as you travel
+-- (f2t_map_topology_apply_gmcp); "display cartels"/"display syndicates"
+-- captures sync it wholesale (topology_capture.lua).
 --
--- The full rule set, verified against the game server code:
+-- Rule set (verified against game server code):
 --   1. Always: any member system -> every accepted member of its own cartel.
 --   2. From a cartel hub: -> every other cartel hub in the same syndicate.
 --   3. Hub Beacon (never Prime): from anywhere in the syndicate -> every
@@ -19,8 +18,8 @@
 --   4. From the syndicate hub system: -> every other syndicate's hub system.
 --   5. Distant Beacon (never Prime): from anywhere in the syndicate -> every
 --      other syndicate's hub system.
--- Destination-side builds never affect a single jump's legality, so jump
--- edges are directed: never create a reverse exit by symmetry.
+-- Jump edges are directed; destination-side builds never affect legality, so
+-- never create a reverse exit by symmetry.
 
 -- systems[name]    = cartel name (accepted members only)
 -- cartels[name]    = syndicate name, or false when the cartel is known but

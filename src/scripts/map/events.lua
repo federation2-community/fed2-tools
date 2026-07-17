@@ -8,24 +8,20 @@ else
     f2t_debug_log("[map] WARNING: Failed to register GMCP event handler: %s", tostring(handler_id))
 end
 
--- ── Startup topology sync ───────────────────────────────────────────────────
+-- Startup topology sync
 --
 -- Once per login, re-ground the jump model (cartel->syndicate groupings and
 -- syndicate beacon builds) with a single "display cartels" / "display
--- syndicates" pass, so speedwalk jump planning is correct from the first jump
--- even though the galaxy's politics drift between sessions.
+-- syndicates" pass, so speedwalk jump planning is correct from the first
+-- jump even though galaxy politics drift between sessions.
 --
--- Runs in EVERY startup mode (Minimal included) and on the very first run:
--- this is a plain GMCP event handler, registered whenever the package loads,
--- and the sync needs no map pane or mapper widget — it only sends game
--- commands whose replies the capture triggers swallow. It is fully silent
--- (opts.silent), so nothing reaches the console.
+-- Runs in every startup mode, including Minimal: it's a plain GMCP handler
+-- that only sends game commands (swallowed by capture triggers, opts.silent),
+-- needing no map pane or mapper widget.
 --
--- Gated to fire once per connection: keyed off gmcp.char.vitals (proof we are
--- logged in and can send commands) with a flag that re-arms on disconnect, the
--- same once-per-session shape used elsewhere in the package. The actual sync is
--- deferred a few seconds so its commands never land in the middle of the login
--- burst.
+-- Gated to fire once per connection, keyed off gmcp.char.vitals with a flag
+-- that re-arms on disconnect. The sync is deferred a few seconds so its
+-- commands never land mid-login.
 local topology_startup_synced = false
 
 local function f2t_map_startup_topology_sync()

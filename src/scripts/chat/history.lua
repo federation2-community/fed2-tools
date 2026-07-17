@@ -1,19 +1,13 @@
--- fed2-tools chat — persistent chat history store
---
 -- Owns F2T_CHAT.history: an ordered list of chat records persisted per
--- character under fed2-tools_persistent/<char>/chat_history.  This module is
--- pure data — it never touches widgets.  Consumers (the fed2_chat content in
+-- character. Pure data, never touches widgets; consumers (fed2_chat in
 -- ui/content/chat.lua) listen for the f2tChatUpdated event:
---
---   raiseEvent("f2tChatUpdated", "append")   one record appended (history tail)
---   raiseEvent("f2tChatUpdated", "replay")   history restructured — re-render all
+--   raiseEvent("f2tChatUpdated", "append")  one record appended (history tail)
+--   raiseEvent("f2tChatUpdated", "replay")  history restructured, re-render all
 --
 -- Record shape: { t = unixTime, type = <see below>, from = name, msg = text }
---   com / say / tell_in       inbound traffic
---   self_com / self_say / self_tell   the local player's own messages
---   status                    connect/disconnect markers (pre-rendered r.line)
---
--- Ported from archive's ui_chat.lua with the rendering half split out.
+--   com / say / tell_in                inbound traffic
+--   self_com / self_say / self_tell    the local player's own messages
+--   status                             connect/disconnect markers (pre-rendered r.line)
 
 F2T_CHAT = F2T_CHAT or {
     history     = {},

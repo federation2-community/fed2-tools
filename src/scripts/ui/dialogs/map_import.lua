@@ -1,20 +1,14 @@
--- fed2-tools — Map import overlay
---
 -- f2tShowMapImportOverlay(slotContent, gid, reason) is called by
 -- map/import_check.lua (auto first-run/upgrade), map_settings.lua's gear
--- menu, and the "map import db" alias (all three: manual). Presents three
--- pre-bundled map options and imports the selected one.
+-- menu, and the "map import db" alias. Presents three pre-bundled map
+-- options and imports the selected one.
 --
--- Built directly as a Geyser overlay inside the map content's own slot
--- (slotContent) rather than a separate floating Mux dialog. This matters:
--- Mudlet's native mapper widget owns its own built-in "No map yet for this
--- profile" empty-state overlay with no Lua hook to suppress it, and a
--- separate top-level dialog pane competes with that native widget across
--- unrelated branches of the Qt widget tree — an unwinnable z-order race that
--- is exactly what caused this prompt to never visibly appear. Building this
--- overlay as a sibling of the mapper/movement/settings widgets inside the
--- SAME slotContent uses the same simple same-parent raise() stacking that
--- those overlays already rely on successfully.
+-- Built as a Geyser overlay inside the map content's own slot (slotContent),
+-- not a separate floating Mux dialog: Mudlet's native mapper widget owns its
+-- own "No map yet" empty-state overlay with no Lua hook to suppress it, and a
+-- top-level dialog would race it for z-order. A same-parent overlay inside
+-- the same slotContent uses the same raise() stacking the mapper/movement/
+-- settings widgets already rely on.
 
 -- ── Option definitions ────────────────────────────────────────────────────────
 

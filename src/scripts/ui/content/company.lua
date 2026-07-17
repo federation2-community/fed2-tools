@@ -1,33 +1,18 @@
--- company.lua — Company / business management content for fed2-tools.
+-- Company / business management content. Four separate registered contents,
+-- all rendered from gmcp.char.company, each placeable in its own pane/subtab:
+--   fed2_company_overview   - identity, status, repair alerts, key figures
+--   fed2_company_factories  - sortable factory table with inline actions, depot list
+--   fed2_company_financials - share stats, dividend/purchase actions, shareholder table
+--   fed2_company_portfolio  - holdings in other companies (Financier+), sortable table
 --
--- Four SEPARATE registered contents, all rendered from gmcp.char.company, so
--- each can be placed in its own Muxlet pane or subtab (Muxlet owns the tab
--- chrome — no internal section nav here):
+-- Action dialogs use Muxlet primitives throughout (Mux.createDialog,
+-- Mux.dialogCss, Mux.wireDialogButton, Mux.ui.buildForm).
 --
---   fed2_company_overview   — identity, status (click to freeze), repair
---                             alerts, financial and investor key figures
---   fed2_company_factories  — sortable factory table with inline repair /
---                             start-stop / wages / destroy actions + depot list
---   fed2_company_financials — share stats, dividend/share-purchase actions,
---                             the shareholder table, and derived analysis
---   fed2_company_portfolio  — your holdings in OTHER companies (Financier
---                             rank and above), a sortable scrollbox table
---
--- Action dialogs use Muxlet primitives throughout: Mux.createDialog +
--- Mux.dialogCss + Mux.wireDialogButton for confirm/info flows, and
--- Mux.ui.buildForm (number steppers) for wages / dividend / share amounts.
---
--- gmcp.char.company is realtime — the game pushes a fresh copy after every
--- action that changes it (repair, wages, dividend, freeze, ...), so panels
--- just re-render on that event; nothing here polls or force-refreshes it.
--- Each panel's header strip carries a small icon button — a purely
--- diagnostic action that sends `di company`/`di business` (or `di accounts`
--- on Financials) visibly, so the raw text shows in the console. It's drawn
--- in-content (not a titlebar element) so it's always visible regardless of
--- how the hosting pane/tab chrome is configured.
---
--- Ported from archive's ui_company.lua (its OVERVIEW/FACTORIES/FINANCIALS
--- sections became these contents; Portfolio is new).
+-- gmcp.char.company is realtime (a fresh copy pushes after every action that
+-- changes it), so panels just re-render on that event; nothing polls here.
+-- Each panel's header carries a small icon button that sends `di company` /
+-- `di business` / `di accounts` visibly, drawn in-content so it's always
+-- visible regardless of the hosting pane/tab chrome.
 
 local H_BAR = 24    -- header strip height (px): houses the report/accounts icon button
 local H_COL = 20    -- column header bar height (px)

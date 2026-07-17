@@ -1,13 +1,11 @@
--- price_checker.lua — Remote cartel price-checking content for fed2-tools.
---
--- Replaces the old Trading tab. The free, no-subscription spot check
--- ('check price commodity') now lives as a click on the commodity name in
--- the Exchange content's Prices pane — this tab is just the one remote
--- command the player actually uses: `c price <commodity> cartel` (needs the
+-- Remote cartel price-checking content. The free, no-subscription spot check
+-- ('check price commodity') lives as a click on the commodity name in the
+-- Exchange content's Prices pane; this tab is the one remote command the
+-- player actually uses: `c price <commodity> cartel` (needs the
 -- remote-access-cert tool from the Remote Price Check Service).
 --
--- Find Best (unchanged from the old Trading tab) iterates every commodity
--- with `c price <c> cartel` and reports the best cartel-wide spread.
+-- Find Best iterates every commodity with `c price <c> cartel` and reports
+-- the best cartel-wide spread.
 --
 -- The commodity picker matches the Exchange content's list: icon-prefixed
 -- rows that obey the shared exchange/show_icons setting.

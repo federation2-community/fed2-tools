@@ -259,7 +259,9 @@ jobs:
           RELEASE_DELTA: ${{ steps.release_notes.outputs.delta }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          OWNER="$GITHUB_REPOSITORY_OWNER"
+          # Shared org fork, not $GITHUB_REPOSITORY_OWNER: any fed2-tools fork's
+          # workflow run submits through the same community-owned MPR fork.
+          OWNER="federation2-community"
           BRANCH="fed2-tools-v${VERSION}"
 
           git config --global user.name "github-actions[bot]"

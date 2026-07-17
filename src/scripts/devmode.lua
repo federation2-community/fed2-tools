@@ -1,50 +1,41 @@
--- fed2-tools — Dev Mode: local build auto-reload
+-- Dev Mode: local build auto-reload.
 --
--- muddlet --profile <name> writes a stamp file to the profile directory after
--- every build:
---     fed2-tools-rebuild.stamp   contents: unix timestamp
--- A recursive 30-second timer watches the stamp. When it changes, fed2-tools
--- reinstalls itself from the deployed package. The new code is active
--- immediately; Mux._promptRestartRequired then offers a profile close/reopen
--- for a fully clean UI (stale widgets from the prior session), but doesn't
--- force one.
+-- muddlet --profile <name> writes fed2-tools-rebuild.stamp (unix timestamp)
+-- to the profile directory after every build. A 30-second timer here watches
+-- it; on change, fed2-tools reinstalls itself from the deployed package. New
+-- code is active immediately; Mux._promptRestartRequired then offers a
+-- profile close/reopen for a fully clean UI, but doesn't force one.
 --
--- muddlet --fresh additionally writes a fresh flag file alongside the stamp.
--- The watcher picks this up and, instead of a plain reinstall, wipes
--- Muxlet_persistent and fed2-tools_persistent, uninstalls Muxlet from the
--- profile XML, then reinstalls fed2-tools — whose own top-level bootstrap
--- notices Muxlet is missing and downloads a clean copy — simulating a
--- first-time install without closing Mudlet.
+-- muddlet --fresh also writes a fresh flag file. The watcher then wipes
+-- Muxlet_persistent and fed2-tools_persistent, uninstalls Muxlet, and
+-- reinstalls fed2-tools, whose bootstrap re-downloads a clean Muxlet,
+-- simulating a first-time install without closing Mudlet.
 
 -- Stamp value seen at last check. nil = not yet observed this session.
 local _devLastStamp = nil
 
--- Recursively delete a file or directory tree.
-local function rmDir(path)
+-- Recursively deletes every file under a directory tree, leaving the
+-- directory skeleton in place (mirrors Muxlet's own Mux._wipePersistentDir).
+local function wipeFiles(path)
     local attr = lfs.attributes(path)
     if not attr then return end
     if attr.mode == "directory" then
         for entry in lfs.dir(path) do
             if entry ~= "." and entry ~= ".." then
-                rmDir(path .. "/" .. entry)
+                wipeFiles(path .. "/" .. entry)
             end
         end
-        lfs.rmdir(path)
     else
         os.remove(path)
     end
 end
 
--- CRITICAL: deferred to a runtime tempTimer(0) so the uninstall does NOT run
--- while a package-owned timer callback (the watcher below) is still on the
--- Lua stack. Uninstalling the very script that is executing frees it mid-run
--- and crashes Mudlet — the same bug Muxlet hit and fixed in
--- Mux._reinstallPackage (see Muxlet's update.lua).
+-- Deferred to a runtime tempTimer(0): uninstalling the script that's
+-- currently executing (from inside the watcher's own callback) frees it
+-- mid-run and crashes Mudlet, so this must run after the call stack unwinds.
 --
--- Reinstalling only reloads fed2-tools' Lua; Muxlet keeps running and never
--- re-fires "muxletReady", so nothing re-triggers content registration on its
--- own. Clear the registrar list so reloaded modules repopulate it fresh, then
--- run it explicitly once the new package has loaded.
+-- Reinstalling only reloads fed2-tools' Lua; Muxlet doesn't re-fire
+-- "muxletReady", so the registrar list is cleared and re-run explicitly here.
 local function f2tDevmodeDoReload(pkgPath)
     tempTimer(0, function()
         if table.contains(getPackages(), "fed2-tools") then
@@ -70,18 +61,17 @@ local function f2tDevmodeFreshReload(pkgPath)
     local home = getMudletHomeDir()
 
     cecho("\n<yellow>[fed2-tools]<reset> --fresh: deleting Muxlet_persistent...\n")
-    rmDir(home .. "/Muxlet_persistent")
+    wipeFiles(home .. "/Muxlet_persistent")
 
     cecho("\n<yellow>[fed2-tools]<reset> --fresh: deleting fed2-tools_persistent...\n")
-    rmDir(home .. "/fed2-tools_persistent")
+    wipeFiles(home .. "/fed2-tools_persistent")
 
     if table.contains(getPackages(), "Muxlet") then
         cecho("\n<yellow>[fed2-tools]<reset> --fresh: removing Muxlet from profile...\n")
-        -- Tell init.lua's generic sysUninstallPackage watchdog to stand down for
-        -- this uninstall — it's ours, and f2tDevmodeDoReload below already
-        -- re-triggers Muxlet's reinstall via fed2-tools' own top-level bootstrap.
-        -- Global (not local) because it must survive into the handler below,
-        -- and it's cleared there before anything else can race it.
+        -- init.lua's sysUninstallPackage watchdog stands down for this
+        -- uninstall (it's ours); f2tDevmodeDoReload below re-triggers
+        -- Muxlet's reinstall. Global so it survives into that handler,
+        -- which clears it immediately.
         F2T_FRESH_UNINSTALL_PENDING = true
         local waitId
         waitId = registerAnonymousEventHandler("sysUninstallPackage", function(_, name)

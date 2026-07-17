@@ -1,20 +1,15 @@
--- player_info.lua — Fed2 pilot & ship info content for fed2-tools.
+-- Six live stat labels (Rank, Fuel, Stamina, Groats, Slithies, Hold) plus a
+-- Buy Fuel button, colored from gmcp.char.vitals and gmcp.char.ship.
 --
--- Ported from the archive top-left frame (ui_header.lua): the six live stat
--- labels (Rank, Fuel, Stamina, Groats, Slithies, Hold) plus a Buy Fuel button,
--- with the fuel/stamina/hold value colouring driven by gmcp.char.vitals and
--- gmcp.char.ship.
+-- Registered as "fed2_player_info" content so it can be applied to any pane
+-- or tab. The stat labels live in a Geyser.HBox spanning the content area, so
+-- the row scales with placement automatically; Buy Fuel is anchored a fixed
+-- width from the right edge.
 --
--- Registered as "fed2_player_info" content so it can be applied to any pane or tab.
--- The stat labels live in a Geyser.HBox spanning the content area, so the row
--- scales with the placement automatically; the Buy Fuel button is anchored a
--- fixed width in from the right edge.
---
--- Cleanup: every widget is created inside target.content (the framework's
--- disposable slot), so widget teardown is automatic on content change/removal.
--- The only per-instance state is the label/button table, dropped in remove().
--- Live updates use session-level GMCP handlers that iterate existing instances,
--- so there is nothing per-instance to unregister.
+-- Every widget lives inside target.content (the disposable slot), so
+-- teardown is automatic on content change/removal. Live updates use
+-- session-level GMCP handlers that iterate existing instances, so there's
+-- nothing per-instance to unregister.
 
 local H_LABEL_CSS = [[
     background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,

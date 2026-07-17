@@ -1,6 +1,6 @@
--- fed2-tools — help system (ported from f2t_help.lua + f2t_help_registry.lua)
+-- Help system: display + registry.
 
--- ── Display ───────────────────────────────────────────────────────────────────
+-- Display
 
 function f2t_show_help(command, description, usage, examples)
     cecho(string.format("\n<green>[%s]<reset> %s\n\n", command, description))
@@ -42,7 +42,7 @@ function f2t_show_help_hint(command)
     cecho(string.format("\n<dim_grey>Use '%s help' for more information<reset>\n", command))
 end
 
--- ── Registry ─────────────────────────────────────────────────────────────────
+-- Registry
 
 F2T_HELP_REGISTRY = F2T_HELP_REGISTRY or {}
 
@@ -69,19 +69,9 @@ function f2t_handle_help(command, arg)
     return f2t_show_registered_help(command)
 end
 
--- fed2-tools — system (f2t) help registration
---
--- Ported from the archive's shared_help_init.lua, which was never carried over
--- when the shared layer was rebuilt — that omission is why `f2t` showed no help.
--- Registers help for the top-level dispatcher and its subcommands.
---
--- Updated for the new project:
---   * Component list reflects what actually ships (po added; it bore help in the
---     archive but was missing from the f2t listing).
---   * `f2t settings` now manages the "f2t" namespace (update-check settings), not
---     the retired "shared" namespace, so the stale stamina/food examples are
---     replaced. Component settings live under `<component> settings` or the
---     Muxlet settings UI.
+-- System (f2t) help registration: registers help for the top-level
+-- dispatcher and its subcommands. Component settings live under
+-- `<component> settings` or the Muxlet settings UI.
 
 f2t_register_help("f2t", {
     description = "Federation 2 Tools Package - System commands and component overview",
@@ -90,6 +80,7 @@ f2t_register_help("f2t", {
         {cmd = "f2t", desc = "Show this help"},
         {cmd = "f2t status", desc = "Show component states"},
         {cmd = "f2t version", desc = "Show package version and check for updates"},
+        {cmd = "f2t credits", desc = "Show acknowledgments"},
         {cmd = "f2t debug on/off", desc = "Toggle debug logging"},
         {cmd = "f2t settings", desc = "Manage system settings"},
         {cmd = "f2t chat wipe", desc = "Wipe chat history and re-fetch comhistory"},

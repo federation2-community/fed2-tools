@@ -1,23 +1,19 @@
--- fed2-tools map — map import/export (ported from map_import_export.lua)
+-- Map import/export. Two code paths, selected on whether a mapper widget is
+-- live (see f2tMapHasLiveMapper in ui/content/map.lua):
 --
--- Two code paths, selected on whether a mapper widget is live (see
--- f2tMapHasLiveMapper in ui/content/map.lua):
+--   Native   - a Fed2 Map pane is mounted. Mudlet's own loadJsonMap/
+--              saveJsonMap run; the visible map keeps every decorative
+--              detail (custom exit lines, env colors) exactly as before.
 --
---   Native  — a Fed2 Map pane is mounted (Full/BYOW mode, or after "mux start"
---             + opening the map). Mudlet's own loadJsonMap/saveJsonMap run; the
---             visible map keeps every decorative detail (custom exit lines, env
---             colours) exactly as before. Unchanged reference behaviour.
---
---   Headless — no widget (Minimal mode). loadJsonMap/saveJsonMap refuse to run
---             without one ("no map present or loaded"), so the map database is
---             rebuilt/serialised directly through the same room-database API the
---             auto-mapper already uses with no widget: addRoom, setExit,
---             setExitStub, addSpecialExit, setRoomIDbyHash, setRoomUserData, …
---             The user's Mudlet layout is never touched (Minimal's promise), and
---             everything functional round-trips — rooms, areas, coordinates,
---             environments, symbols, hashes, user data, standard/special/stub
---             exits and locks. Purely decorative custom exit lines are dropped:
---             there is no map being drawn in this mode for them to appear on.
+--   Headless - no widget (Minimal mode). loadJsonMap/saveJsonMap refuse to
+--              run without one, so the map database is rebuilt/serialised
+--              directly through the same room-database API the auto-mapper
+--              already uses with no widget (addRoom, setExit, setExitStub,
+--              addSpecialExit, setRoomIDbyHash, setRoomUserData, ...).
+--              Everything functional round-trips (rooms, areas, coordinates,
+--              environments, symbols, hashes, user data, exits and locks);
+--              only purely decorative custom exit lines are dropped, since
+--              there's no map drawn in this mode for them to appear on.
 
 -- Mudlet exit-direction numbers (setExit/setExitStub/getExitStubs1) <-> the long
 -- names used in the JSON format and by f2t_map_direction_to_number.
@@ -363,21 +359,16 @@ function f2t_map_import_file(file_path)
 
     F2T_MAP_CURRENT_ROOM_ID = nil
 
-    -- Mudlet's native deleteMap/loadJsonMap only work with a live mapper widget
-    -- (else "no map present or loaded"). That widget exists once the Fed2 Map
-    -- pane has been mounted: always in Full mode, but in BYOW ONLY after the
-    -- user adds the map content, and never in Minimal mode. So:
-    --   * widget live  -> native loader (keeps the visible map's decorative
-    --                     data), then fall through to headless if it fails;
-    --   * no widget    -> headless rebuild straight through the room-database
-    --                     API. This covers Minimal mode AND BYOW before the map
-    --                     pane is added — Muxlet may be running with a blank
-    --                     default workspace and no map content, which is exactly
-    --                     when there is still no widget.
-    -- The headless fallback also runs if a native attempt fails for any reason;
-    -- the file is already validated and the headless path re-wipes from it, so a
-    -- failed native attempt can never leave a half-cleared map. See
-    -- f2tMapHasLiveMapper in ui/content/map.lua.
+    -- Mudlet's native deleteMap/loadJsonMap only work with a live mapper
+    -- widget (else "no map present or loaded"), which exists once the Fed2
+    -- Map pane is mounted: always in Full mode, in BYOW only after the map
+    -- content is added, never in Minimal mode.
+    --   widget live -> native loader (keeps the visible map's decorative
+    --                  data), falling through to headless if it fails
+    --   no widget   -> headless rebuild straight through the room-database API
+    -- The headless fallback also runs if a native attempt fails for any
+    -- reason; the file is already validated, so a failed native attempt can
+    -- never leave a half-cleared map. See f2tMapHasLiveMapper in ui/content/map.lua.
     local success, error_msg
     if type(f2tMapHasLiveMapper) == "function" and f2tMapHasLiveMapper() then
         deleteMap()

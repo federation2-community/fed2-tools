@@ -1,24 +1,17 @@
--- fed2-tools — player database (player_db)  ·  shared infrastructure
+-- Player database: stores every player ever seen online, persisted per
+-- character across sessions. Foundational data used by the who list, contact
+-- cards, chat name-coloring, and local-players, so it lives as an always-on
+-- module rather than inside any window.
 --
--- Stores every player ever seen online; survives across sessions, separated per
--- character.  This is foundational data consumed by multiple surfaces — the who
--- list, contact cards, chat name-colouring, local-players — so it lives as an
--- always-on module, NOT inside any window.
+-- Storage is keyed off f2t_get_char_persistent_dir() (Mudlet table.save/load).
+-- Per-character reload is driven by the "f2tCharacterChanged" event from
+-- char.lua. The GMCP players feed (mark-offline -> upsert online -> save) is
+-- a global handler owned here, so the DB stays current regardless of which
+-- windows are open.
 --
--- Ported from the archive's ui_player_db.lua with the framework coupling removed
--- and three things rewired for the new project:
---   * Storage is keyed off f2t_get_char_persistent_dir() → fed2-tools_persistent/
---     <char>/players/db (Mudlet table.save/load).
---   * Per-character reload is driven by the "f2tCharacterChanged" event raised by
---     char.lua (replaces the archive's f2t_on_char_detected hook).
---   * The GMCP feed (mark-offline → upsert online → save) is a GLOBAL
---     gmcp.players handler owned here, so the DB stays current regardless of
---     which (if any) windows are open.  In the archive this feed lived inside
---     the who window; that was the wrong home.
---
--- Rank ordering comes from the shared rank.lua (F2T_RANK_LEVELS via
--- f2t_get_rank_level) rather than a private copy.  Display colour is derived by
--- consumers from .rank, so it is not stored here.
+-- Rank ordering comes from rank.lua (F2T_RANK_LEVELS via f2t_get_rank_level)
+-- rather than a private copy; display color is derived by consumers from
+-- .rank, not stored here.
 
 F2T_PLAYER_DB = F2T_PLAYER_DB or {}   -- lowercase name → entry
 

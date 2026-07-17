@@ -1,26 +1,19 @@
--- futures.lua — Futures market + owned-contracts content for fed2-tools.
+-- Futures market + owned-contracts content. Two registered contents, both
+-- pure GMCP (no game commands, no triggers):
 --
--- Two registered contents, both pure GMCP (no game commands, no triggers):
---
--- fed2_futures_market — contracts on offer at the current exchange, from
---   gmcp.exchange.futures + gmcp.exchange.commodities.  Click a commodity to
---   buy.  P&L math:
---     BΔ (Base Δ) = base − futures (LONG) / futures − base (SHORT); positive =
---       favorable ticks ahead (price converges toward base ~1ig/ton per tick).
---     EΔ (Exch Δ) = exch − futures (LONG) / futures − exch (SHORT); positive =
---       profitable to liquidate now.
+-- fed2_futures_market - contracts on offer at the current exchange
+--   (gmcp.exchange.futures + .commodities). Click a commodity to buy. P&L:
+--     BΔ (Base Δ) = base − futures (LONG) / futures − base (SHORT); positive
+--       = favorable ticks ahead (price converges toward base ~1ig/ton/tick).
+--     EΔ (Exch Δ) = exch − futures (LONG) / futures − exch (SHORT); positive
+--       = profitable to liquidate now.
 --     Score 1-10 = (BΔ+EΔ)/2 normalised over ±200ig.
---   To auto-show only at an exchange, add a pane rule: GMCP has value →
---   exchange.futures.
 --
--- fed2_futures — contracts the player holds, from gmcp.char.futures.
+-- fed2_futures - contracts the player holds (gmcp.char.futures).
 --   P&L = margin − 4,000ig starting margin; margin call below min_margin.
---   To auto-show only while holding contracts: GMCP has value → char.futures.
---
--- Ported from archive's ui_futures.lua.
 --
 -- Market columns/rows are exposed as f2tFuturesMarketCols/f2tFuturesMarketRows
--- so the exchange content (content/exchange.lua) can host the same table.
+-- so content/exchange.lua can host the same table.
 
 local H_HDR = 20    -- status header strip height (px)
 local H_COL = 20    -- column header bar height (px)

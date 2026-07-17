@@ -1,22 +1,14 @@
--- player_card.lua — Player card content for fed2-tools.
---
--- Renders as a normal Muxlet pane (registered content "f2t_player_card")
--- instead of a bespoke Adjustable.Container window: a real pane titlebar
--- (player name centered, colored to match rank; the pane's own close/move
--- button — no separate custom close button), a rank-colored border, and the
--- same detail rows/quick-send command line the archive-derived cards had.
--- Not splittable or resizable (a card is a fixed-size unit of info, sized to
--- fit its own content, not a layout host) but embeddable and swappable like
--- any other content pane; its Properties icon is hidden since there's
--- nothing there worth exposing for a card.
+-- Player card content: renders as a normal Muxlet pane (registered content
+-- "f2t_player_card") with a real pane titlebar (player name centered, colored
+-- to match rank), a rank-colored border, and the detail rows/quick-send
+-- command line. Not splittable or resizable (fixed-size info card, not a
+-- layout host) but embeddable/swappable like any other content; its
+-- Properties icon is hidden since there's nothing there worth exposing.
 --
 -- Public API:
---   f2tPlayerCardShowOrRaise(player)         — show or bring existing card to front
---   f2tPlayerCardShowOrRaiseByName(name)     — look up by name, then show or raise
---   f2tPlayerCardsRefreshAll()               — re-render any open card whose data changed
---
--- Ported from archive's ui_players.lua (ui_player_card_* functions), reworked
--- onto Muxlet's pane/content framework.
+--   f2tPlayerCardShowOrRaise(player)      - show or bring existing card to front
+--   f2tPlayerCardShowOrRaiseByName(name)  - look up by name, then show or raise
+--   f2tPlayerCardsRefreshAll()            - re-render any open card whose data changed
 
 local _cardsByName = {}   -- player name → MuxPane
 

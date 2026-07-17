@@ -1,5 +1,3 @@
--- fed2-tools map — jump exit management
---
 -- Two layers keep the jump graph correct:
 --   1. gmcp.room.info.jumps is exact ground truth for the link room you are
 --      standing in: applied directly to that room's special exits on entry.
@@ -7,7 +5,7 @@
 --      derives every OTHER link room's exits so getPath() plans over the
 --      legal jump graph galaxy-wide, not just where you last stood.
 -- Jump edges are directed (beacon rules are asymmetric), so no reverse exit
--- is ever created by symmetry — the model derives each room's own outgoing
+-- is ever created by symmetry; the model derives each room's own outgoing
 -- set instead.
 
 -- getSpecialExits(room_id) is keyed by DESTINATION ROOM NUMBER, with each

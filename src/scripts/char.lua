@@ -1,18 +1,14 @@
--- fed2-tools — character identity tracking
---
 -- Detects which character is logged in via GMCP, maintains F2T_CHAR_NAME,
 -- and ensures a per-character persistent data directory exists.
 --
--- In V2, settings are profile-global (owned by Mux.settings).  This module
--- does NOT redirect settings per-character.  Components that need character-
--- specific data (e.g. destinations, the player DB) should store it under:
---   f2t_get_char_persistent_dir() / <component> / <file>
+-- Settings are profile-global (Mux.settings), not redirected per-character.
+-- Components needing character-specific data (destinations, player DB) store
+-- it under f2t_get_char_persistent_dir()/<component>/<file>.
 --
 -- Persistence root is "<package>_persistent", matching Muxlet's own
--- "Muxlet_persistent" convention (underscore separator).  Defined once here as
--- the single source of truth so it can't drift across call sites.
+-- "Muxlet_persistent" convention, defined once here as the single source of truth.
 --
--- When the character changes, fires raiseEvent("f2tCharacterChanged", newName, oldName).
+-- Fires raiseEvent("f2tCharacterChanged", newName, oldName) when the character changes.
 
 F2T_CHAR_NAME  = nil
 F2T_LOGGED_IN  = false
@@ -49,13 +45,10 @@ end
 
 registerAnonymousEventHandler("gmcp.char.vitals", onVitals)
 
--- A script reload (e.g. dev-mode rebuild while still connected) re-executes
--- this whole file, resetting F2T_CHAR_NAME/loginDone to their fresh-load
--- defaults. Mudlet doesn't replay the GMCP event that originally set them, so
--- without this check fed2-tools would stay "logged out" — silently falling
--- back to the shared persistent path — until the next reconnect. gmcp.char
--- itself survives a script reload (it's populated by Mudlet's core), so just
--- check for already-present data immediately.
+-- A script reload (e.g. dev-mode rebuild) re-executes this file, resetting
+-- F2T_CHAR_NAME/loginDone to fresh-load defaults, but Mudlet doesn't replay
+-- the GMCP event that originally set them. gmcp.char itself survives a
+-- reload, so just re-check it immediately instead of waiting for reconnect.
 onVitals()
 
 -- Reset so the next login after a reconnect is detected fresh.

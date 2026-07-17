@@ -1,20 +1,16 @@
--- chat.lua — Chat panel content for fed2-tools.
---
 -- Renders F2T_CHAT.history (scripts/chat/history.lua) into a MiniConsole with
 -- grouped speakers, per-type colors, an A/C/T/S filter cycle, and a timestamp
--- toggle.  Live messages append via the f2tChatUpdated event; filter or
+-- toggle. Live messages append via the f2tChatUpdated event; filter or
 -- timestamp changes replay the whole log.
 --
--- This module ONLY registers content.  To get the archive's always-visible
--- chat tab, place "fed2_chat" in any pane or tab; visibility/layout is
--- Muxlet's job.  Filter and timestamp state serialize with the workspace.
+-- Only registers content; place "fed2_chat" in any pane or tab for an
+-- always-visible chat view. Filter and timestamp state serialize with the
+-- workspace.
 --
--- The console fills the whole content area — no in-content header — since the
--- filter/timestamp controls publish to the hosting pane/tab's own titlebar
--- and right-click menu via titlebarElements (see buildChatDef below), the
--- same mechanism Muxlet's own Button Grid content uses for its wrench icon.
---
--- Ported from archive's ui_chat.lua (rendering half) + chatInbound wiring.
+-- The console fills the whole content area (no in-content header): filter
+-- and timestamp controls publish to the hosting pane/tab's own titlebar and
+-- right-click menu via titlebarElements (see buildChatDef below), the same
+-- mechanism Muxlet's own Button Grid content uses for its wrench icon.
 
 -- ── Style per message type ────────────────────────────────────────────────────
 -- gutterHex: hecho #RRGGBB for the continuation pipe / direction arrows

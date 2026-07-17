@@ -1,14 +1,10 @@
--- fed2-tools — Map legend dialog
---
 -- f2tShowMapLegend() opens a reference card for mapper room colors/symbols,
--- rendered from f2t_map_get_legend_data() (map/style.lua — the single source
--- of truth for symbols and environment colors).  Launched from the Fed2 Map
+-- rendered from f2t_map_get_legend_data() (map/style.lua, the single source
+-- of truth for symbols and environment colors). Launched from the Fed2 Map
 -- gear menu (ui/map_settings.lua).
 --
--- Uses Mux.registerContent + Mux._applyContent so the dialog integrates cleanly
--- with Muxlet's pane lifecycle (contentBg cleared, z-order, theme borders).
---
--- Ported from archive's ui_map_legend.lua (Adjustable.Container popup → Muxlet dialog).
+-- Uses Mux.registerContent + Mux._applyContent so the dialog integrates
+-- cleanly with Muxlet's pane lifecycle (contentBg cleared, z-order, theme borders).
 
 local function legendHtml()
     if type(f2t_map_get_legend_data) ~= "function" then

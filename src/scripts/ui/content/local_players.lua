@@ -1,20 +1,12 @@
--- local_players.lua — Players-in-room content for fed2-tools.
+-- Renders gmcp.room.info.players (players in the current room) as a stack of
+-- styled Geyser.Label rows (rank-colored clickable name + examine button), no
+-- MiniConsole involved.
 --
--- Renders gmcp.room.info.players — the players standing in the current room —
--- as a stack of styled Geyser.Label rows (rank-colored clickable name + a
--- separate eyeball "examine" button), no MiniConsole involved.
---
--- This module ONLY registers content; it does not manage visibility.  The
--- archive showed/hid its dropdown as players came and went — to replicate
--- that, place "fed2_local_players" in a pane and add a rule:
---     Show when → GMCP has value → room.info.players
--- Muxlet's condition engine handles the dynamics from there.  When the
--- hosting pane is floating, this content also asks Muxlet to keep the pane's
--- height fitted to the row count live via Mux.requestAutoFit (grows/shrinks
--- as players enter/leave, anchored at the pane's current position).
---
--- Ported from archive's ui_local_players.lua; redesigned as Label rows
--- instead of per-row MiniConsoles.
+-- Only registers content; doesn't manage visibility. To show/hide as players
+-- come and go, place "fed2_local_players" in a pane and add a rule: Show
+-- when -> GMCP has value -> room.info.players. When the hosting pane is
+-- floating, this also asks Muxlet to keep the pane height fitted to the row
+-- count live via Mux.requestAutoFit.
 
 local H_HDR = 24   -- header strip height (px)
 local ROW_H = 26   -- player row height (px)

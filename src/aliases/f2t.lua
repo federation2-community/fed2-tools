@@ -62,6 +62,13 @@ elseif subcommand == "version" then
         "\n<green>[fed2-tools]<reset> Version: <white>%s<reset>\n", (info and info.version) or "unknown"))
     if Mux and Mux.checkForUpdates then Mux.checkForUpdates(false) end
 
+elseif subcommand == "credits" then
+    cecho("\n<green>[fed2-tools]<reset> Acknowledgments\n\n")
+    cecho("  <cyan>Colborn (ping65510)<reset> — original creator of fed2-tools\n")
+    cecho("  <cyan>Swift (Ohmi02/Fed2)<reset> — original idea for the multi-window UI layout, later merged in\n")
+    cecho("  <cyan>tmtocloud (jackrungh)<reset> — took over maintenance, merged in the UI layout,\n")
+    cecho("    and rewrote most of the codebase\n")
+
 else
     cecho(string.format("\n<red>[f2t]<reset> Unknown command: %s\n", subcommand))
     f2t_show_help_hint("f2t")

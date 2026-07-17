@@ -1,25 +1,18 @@
--- fed2-tools — Bootstrap and initialization
+-- Installs/upgrades (or downgrades) Muxlet via Mux.bootHost and drives our
+-- own initialization from its onReady callback. Muxlet is pinned to an exact
+-- version, not just a floor: if F2T_REQUIRED_MUXLET is set older than what's
+-- installed, Mux.bootHost downgrades in place rather than treating the newer
+-- install as satisfying.
 --
--- Installs/upgrades (or downgrades) Muxlet via Mux.bootHost (see Muxlet's
--- update.lua, "Mux.bootHost") and drives our own initialization from its
--- onReady callback. Muxlet is pinned to an exact version, not just a floor —
--- if F2T_REQUIRED_MUXLET is ever set OLDER than what's installed (walking back
--- a Muxlet release that broke fed2-tools), Mux.bootHost downgrades in place
--- rather than treating the newer install as satisfying.
+-- On first run, init shows the mode-selection dialog (ui/popups.lua). The
+-- user's choice persists as mux_autostart in Mux.settings and governs all
+-- future sessions:
+--   mux_autostart = true  -> Mux.fullStart() called automatically each session
+--   mux_autostart = false -> Muxlet installed but never auto-started (Minimal)
 --
--- On first run, that init shows the mode-selection dialog (ui/popups.lua).
--- The user's choice persists as mux_autostart in Mux.settings and governs all
--- future sessions — no further dialog appears.
---
---   mux_autostart = true  → Mux.fullStart() called automatically each session
---   mux_autostart = false → Muxlet is installed but never auto-started (Minimal)
---
--- Two values are injected by the build script (never edit manually):
---   F2T_REQUIRED_MUXLET — exact Muxlet version this build is pinned to
---   MUXLET_URL          — GitHub release URL to install/upgrade/downgrade from
---
--- Dev builds point MUXLET_URL at the prerelease tag (no "v" prefix).
--- Production builds point at the production tag ("v" prefix).
+-- F2T_REQUIRED_MUXLET and MUXLET_URL are injected by the build script (never
+-- edit manually). Dev builds point at the prerelease tag; production builds
+-- point at the production tag.
 
 local MUXLET_PKG = "Muxlet"
 

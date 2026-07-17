@@ -1,21 +1,16 @@
--- fed2-tools — Map settings menu overlay
+-- f2tBuildMapSettings(parent, gid) creates a gear button in the bottom-right
+-- of the Fed2 Map pane; clicking it toggles a flyout menu:
+--   Import Map Database - bundled-resource picker (f2tShowMapImportOverlay)
+--   Import from File     - file-dialog import of external map JSON (f2t_map_import)
+--   Export Map           - file-dialog export of current map (f2t_map_export)
 --
--- f2tBuildMapSettings(parent, gid) creates a small gear button in the
--- bottom-right of the Fed2 Map pane.  Clicking it toggles a flyout menu with
--- manual map-database actions:
+-- The gear is near-transparent when idle so it doesn't obstruct the map
+-- view, opaque on hover.
 --
---   Import Map Database  — open the bundled-resource picker (f2tShowMapImportOverlay)
---   Import from File     — file-dialog import of an external map JSON (f2t_map_import)
---   Export Map           — file-dialog export of the current map (f2t_map_export)
---
--- The gear is near-transparent when idle so it does not obstruct the map view;
--- it becomes fully opaque on hover.
---
--- Sizing: the gear is a Label (not a Container) so getElementSize() works on it.
--- An immediate tempTimer(0) reads the label's rendered pixel size, derives the
--- parent's pixel dimensions (gear = 4% × 4% of parent), then repositions the
--- gear to an exact pixel-perfect square in the bottom-right corner.  The menu
--- is built lazily and uses those same resolved pixel coords for exact placement.
+-- Sizing: the gear is a Label (not a Container) so getElementSize() works.
+-- A tempTimer(0) reads its rendered pixel size, derives the parent's pixel
+-- dimensions (gear = 4% x 4% of parent), and repositions it pixel-perfect in
+-- the corner; the lazily-built menu reuses those same coords.
 
 local _CSS_GEAR = [[
     QLabel {
