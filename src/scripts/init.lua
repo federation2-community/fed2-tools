@@ -126,6 +126,13 @@ function f2tInit()
 
     f2tRegisterAllContent()
 
+    -- Muxlet's own host default is false; opt in once, first time seen unset,
+    -- so a later user choice is never overridden.
+    local updateSettings = Mux.settings._data["f2t"]
+    if not (updateSettings and updateSettings["update_check_enabled"] ~= nil) then
+        Mux.settings.set("f2t", "update_check_enabled", true)
+    end
+
     afterLogin(function()
         local d         = Mux.settings._data
         local autostart = d and d["f2t"] and d["f2t"]["mux_autostart"]

@@ -8,9 +8,24 @@ Version 2 is a full rewrite of the original fed2-tools. If you're upgrading from
 
 ## Installation
 
-1. Download the latest `fed2-tools.mpackage` from [Releases](../../releases).
-2. In Mudlet, open **Package Manager** and install it into your Federation 2 profile.
-3. fed2-tools will prompt to install [Muxlet](https://github.com/tmtocloud/Muxlet) automatically the first time it loads — Muxlet powers the optional GUI panels below. Everything else works without it.
+Install however suits you:
+
+- **In Mudlet:** run `mpkg install fed2-tools` in your Federation 2 profile — Mudlet fetches the latest release directly from the [Mudlet Package Repository](https://github.com/Mudlet/mudlet-package-repository).
+- **Manual:** download the latest `fed2-tools.mpackage` from [Releases](../../releases), then in Mudlet open **Package Manager** and install it into your Federation 2 profile.
+
+fed2-tools installs [Muxlet](https://github.com/tmtocloud/Muxlet) automatically the first time it loads — Muxlet powers the optional GUI panels below, no separate step needed. Everything else (mapping, hauling, factory tools, etc.) works without it.
+
+### Choosing a startup mode
+
+On first load fed2-tools asks how you'd like Muxlet to start. Pick whichever fits how you play — you're not locked in, and every command/alias works the same regardless of mode:
+
+- **Full (recommended)** — loads the ready-made fed2-tools workspace (output pane and map side by side, plus the panels below) automatically every session. Some panels appear only when they're relevant to you: the Company tab only shows at Industrialist rank and above, its Investment sub-tab only at Financier, and the Exchange pane swaps itself to Futures Market depending on your rank and room — all driven by Muxlet's condition/rule engine, no manual toggling needed.
+- **Build Your Own Workspace (BYOW)** — Muxlet starts on a blank canvas with every fed2-tools panel registered and ready to drop into any pane or tab from its **Content Library**. Same building blocks as Full, but you lay them out yourself — and if you want the same rank- or room-based show/hide behavior Full gets for free, you can wire it up with your own Muxlet condition rules.
+- **Minimal** — no changes to your Mudlet layout at all. Run `mux start` any time later (then `mux workspace load fed2-tools` for the full layout) if you change your mind.
+
+### Staying up to date
+
+fed2-tools checks for new production releases on startup by default and offers to install them — this applies regardless of which startup mode you picked above. Pre-release/dev builds are never offered unless you opt in. Both are configurable under **Fed2-Tools › Update** in Settings, along with a "Check for updates now" button.
 
 ## Getting Started
 
