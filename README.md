@@ -4,6 +4,8 @@ A Mudlet package for [Federation 2 Community Edition](https://federation2.com) â
 
 Version 2 is a full rewrite of the original fed2-tools. If you're upgrading from a 1.x install, expect commands and settings to have moved; see [Getting Started](#getting-started) below.
 
+![fed2-tools Muxlet GUI](screenshot.png)
+
 ## Installation
 
 1. Download the latest `fed2-tools.mpackage` from [Releases](../../releases).
