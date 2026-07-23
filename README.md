@@ -6,10 +6,14 @@ A Mudlet package for [Federation 2 Community Edition](https://federation2.com) �
 
 ## Installation
 
-Install however suits you:
+**Recommended: install from in-game.** Log in to F2CE with Mudlet and, the first time the game doesn't see F2CE-Tools installed, it'll prompt you to type `f2t on` — that delivers the package straight from this repo's latest GitHub release to your client automatically, no manual download needed. If you'd rather not be asked, `f2t off` dismisses the prompt (you can still trigger delivery any time by typing `f2t on` yourself).
 
-- **In Mudlet:** run `mpkg install f2ce-tools` in your F2CE profile — Mudlet fetches the latest release directly from the [Mudlet Package Repository](https://github.com/Mudlet/mudlet-package-repository).
+Alternate install methods, if you'd prefer:
+
+- **Mudlet Package Repository:** run `mpkg install f2ce-tools` in your F2CE profile — Mudlet fetches the latest release directly from the [Mudlet Package Repository](https://github.com/Mudlet/mudlet-package-repository).
 - **Manual:** download the latest `f2ce-tools.mpackage` from [Releases](../../releases), then in Mudlet open **Package Manager** and install it into your F2CE profile.
+
+Once installed, `f2t on`/`f2t off` stop talking to the server and instead control whether F2CE-Tools' own Muxlet UI is running (see [Choosing a startup mode](#choosing-a-startup-mode) below) — the in-game delivery prompt only ever appears pre-install.
 
 F2CE-Tools installs [Muxlet](https://github.com/tmtocloud/Muxlet) automatically the first time it loads — Muxlet powers the optional GUI panels below, no separate step needed. Everything else (mapping, hauling, factory tools, etc.) works without it.
 
